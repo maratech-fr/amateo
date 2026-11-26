@@ -104,6 +104,11 @@ final class LoadVersionContext extends BaseContext
     {
         $this->freeBeforeLoad = $this->freeState();
         $this->versionOneSessions = $this->versionOneSessionsByKind();
+        foreach ('' === $this->blockId ? [] : $this->versionOneSessions as $kind => $sessions) {
+            if ('' === $sessions) {
+                throw new RuntimeException(\sprintf('témoin : la version 1 n\'a aucune séance %s', $kind));
+            }
+        }
         $loaded = $this->apiPost(\sprintf('schedules/%s/load', $this->versionOneId), [], $this->smallClubToken);
         $this->expectStatus($loaded, [200], '« Charger » la version 1');
     }
@@ -142,7 +147,8 @@ final class LoadVersionContext extends BaseContext
         $this->expectStatus($this->apiDelete(\sprintf('team_coaches/%s', $sacha), $this->smallClubToken), [200, 204], 'Sacha quitte les U17M1');
         $this->assignSmallClubCoach('Alex', 'U17M1');
         $this->expectStatus($this->apiDelete(\sprintf('coach_player_memberships/%s', $this->playerId), $this->smallClubToken), [200, 204], 'Dominique ne joue plus');
-        $this->putBack('teams', $this->smallClubTeamIds['U15M1'], ['forcedVenueId' => null]);
+        // L'API n'efface pas un gymnase imposé (absent = gardé) : on en impose un autre.
+        $this->putBack('teams', $this->smallClubTeamIds['U15M1'], ['forcedVenueId' => $this->smallClubVenueIds['Gymnase Sud']]);
         $this->generateSmallClubSeason();
 
         $now = $this->socleColdState();
@@ -153,7 +159,7 @@ final class LoadVersionContext extends BaseContext
         }
     }
 
-    #[Given('une durée de match modifiée, une catégorie créée, une équipe renommée, un adjoint ajouté et une réservation renommée après la version 1')]
+    #[Given('une durée de match modifiée, une catégorie créée, une équipe renommée, un adjoint ajouté et un groupe renommé après la version 1')]
     public function desChangementsLibresApresLaVersion1(): void
     {
         $category = $this->dbalScalar(\sprintf('SELECT sport_category_id AS behatval FROM team WHERE id = \'%s\'', $this->smallClubTeamIds['SM1']), admin: true);
@@ -162,8 +168,7 @@ final class LoadVersionContext extends BaseContext
         $this->createdId($this->apiPost('sport_categories', ['sportId' => $sport, 'name' => 'Vétérans', 'isCustom' => true], $this->smallClubToken), 'la catégorie Vétérans');
         $this->putBack('teams', $this->smallClubTeamIds['U13M1'], ['name' => 'U13M1 Les Lions']);
         $this->createdId($this->apiPost('team_coaches', ['teamId' => $this->smallClubTeamIds['SM1'], 'coachId' => $this->smallClubCoachIds['Sacha'], 'role' => 'ASSISTANT'], $this->smallClubToken), 'Sacha adjoint des SM1');
-        $reservation = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM reservation WHERE team_id = \'%s\'', $this->smallClubTeamIds['SF1']), admin: true);
-        $this->putBack('reservations', $reservation, ['label' => 'Créneau des seniors']);
+        $this->putBack('shared_training_blocks', $this->blockId, ['label' => 'Groupe des filles']);
     }
 
     #[Then('les passerelles, les règles, les groupes mutualisés, le bien-être, la règle de trajet, les coachs principaux, les coachs-joueurs et les gymnases imposés sont ceux de la version 1')]
@@ -184,7 +189,7 @@ final class LoadVersionContext extends BaseContext
         if ($now !== $this->freeBeforeLoad) {
             throw new RuntimeException(\sprintf("le chargement a touché ce qui est libre\n  avant : %s\n  après : %s", json_encode($this->freeBeforeLoad, \JSON_UNESCAPED_UNICODE), json_encode($now, \JSON_UNESCAPED_UNICODE)));
         }
-        if (!str_contains($now['noms'], 'U13M1 Les Lions') || !str_contains($now['adjoints'], 'Sacha') || !str_contains($now['catégories'], 'Vétérans 0') || !str_contains($now['libellés'], 'Créneau des seniors')) {
+        if (!str_contains($now['noms'], 'U13M1 Les Lions') || !str_contains($now['adjoints'], 'Sacha') || !str_contains($now['catégories'], 'Vétérans 0') || !str_contains($now['libellés'], 'Groupe des filles')) {
             throw new RuntimeException('témoin : les changements libres du décor ne sont pas en base ' . json_encode($now, \JSON_UNESCAPED_UNICODE));
         }
     }
@@ -348,7 +353,14 @@ final class LoadVersionContext extends BaseContext
      */
     private function versionOneSessionsByKind(): array
     {
-        $kinds = ['réservée' => 'lock_origin = \'RESERVATION\'', 'libre' => 'lock_level = \'NONE\'', 'd\'un groupe mutualisé' => 'shared_training_block_id IS NOT NULL'];
+        // Une séance de groupe : celle d'une équipe du groupe, à la même case qu'une autre équipe du groupe
+        // (le solveur pose la séance commune sans la lier au bloc).
+        $group = \sprintf(
+            'team_id IN (\'%1$s\', \'%2$s\') AND EXISTS (SELECT 1 FROM schedule_slot_template o WHERE o.schedule_id = schedule_slot_template.schedule_id AND o.team_id IN (\'%1$s\', \'%2$s\') AND o.team_id <> schedule_slot_template.team_id AND o.venue_id = schedule_slot_template.venue_id AND o.day_of_week = schedule_slot_template.day_of_week AND o.start_time = schedule_slot_template.start_time)',
+            $this->smallClubTeamIds['U17F1'] ?? '',
+            $this->smallClubTeamIds['U15F1'] ?? '',
+        );
+        $kinds = ['réservée' => 'lock_origin = \'RESERVATION\'', 'libre' => 'lock_level = \'NONE\'', 'd\'un groupe mutualisé' => $group];
         $sessions = [];
         foreach ($kinds as $kind => $where) {
             $sessions[$kind] = $this->dbalScalar(\sprintf(
@@ -378,8 +390,10 @@ final class LoadVersionContext extends BaseContext
                 $plan,
             ), admin: true),
             'block' => $this->dbalScalar(\sprintf(
-                'SELECT COUNT(*) AS behatval FROM schedule_slot_template s WHERE s.schedule_id = \'%s\' AND s.shared_training_block_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM shared_training_block_team m WHERE m.block_id = s.shared_training_block_id AND m.team_id = s.team_id)',
-                $this->versionOneId,
+                'SELECT 2 - COUNT(*) AS behatval FROM shared_training_block_team m JOIN shared_training_block b ON b.id = m.block_id WHERE b.id = \'%s\' AND b.common_sessions = 1 AND m.team_id IN (\'%s\', \'%s\')',
+                $this->blockId,
+                $this->smallClubTeamIds['U17F1'] ?? '',
+                $this->smallClubTeamIds['U15F1'] ?? '',
             ), admin: true),
         ];
     }

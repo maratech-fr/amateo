@@ -111,7 +111,7 @@ final class ClubQuotaTest extends WebTestCase
      * `/regenerate` et `/fill` (le comblement d'une période, P2-44) déclenchent un solve tout
      * autant — et ce sont ELLES que le work-loop emprunte, donc l'usage réel. Un cap posé sur la
      * seule première route se contourne sans même le vouloir. (« Charger une version »,
-     * `/regenerate-from`, ne lance aucun calcul : hors du seau, décision fondateur Q13.)
+     * `/load`, ne lance aucun calcul : hors du seau, décision fondateur Q13.)
      */
     public function testRegenerateRoutesDrawFromTheSameBudget(): void
     {
@@ -126,7 +126,7 @@ final class ClubQuotaTest extends WebTestCase
     }
 
     /**
-     * Q13 — « Charger une version » (`/regenerate-from`) restaure une structure sans lancer de calcul :
+     * Q13 — « Charger une version » (`/load`) restaure une structure sans lancer de calcul :
      * elle n'entame jamais le plafond de 5 générations par heure du club, même appelée plus de 5 fois.
      */
     public function testLoadingAVersionNeverDrawsFromTheGenerationBudget(): void
@@ -134,7 +134,7 @@ final class ClubQuotaTest extends WebTestCase
         [$token, $clubId] = $this->registerClub('QL');
 
         for ($i = 0; $i < self::GENERATION_LIMIT + 1; ++$i) {
-            self::assertNotSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/regenerate-from'), 'charger une version n\'est jamais refusé par le plafond de génération');
+            self::assertNotSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/load'), 'charger une version n\'est jamais refusé par le plafond de génération');
         }
 
         self::assertSame(self::GENERATION_LIMIT, $this->remainingTokens('limiter.schedule_generation', $clubId), 'le seau de génération du club est intact après des chargements');

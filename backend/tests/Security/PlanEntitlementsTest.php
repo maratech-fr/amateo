@@ -153,7 +153,7 @@ final class PlanEntitlementsTest extends WebTestCase
     {
         $ctx = $this->seedClub(credits: 10);
 
-        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/regenerate-from'), 'charger une version n\'est jamais refusé par le mur des crédits');
+        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/load'), 'charger une version n\'est jamais refusé par le mur des crédits');
     }
 
     /**
@@ -714,7 +714,7 @@ final class PlanEntitlementsTest extends WebTestCase
 
         $this->client->request('GET', '/api/schedules', [], [], $headers);
         self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'consulter reste ouvert');
-        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/regenerate-from'), 'charger une version n\'est jamais refusé par le palier');
+        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/load'), 'charger une version n\'est jamais refusé par le palier');
         $this->client->request('GET', \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $filename), [], [], $headers);
         self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'un PDF déjà produit se télécharge au-dessus du palier');
 

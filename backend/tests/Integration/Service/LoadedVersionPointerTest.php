@@ -7,8 +7,8 @@ namespace App\Tests\Integration\Service;
 use App\Entity\User;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\StructureSnapshotter;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -22,7 +22,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * « Charger » et chaque génération terminée, et c'est elle, lue sur le plan, qui décide de la seule version
  * modifiable (409 `not_loaded_version` ailleurs).
  *
- * Angles jumeaux, cités : `Integration/Api/RegenerateFromVersionTest::testLoadVersionRestoresStructureAndRepointsLiveContextWithoutSolving`
+ * Angles jumeaux, cités : `Integration/Plans/LoadVersionTest::testLoadingPutsBackTheColdOfExistingTeamsAndVenues`
  * (l'étoile suit « Charger », par la route) et `Security/LoadedVersionIsTheOnlyEditableTest` (les neuf guichets
  * refusent une version non chargée, bloquant) ; ici, l'endroit unique où l'étoile du socle est rangée et relue.
  */
@@ -38,13 +38,13 @@ final class LoadedVersionPointerTest extends WebTestCase
     public function testLoadingASocleVersionPointsItsSeasonPlan(): void
     {
         $older = $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::COMPLETED);
-        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
-        $snapshotter->store($older, $snapshotter->serialize(self::ER_CLUB, self::ER_SEASON));
         $this->seedSocleVersion(self::ER_SOCLE_V2, ScheduleStatus::COMPLETED);
         $this->provisioner()->pointLockSource($this->erSeasonPlanId(), self::ER_SOCLE_V2);
         $this->erEm()->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($older, $states->capture($this->erSeasonPlanId()));
 
-        $this->client->request('POST', '/api/schedules/' . self::ER_SOCLE_V1 . '/regenerate-from', [], [], $this->headers());
+        $this->client->request('POST', '/api/schedules/' . self::ER_SOCLE_V1 . '/load', [], [], $this->headers());
 
         self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
         $this->assertTheSocleStarIs(self::ER_SOCLE_V1);
