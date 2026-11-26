@@ -76,6 +76,16 @@ final class CompetitionUniquenessTest extends WebTestCase
         self::assertResponseStatusCodeSame(201, 'deux équipes du club dans une même division : deux compétitions de même nom, légitimes');
 
         self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE club_id = ? AND name = ?', [$this->club->getId(), 'DFU11-2']));
+
+        // Contrat de lecture (PR 3b) : `?teamId=` rend les compétitions où l'équipe est engagée, chacune avec ses
+        // engagements ; l'équipe ne se lit plus sur la compétition.
+        $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user);
+        $this->client->request('GET', '/api/competitions?teamId=' . $teamB, [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        $members = $this->responseData()['member'] ?? [];
+        self::assertCount(1, $members, 'seule la compétition où U11 B est engagée');
+        self::assertSame([$teamB], array_column($members[0]['engagements'] ?? [], 'teamId'));
+        self::assertArrayNotHasKey('teamId', $members[0], 'l\'équipe vit sur l\'engagement');
     }
 
     protected function setUp(): void
