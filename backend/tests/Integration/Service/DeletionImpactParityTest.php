@@ -963,6 +963,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNotNull($impact->reason, 'le refus porte une raison lisible pour le front');
         self::assertStringContainsStringIgnoringCase('match', $impact->reason, 'la raison nomme les matchs');
         self::assertSame(1, $impact->placedFixtures, 'le front sait combien de matchs rendent le gymnase indélébile');
+        self::assertSame(1, $impact->declaredFixtures, 'le match saisi dans FBI (lu dans son suivi fédéral) est annoncé à ressaisir');
         $announced = [];
         foreach ($impact->lines as $line) {
             $announced[$line['key']] = $line['count'];
