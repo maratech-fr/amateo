@@ -213,8 +213,8 @@ les gardes de l'UPDATE sous verrou [version supprimée, fenêtre re-datée, pér
 validation manuelle concurrente → 0 ligne] ; un passage juge chaque club à son jour, un club en
 échec n'arrête jamais les autres et relâche le GUC ; Rouvrir puis Valider à la main ; matchs
 jamais touchés) ·
-`Security/SeasonVersionUniquenessTest` (socle en vigueur unique) ·
-`Security/SeasonPlanInForceTest` (SocleGuard, défense en profondeur) ·
+`Security/SeasonVersionUniquenessTest` (socle en vigueur unique : préparer une version de saison, socle validé, ne déplace pas le pointeur — lot conception 5 PR 5) ·
+`Security/SeasonPlanInForceTest` (lot conception 5 PR 5 — socle validé : générer, régénérer, charger restent permis sans toucher à l'en vigueur ; « Rouvrir » un plan de saison est refusé 409) ·
 `Security/PeriodGatePayloadParityTest` (gate pré-solve == payload) ·
 `Security/RecapCapacityWarningTest` (capacité du récap lue du payload) ·
 `Security/CoachDoubleBookingTest` (verrous HARD dédoublant un coach) ·
@@ -517,11 +517,15 @@ une ligne vers le plan d'un autre club ; PR 3b : `/api/venue_period_overrides` r
 plan d'un autre club sans rien écrire ; PR 4 : `/api/constraint_period_overrides` refuse de même la règle ou le
 plan d'un autre club sans rien écrire, et les coches d'un autre club ne se lisent pas. Chute attendue si la route
 cherche l'équipe, le gymnase, la règle ou le plan hors du club, ou si la clé vers le plan perd le club) ·
-`Api/ConstraintScopeChangeTest` (axe *constraint semantics*, lot conception 4 PR 4 — changer la portée d'une
-règle de saison change ce que les plans de période existants appliquent : élargie à tout le club, elle entre dans
-des vacances où elle restait au défaut ; restreinte à une équipe, elle en sort ; une coche posée par le gestionnaire
-contre le défaut ne bouge pas ; prouvé sur la ligne du plan et sur la sélection qui part au moteur. Chute attendue
-si une ligne de règle restée au défaut ne suit plus la portée) ·
+`Api/ConstraintScopeChangeTest` (axes *constraint semantics* et *planning lifecycle*, lot conception 4 PR 4, lot
+conception 5 PR 5 — supprimer, élargir, restreindre ou dater une règle du planning de saison validé ne touche les
+lignes des plans de période qu'à la validation ; alors, élargie, elle entre dans des vacances où elle restait au
+défaut ; restreinte, elle en sort ; une coche posée par le gestionnaire contre le défaut ne bouge pas ; prouvé sur
+la ligne du plan et sur la sélection qui part au moteur. Chute attendue si une modification non validée touche les
+lignes des périodes, ou si une ligne restée au défaut ne suit plus la portée à la validation) ·
+`Api/TeamSessionsUnderValidatedSocleTest` (axe *planning lifecycle*, lot conception 5 PR 5 — sous un planning de
+saison validé, le plafond de séances par jour et le nombre de séances d'une équipe se modifient sur la ligne de
+travail du socle, le planning reste en vigueur. Chute attendue si le refus « rouvrez le planning » revient) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes

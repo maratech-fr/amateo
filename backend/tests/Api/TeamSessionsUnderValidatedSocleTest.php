@@ -27,8 +27,11 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * vigueur, la modification attend la validation. Les deux s'écrivent sur la ligne de travail du socle, et
  * `/api/teams` les rend.
  *
- * Jumeau, cité : le geste de bout en bout sous socle validé, `backend/features/le-socle-commande-les-plans.feature`.
+ * Jumeau, cité : le geste de bout en bout sous socle validé, `backend/features/une-equipe-s-entraine-deux-fois-le-meme-jour.feature`.
+ *
+ * Bloquant (axe *planning lifecycle*) : step `Blocking suite` de `ci.yml` et `docs/testing/blocking-tests.md`.
  */
+#[Group('phase1')]
 #[Group('integration')]
 final class TeamSessionsUnderValidatedSocleTest extends WebTestCase
 {

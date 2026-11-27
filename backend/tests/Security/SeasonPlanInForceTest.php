@@ -38,8 +38,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *
  * Avant le lot 5, cinq gardes `SocleGuard::assertSeasonPlanNotChosen` refusaient ces gestes ({@see GenerateScheduleController},
  * {@see RegenerateController}, « Charger », {@see ScheduleStateProcessor}, l'import du parc) ; ce test prouve qu'elles
- * sont retirées sans que la version en vigueur bouge. L'import du parc a son étape Behat :
- * `l-import-du-parc-en-un-geste.feature`.
+ * sont retirées sans que la version en vigueur bouge. Le POST d'une version de saison a son jumeau, cité :
+ * `SeasonVersionUniquenessTest` ; l'import du parc a son étape Behat : `l-import-du-parc-en-un-geste.feature`.
  *
  * Les états sont construits À LA MAIN (une version pointée qui porte sa copie + une sœur COMPLETED) pour que la
  * réponse dise le geste, jamais une garde antérieure (statut, version en vol). Valider une version supprime encore ses
@@ -122,22 +122,6 @@ final class SeasonPlanInForceTest extends WebTestCase
         self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
         $this->em->clear();
         self::assertSame($sibling->getId(), self::getContainer()->get(SchedulePlanProvisioner::class)->lockSourceScheduleIdOfPlan($this->seasonPlanId()), 'la version chargée (★) est la sœur');
-        $this->assertStillInForce($inForce);
-    }
-
-    /** Préparer une nouvelle version de saison (POST), socle en vigueur : acceptée (201), l'en vigueur ne bouge pas. */
-    public function testPostingASeasonVersionWhileTheSocleIsInForceIsAccepted(): void
-    {
-        $inForce = $this->seedInForceSocle();
-
-        $this->client->request('POST', '/api/schedules', [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
-            'HTTP_X-Season-Id' => $this->season->getId(),
-            'CONTENT_TYPE' => 'application/ld+json',
-            'HTTP_ACCEPT' => 'application/ld+json',
-        ], json_encode(['status' => 'DRAFT'], \JSON_THROW_ON_ERROR));
-
-        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
         $this->assertStillInForce($inForce);
     }
 
