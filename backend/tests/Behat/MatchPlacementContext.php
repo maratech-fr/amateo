@@ -839,36 +839,160 @@ final class MatchPlacementContext extends BaseContext
         $this->fxSat = $id;
     }
 
-    #[Then('la compétition « Amical PNF » est rangée en championnat')]
-    public function laCompetitionAmicalPnfEstUnChampionnat(): void
+    /**
+     * Lot 7, PR 4a : la nature s'écrit à la création, par le classifieur ; le premier mot « Amical » fait une
+     * compétition amicale (le filet de la PR 1 la voyait rangée en championnat).
+     */
+    #[Then('la compétition « Amical PNF » est rangée en amical')]
+    public function laCompetitionAmicalPnfEstAmicale(): void
     {
         $type = $this->dbalScalar(
             \sprintf('SELECT c.competition_type AS behatval FROM competition c JOIN engagement e ON e.competition_id = c.id WHERE c.club_id=\'%s\' AND e.team_id=\'%s\' AND c.name=\'%s\'', $this->clubId, $this->teamId, self::AMICAL_PNF),
             admin: true,
         );
-        if ('CHAMPIONSHIP' !== $type) {
-            throw new RuntimeException(\sprintf('la compétition « %s » est rangée « %s » au lieu de championnat', self::AMICAL_PNF, $type));
+        if ('FRIENDLY' !== $type) {
+            throw new RuntimeException(\sprintf('la compétition « %s » est rangée « %s » au lieu d\'amical', self::AMICAL_PNF, $type));
+        }
+        $served = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json']['competitionType'] ?? null;
+        if ('FRIENDLY' !== $served) {
+            throw new RuntimeException(\sprintf('le domicile « %s » est servi avec la nature « %s » au lieu de FRIENDLY', self::AMICAL_PNF, \is_string($served) ? $served : 'absente'));
         }
     }
 
-    #[Then('le domicile « Amical PNF » est placé par le solveur')]
-    public function leDomicileAmicalPnfEstPlaceParLeSolveur(): void
+    /** Absent des non-plaçables : le solveur ne l'a jamais reçu (pas « rejeté »), et il reste à placer. */
+    #[Then('le domicile « Amical PNF » n\'est jamais proposé au solveur et reste sans créneau')]
+    public function leDomicileAmicalPnfNEstJamaisPropose(): void
     {
+        foreach (\is_array($this->placeResult['unplaced'] ?? null) ? $this->placeResult['unplaced'] : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->fxSat) {
+                throw new RuntimeException('le domicile « Amical PNF » figure dans les non-plaçables : il aurait dû ne jamais être proposé au solveur');
+            }
+        }
         $status = $this->satFixture['status'] ?? null;
-        $source = $this->satFixture['placementSource'] ?? null;
-        if ('PLACED' !== $status || 'SOLVER' !== $source) {
-            throw new RuntimeException(\sprintf('le domicile « Amical PNF » devrait être placé par le solveur (statut « %s », source « %s »)', \is_string($status) ? $status : 'inconnu', \is_string($source) ? $source : 'inconnue'));
+        if ('UNPLACED' !== $status) {
+            throw new RuntimeException(\sprintf('le domicile « Amical PNF » devrait rester à placer après « Placer », statut « %s » (source « %s »)', \is_string($status) ? $status : 'inconnu', \is_string($this->satFixture['placementSource'] ?? null) ? $this->satFixture['placementSource'] : 'aucune'));
+        }
+    }
+
+    /**
+     * L'écran renvoie la compétition du match à chaque geste : la garde « pas de match fédéral vers une amicale »
+     * compare l'avant et l'après, jamais la seule valeur reçue ; et un amical est exempté des accès match.
+     */
+    #[Then('je peux poser le domicile « Amical PNF » à la main à 20h00, hors de la fenêtre d\'accès match, en renvoyant sa compétition')]
+    public function jePoseLeDomicileAmicalPnfALaMain(): void
+    {
+        $current = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json'];
+        $competitionId = $current['competitionId'] ?? null;
+        if (!\is_string($competitionId) || '' === $competitionId) {
+            throw new RuntimeException('le domicile « Amical PNF » n\'est servi avec aucune compétition');
+        }
+        $result = $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+            'teamId' => $this->teamId,
+            'competitionId' => $competitionId,
+            'matchDate' => \is_string($current['matchDate'] ?? null) ? $current['matchDate'] : $this->saturday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => \is_string($current['opponentLabel'] ?? null) ? $current['opponentLabel'] : 'Adversaire amical',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '20:00',
+            'status' => 'PLACED',
+        ], $this->token);
+        if (200 !== $result['status'] || 'PLACED' !== ($result['json']['status'] ?? null) || $competitionId !== ($result['json']['competitionId'] ?? null)) {
+            throw new RuntimeException(\sprintf('la pose à la main du domicile « Amical PNF » à 20h00 a répondu %d (200 attendu, PLACED, même compétition) : %s', $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
         }
     }
 
     #[Given('un amical à domicile le samedi sur ce gymnase, sans créneau posé')]
     public function unAmicalADomicile(): void
     {
-        // Amical = aucune compétition (competitionId absent).
+        // Amical posé à la main : aucune compétition envoyée (competitionId absent), comme un client minimal.
         $this->friendlyId = $this->createdId(
             $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical de gala'], $this->token),
             'amical',
         );
+    }
+
+    /** Lot 7, PR 4a : un match sans compétition n'existe plus ; il est rangé dans la compétition d'office de sa saison. */
+    #[Then('cet amical est rangé dans « Amicaux », la compétition des amicaux de la saison')]
+    public function cetAmicalEstRangeDansAmicaux(): void
+    {
+        $this->assertFixtureIsInAmicaux($this->friendlyId, 'l\'amical posé sans compétition');
+    }
+
+    #[Given('/^un match à domicile de la première équipe le samedi, créé à la main dans son championnat « (?P<name>[^»]+) »$/u')]
+    public function unMatchCreeALaMainDansSonChampionnat(string $name): void
+    {
+        $this->competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => $name, 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'championnat ' . $name,
+        );
+        $this->fxSat = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire du championnat', 'competitionId' => $this->competitionId], $this->token),
+            'match de championnat créé à la main',
+        );
+    }
+
+    /** Le geste « Modifier le match » : l'option « Amicaux » envoie `""` quand l'écran ne connaît pas encore la compétition d'office. */
+    #[When('je range ce match dans « Amicaux »')]
+    public function jeRangeCeMatchDansAmicaux(): void
+    {
+        $result = $this->putFixtureCompetition($this->fxSat, '');
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('ranger dans « Amicaux » un match créé à la main, non saisi, a répondu %d (200 attendu) : %s', $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('ce match est un amical de « Amicaux »')]
+    public function ceMatchEstUnAmicalDeAmicaux(): void
+    {
+        $this->assertFixtureIsInAmicaux($this->fxSat, 'le match rangé dans « Amicaux »');
+    }
+
+    #[When('/^je le remets dans « (?P<name>[^»]+) »$/u')]
+    public function jeLeRemetsDans(string $name): void
+    {
+        $result = $this->putFixtureCompetition($this->fxSat, $this->competitionId);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('remettre le match dans « %s » a répondu %d (200 attendu) : %s', $name, $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('/^ce match est (?:de nouveau|toujours) un match de championnat$/u')]
+    public function ceMatchEstUnMatchDeChampionnat(): void
+    {
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json'];
+        if ($this->competitionId !== ($fixture['competitionId'] ?? null) || 'CHAMPIONSHIP' !== ($fixture['competitionType'] ?? null)) {
+            throw new RuntimeException(\sprintf('le match devrait être dans son championnat (%s, CHAMPIONSHIP) : %s', $this->competitionId, json_encode($fixture, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[When('je le pose à la main le samedi à 15h00 sur ce gymnase, puis le marque « saisi »')]
+    public function jeLePoseEtLeMarqueSaisi(): void
+    {
+        foreach (['PLACED', 'SUBMITTED'] as $status) {
+            $current = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat), $this->token)['json'];
+            $result = $this->apiPut(\sprintf('fixtures/%s', $this->fxSat), [
+                'teamId' => $this->teamId,
+                'competitionId' => \is_string($current['competitionId'] ?? null) ? $current['competitionId'] : $this->competitionId,
+                'matchDate' => $this->saturday,
+                'homeAway' => 'HOME',
+                'opponentLabel' => 'Adversaire du championnat',
+                'venueId' => $this->venueId,
+                'kickoffTime' => '15:00',
+                'status' => $status,
+            ], $this->token);
+            if (200 !== $result['status'] || $status !== ($result['json']['status'] ?? null)) {
+                throw new RuntimeException(\sprintf('passer le match %s a répondu %d : %s', $status, $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    #[Then('/^le ranger dans « Amicaux » est refusé : « (?P<message>.+) »$/u')]
+    public function leRangerDansAmicauxEstRefuse(string $message): void
+    {
+        $result = $this->putFixtureCompetition($this->fxSat, '');
+        if (422 !== $result['status'] || !str_contains(json_encode($result['json'], \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR), $message)) {
+            throw new RuntimeException(\sprintf('ranger dans « Amicaux » un match saisi devait être refusé (422, « %s »), obtenu %d : %s', $message, $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
+        }
     }
 
     #[Given('deux matchs à domicile le même mercredi, un par équipe, et aucune autre fenêtre d\'accès le mercredi')]
@@ -1573,5 +1697,45 @@ final class MatchPlacementContext extends BaseContext
         $members = $json['member'] ?? $json;
 
         return array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
+    }
+
+    /**
+     * « Modifier le match » : l'écran renvoie le match entier, seule la compétition change.
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    private function putFixtureCompetition(string $fixtureId, string $competitionId): array
+    {
+        $current = $this->apiGet(\sprintf('fixtures/%s', $fixtureId), $this->token)['json'];
+        $body = [
+            'teamId' => $this->teamId,
+            'competitionId' => $competitionId,
+            'matchDate' => \is_string($current['matchDate'] ?? null) ? substr($current['matchDate'], 0, 10) : $this->saturday,
+            'homeAway' => \is_string($current['homeAway'] ?? null) ? $current['homeAway'] : 'HOME',
+            'opponentLabel' => \is_string($current['opponentLabel'] ?? null) ? $current['opponentLabel'] : 'Adversaire',
+        ];
+        foreach (['venueId', 'kickoffTime', 'status'] as $field) {
+            if (\is_string($current[$field] ?? null)) {
+                $body[$field] = $current[$field];
+            }
+        }
+
+        return $this->apiPut(\sprintf('fixtures/%s', $fixtureId), $body, $this->token);
+    }
+
+    /** Le match est servi dans la compétition d'office de la saison (`default_friendly`), de nature amicale. */
+    private function assertFixtureIsInAmicaux(string $fixtureId, string $what): void
+    {
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $fixtureId), $this->token)['json'];
+        $amicaux = $this->dbalScalar(
+            \sprintf('SELECT c.id AS behatval FROM competition c JOIN fixture f ON f.season_id = c.season_id WHERE f.id=\'%s\' AND c.club_id=\'%s\' AND c.default_friendly AND c.name=\'Amicaux\'', $fixtureId, $this->clubId),
+            admin: true,
+        );
+        if ('' === $amicaux) {
+            throw new RuntimeException(\sprintf('%s : la saison n\'a aucune compétition d\'office « Amicaux »', $what));
+        }
+        if ($amicaux !== ($fixture['competitionId'] ?? null) || 'FRIENDLY' !== ($fixture['competitionType'] ?? null)) {
+            throw new RuntimeException(\sprintf('%s devrait être servi dans « Amicaux » (%s), de nature FRIENDLY : %s', $what, $amicaux, json_encode($fixture, \JSON_UNESCAPED_UNICODE)));
+        }
     }
 }

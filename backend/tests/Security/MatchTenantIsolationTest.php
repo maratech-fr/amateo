@@ -232,6 +232,39 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertNotSame($competitionB->getId(), $imported['competition_id']);
     }
 
+    /**
+     * Abus (lot 7, PR 4a) : « Amicaux » est la compétition d'office de chaque club. Un match du club A qui désigne
+     * la « Amicaux » du club B est refusé (422), sans match ni engagement écrit chez B — l'engagement créé au passage
+     * dans une compétition amicale ne franchit jamais la frontière du club ; un amical posé sans compétition par A
+     * entre dans la « Amicaux » de A, jamais dans celle de B.
+     */
+    public function testAFriendlyNeverLandsInAnotherClubsAmicaux(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('amia');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('amib');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $friendly = ['matchDate' => '2026-10-04', 'homeAway' => 'AWAY', 'opponentLabel' => 'Amical'];
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamB->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : le club B pose son amical');
+        $amicauxB = (string) ($this->responseData()['competitionId'] ?? '');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly', [$amicauxB]), 'témoin : l\'amical de B est rangé dans la « Amicaux » de B');
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId(), 'competitionId' => $amicauxB] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'la « Amicaux » d\'un autre club est hors de portée');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame([$teamB->getId()], $this->em->getConnection()->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$amicauxB]), 'aucun engagement écrit dans la « Amicaux » de B');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE competition_id = ?', [$amicauxB]), 'aucun match du club A n\'y entre');
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        self::assertNotSame($amicauxB, $this->responseData()['competitionId'] ?? null, 'l\'amical de A entre dans la « Amicaux » de A');
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly AND club_id = ?', [$this->responseData()['competitionId'] ?? '', $clubA->getId()]), 'compétition d\'office du club A');
+    }
+
     public function testWriteOnArchivedSeasonIsRefused(): void
     {
         [$clubA, $userA] = $this->createClubUser('a');

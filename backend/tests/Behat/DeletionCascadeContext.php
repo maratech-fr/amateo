@@ -50,6 +50,12 @@ final class DeletionCascadeContext extends BaseContext
     /** @var array<string, string> nom de la compétition → id */
     private array $competitionIds = [];
 
+    /** @var array<string, string> nom de l'équipe → id de son amical posé à la main */
+    private array $friendlyIds = [];
+
+    /** La compétition d'office « Amicaux » de la saison, relue après le premier amical. */
+    private string $amicauxId = '';
+
     #[Given('un petit club de trois équipes sans compétition, deux gymnases et deux coachs, dont le planning de saison est généré')]
     public function unPetitClubDeTroisEquipes(): void
     {
@@ -221,6 +227,74 @@ final class DeletionCascadeContext extends BaseContext
         ], $this->smallClubToken), 'compétition ' . $competition);
         if (1 !== $this->count('engagement', \sprintf('competition_id=\'%s\' AND team_id=\'%s\'', $this->competitionIds[$competition], $this->smallClubTeamIds[$team]))) {
             throw new RuntimeException(\sprintf('décor : %s devrait être engagée dans « %s »', $team, $competition));
+        }
+    }
+
+    /**
+     * Lot 7, PR 4a : l'amical est créé comme l'écran le fait pour un client minimal, sans compétition (`POST
+     * /api/fixtures`) ; il est rangé dans « Amicaux », l'équipe y est engagée au passage. Un match exige le socle en
+     * vigueur : il est validé le temps du geste, puis rouvert (pointage), pour que la suite du décor reste celle d'un
+     * socle généré, non validé. Témoins : le match existe, rangé dans « Amicaux », et l'équipe y est engagée.
+     */
+    #[Given('/^l\'équipe « (?P<team>[^»]+) » a un amical posé à la main, rangé dans « Amicaux »$/u')]
+    public function lEquipeAUnAmicalDansAmicaux(string $team): void
+    {
+        $this->validateSmallClubSchedule($this->scheduleId);
+        try {
+            $this->friendlyIds[$team] = $this->createdId($this->apiPost('fixtures', [
+                'teamId' => $this->smallClubTeamIds[$team],
+                'matchDate' => date('Y-m-d', (int) strtotime('next saturday +14 days')),
+                'homeAway' => 'AWAY',
+                'opponentLabel' => 'Amical de rentrée',
+            ], $this->smallClubToken), 'amical de ' . $team);
+        } finally {
+            $this->reopenSmallClubSocle();
+        }
+        $this->amicauxId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM competition WHERE season_id=\'%s\' AND default_friendly AND name=\'Amicaux\'', $this->seasonId), admin: true);
+        if ('' === $this->amicauxId || 1 !== $this->count('fixture', \sprintf('id=\'%s\' AND competition_id=\'%s\'', $this->friendlyIds[$team], $this->amicauxId))) {
+            throw new RuntimeException(\sprintf('l\'amical de %s n\'est pas rangé dans la compétition d\'office « Amicaux » de la saison (« %s »)', $team, $this->amicauxId));
+        }
+        if (1 !== $this->count('engagement', \sprintf('competition_id=\'%s\' AND team_id=\'%s\'', $this->amicauxId, $this->smallClubTeamIds[$team]))) {
+            throw new RuntimeException(\sprintf('%s n\'est pas engagée dans « Amicaux » après y avoir posé un amical', $team));
+        }
+    }
+
+    /** Ce que la fenêtre de suppression de l'équipe affiche : les lignes servies par `/deletion-impact`, au texte près. */
+    #[Then('/^la suppression de l\'équipe « (?P<team>[^»]+) » annonce (?P<matches>\d+) match et (?P<engagements>\d+) engagement en compétition$/u')]
+    public function laSuppressionDeLEquipeAnnonce(string $team, string $matches, string $engagements): void
+    {
+        $impact = $this->apiGet(\sprintf('teams/%s/deletion-impact', $this->smallClubTeamIds[$team]), $this->smallClubToken);
+        if (200 !== $impact['status']) {
+            throw new RuntimeException(\sprintf('l\'annonce de suppression de %s a répondu %d : %s', $team, $impact['status'], json_encode($impact['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $served = [];
+        foreach (\is_array($impact['json']['lines'] ?? null) ? $impact['json']['lines'] : [] as $line) {
+            if (\is_array($line) && \is_string($line['one'] ?? null)) {
+                $served[$line['one']] = $line['count'] ?? null;
+            }
+        }
+        foreach (['match' => (int) $matches, 'engagement en compétition' => (int) $engagements] as $label => $expected) {
+            if (($served[$label] ?? null) !== $expected) {
+                throw new RuntimeException(\sprintf('la suppression de %s annonce %s « %s » (attendu %d) ; lignes servies : %s', $team, json_encode($served[$label] ?? null), $label, $expected, json_encode($impact['json']['lines'] ?? [], \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    #[Then('/^l\'amical de « (?P<team>[^»]+) » est parti avec elle, et son engagement dans « Amicaux » aussi$/u')]
+    public function lAmicalEstParti(string $team): void
+    {
+        $this->assertNone([
+            'amical' => ['fixture', \sprintf('id=\'%s\'', $this->friendlyIds[$team])],
+            'match de l\'équipe' => ['fixture', \sprintf('team_id=\'%s\'', $this->smallClubTeamIds[$team])],
+            'engagement dans « Amicaux »' => ['engagement', \sprintf('competition_id=\'%s\' AND team_id=\'%s\'', $this->amicauxId, $this->smallClubTeamIds[$team])],
+        ], 'l\'équipe ' . $team . ' supprimée');
+    }
+
+    #[Then('« Amicaux » reste la compétition des amicaux de la saison')]
+    public function amicauxReste(): void
+    {
+        if (1 !== $this->count('competition', \sprintf('id=\'%s\' AND season_id=\'%s\' AND default_friendly AND competition_type=\'FRIENDLY\'', $this->amicauxId, $this->seasonId))) {
+            throw new RuntimeException('la compétition d\'office « Amicaux » a disparu avec la dernière équipe qui y était engagée');
         }
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
+use App\Enum\CompetitionType;
 use App\Service\MatchConflictDetector;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -119,6 +120,22 @@ final class MatchAccessMirrorParityTest extends TestCase
                 (bool) $case['adopted'],
                 MatchConflictDetector::hasWeeklyAccess($case['windows']),
                 \sprintf('PARITÉ ROMPUE (« %s ») : adoption des accès.', (string) $case['name']),
+            );
+        }
+    }
+
+    /**
+     * Lot 7 PR 4a — seul un match d'une compétition AMICALE est exempté des accès match (pose et radar) ; le
+     * type de la compétition en décide, jamais un `competitionId` nul ni le libellé. Mêmes cas que le front
+     * (`friendlyAccessCases`, `matchAccess.parity.test.ts`, où `venueAccessError` signale au lieu de refuser).
+     */
+    public function testOnlyAFriendlyCompetitionIsExemptFromMatchAccessLikeTheFront(): void
+    {
+        foreach ($this->section('friendlyAccessCases') as $case) {
+            self::assertSame(
+                (bool) $case['exempt'],
+                CompetitionType::from((string) $case['competitionType'])->isFriendly(),
+                \sprintf('PARITÉ ROMPUE (« %s ») : exemption des accès match.', (string) $case['name']),
             );
         }
     }

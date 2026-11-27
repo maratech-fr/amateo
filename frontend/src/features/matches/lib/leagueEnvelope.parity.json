@@ -52,5 +52,43 @@
       "windows": [],
       "inside": false
     }
+  ],
+  "_natureComment": "Lot 7 PR 4a — cas de PARITÉ de la NATURE d'un match : amical ? coupe ? La nature se lit sur `competitionType` de la compétition du match, JAMAIS sur un `competitionId` nul (il n'existe plus : tout match a une compétition, « Amicaux » d'office compris) ni sur le libellé. Consommé par leagueEnvelope.parity.test.ts (front, lib/envelope.ts::isFriendlyFixture / isCupFixture) ET par LeagueEnvelopeMirrorParityTest.php (backend, CompetitionType::isFriendly / CompetitionType::CUP). `friendly` et `cup` sont les verdicts des deux côtés.",
+  "natureCases": [
+    {
+      "name": "amical de la fédération (« AMICAL PNM ») — amical, compétition non nulle",
+      "competitionId": "comp-amical-pnm", "competitionName": "AMICAL PNM", "competitionType": "FRIENDLY",
+      "friendly": true, "cup": false
+    },
+    {
+      "name": "« Amicaux » d'office — amical",
+      "competitionId": "comp-amicaux", "competitionName": "Amicaux", "competitionType": "FRIENDLY",
+      "friendly": true, "cup": false
+    },
+    {
+      "name": "championnat — ni amical ni coupe",
+      "competitionId": "comp-champ", "competitionName": "DMU13-2", "competitionType": "CHAMPIONSHIP",
+      "friendly": false, "cup": false
+    },
+    {
+      "name": "coupe — coupe, pas amical",
+      "competitionId": "comp-coupe", "competitionName": "Coupe du Rhône", "competitionType": "CUP",
+      "friendly": false, "cup": true
+    },
+    {
+      "name": "brassage — ni amical ni coupe",
+      "competitionId": "comp-brassage", "competitionName": "Brassage U15", "competitionType": "BRASSAGE",
+      "friendly": false, "cup": false
+    },
+    {
+      "name": "le libellé ne décide pas : « Amical … » rangée championnat reste un championnat",
+      "competitionId": "comp-nom-amical", "competitionName": "Amical PNF", "competitionType": "CHAMPIONSHIP",
+      "friendly": false, "cup": false
+    },
+    {
+      "name": "le libellé ne décide pas : « Coupe … » rangée championnat reste un championnat",
+      "competitionId": "comp-nom-coupe", "competitionName": "Coupe Territoriale", "competitionType": "CHAMPIONSHIP",
+      "friendly": false, "cup": false
+    }
   ]
 }

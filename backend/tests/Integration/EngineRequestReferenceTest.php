@@ -371,7 +371,11 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $this->assertReference('placement-16-deux-equipes-une-division', $body);
     }
 
-    /** Les amicaux : sans compétition (ancre ou absent) et dans une compétition « Amical … » rangée en championnat. */
+    /**
+     * Un match d'une compétition amicale n'est jamais confié au moteur (lot 7, PR 4a, Q6) : posé, c'est une ancre ;
+     * non posé, il est absent — pour un amical de « Amicaux » comme pour « Amical PNF ». La référence a changé à la
+     * PR 4a : le domicile non placé de « Amical PNF » sort de la demande, celui posé par le système devient une ancre.
+     */
     public function testPlacementWithFriendlies(): void
     {
         $this->seedSocleInForce();

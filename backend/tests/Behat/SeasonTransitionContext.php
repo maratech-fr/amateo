@@ -189,6 +189,25 @@ final class SeasonTransitionContext extends BaseContext
         }
     }
 
+    /**
+     * Lot 7, PR 4a : la compétition d'office naît avec chaque saison — à l'inscription (`ClubProvisioner`, la saison en
+     * cours du petit club) et à la préparation de la suivante (`SeasonTransitionService`), une seule par saison, nature
+     * amicale. Un amical posé à la main y est rangé.
+     */
+    #[Then('chaque saison du club a sa compétition « Amicaux », une seule')]
+    public function chaqueSaisonASaCompetitionAmicaux(): void
+    {
+        foreach (['en cours' => $this->currentSeasonId, 'suivante' => $this->nextSeasonId] as $which => $seasonId) {
+            $count = (int) $this->dbalScalar(\sprintf(
+                'SELECT COUNT(*) AS behatval FROM competition WHERE season_id=\'%s\' AND default_friendly AND name=\'Amicaux\' AND competition_type=\'FRIENDLY\'',
+                $seasonId,
+            ), admin: true);
+            if (1 !== $count) {
+                throw new RuntimeException(\sprintf('la saison %s porte %d compétition(s) d\'office « Amicaux » (1 attendue)', $which, $count));
+            }
+        }
+    }
+
     #[Then('la règle de la saison suivante impose le « Gymnase Nord » de la saison suivante, pas celui de la saison en cours')]
     public function laRegleNommeLeGymnaseDeLaSaisonSuivante(): void
     {

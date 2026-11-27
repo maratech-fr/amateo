@@ -93,19 +93,60 @@ final class FixtureApiTest extends WebTestCase
         ];
     }
 
-    public function testCreatesAFriendlyWithNoCompetition(): void
+    /**
+     * Lot 7, PR 4a : à la création, une compétition absente, nulle ou vide range le match dans « Amicaux », la
+     * compétition d'office de la saison (créée à la demande si elle manque), servi de nature amicale ; deux amicaux
+     * de la même équipe partagent la même « Amicaux » et un seul engagement.
+     *
+     * @param array<string, mixed> $competition
+     */
+    #[TestWith([[]], 'absente')]
+    #[TestWith([['competitionId' => null]], 'nulle')]
+    #[TestWith([['competitionId' => '']], 'vide')]
+    public function testCreatesAFriendlyWithNoCompetition(array $competition): void
     {
         $data = $this->post([
             'teamId' => self::TEAM_ID,
             'matchDate' => '2026-11-01',
             'homeAway' => 'HOME',
             'opponentLabel' => 'Amical voisin',
-        ]);
+        ] + $competition);
         self::assertResponseStatusCodeSame(201);
-        // Null props are omitted from the serialized output.
-        self::assertNull($data['competitionId'] ?? null);
         self::assertSame('UNPLACED', $data['status']);
         self::assertNull($data['kickoffTime'] ?? null);
+        $amicaux = $this->em->getConnection()->fetchOne('SELECT id FROM competition WHERE season_id = ? AND default_friendly AND name = \'Amicaux\'', [$this->season->getId()]);
+        self::assertIsString($amicaux, 'la saison a sa compétition d\'office « Amicaux »');
+        self::assertSame($amicaux, $data['competitionId'] ?? null, 'le match est rangé dans « Amicaux »');
+        self::assertSame('FRIENDLY', $data['competitionType'] ?? null, 'et servi de nature amicale');
+
+        $second = $this->post(['teamId' => self::TEAM_ID, 'matchDate' => '2026-11-08', 'homeAway' => 'AWAY', 'opponentLabel' => 'Second amical'] + $competition);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame($amicaux, $second['competitionId'] ?? null, 'le second amical rejoint la même « Amicaux »');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE competition_id = ? AND team_id = ?', [$amicaux, self::TEAM_ID]), 'un seul engagement de l\'équipe dans « Amicaux »');
+    }
+
+    /**
+     * Lot 7, PR 4a (C55) : en modification, une compétition absente ou nulle ne veut rien dire — un match de
+     * championnat modifié sans renvoyer sa compétition reste dans son championnat, jamais rangé dans « Amicaux ».
+     */
+    #[TestWith([false], 'absente')]
+    #[TestWith([true], 'nulle')]
+    public function testAPutWithoutCompetitionLeavesAChampionshipMatchInItsChampionship(bool $sendsNull): void
+    {
+        $competitionId = $this->createCompetition();
+        $created = $this->post(['teamId' => self::TEAM_ID, 'competitionId' => $competitionId, 'matchDate' => '2026-11-01', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire']);
+        self::assertResponseStatusCodeSame(201);
+        $body = ['teamId' => self::TEAM_ID, 'matchDate' => '2026-11-01', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire renommé'];
+        if ($sendsNull) {
+            $body['competitionId'] = null;
+        }
+
+        $this->putFixture((string) $created['id'], $body);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($competitionId, $this->responseData()['competitionId'] ?? null, 'le match reste dans son championnat');
+        self::assertSame('CHAMPIONSHIP', $this->responseData()['competitionType'] ?? null);
+        self::assertSame('Adversaire renommé', $this->responseData()['opponentLabel'] ?? null, 'témoin : la modification est passée');
     }
 
     public function testAManualCreationIsTreatedAndExposesTheReviewFields(): void
@@ -708,7 +749,8 @@ final class FixtureApiTest extends WebTestCase
 
     /**
      * Abus (lot 7, PR 3b, ligne 10 du plan) : un match ne se pose jamais dans la compétition d'une autre équipe du
-     * club — 422 au texte du plan, aucun match écrit ; témoin : la même demande pour l'équipe engagée passe.
+     * club — 422 au texte du plan (réécrit à la PR 4a : le recours est « Amicaux »), aucun match écrit ; témoin : la
+     * même demande pour l'équipe engagée passe. Rejoué à la PR 4a : le refus vaut pour une compétition non amicale.
      */
     public function testAMatchIsRefusedInACompetitionWhereItsTeamIsNotEngaged(): void
     {
@@ -720,7 +762,7 @@ final class FixtureApiTest extends WebTestCase
         $this->post(['teamId' => $u13] + $body);
 
         self::assertResponseStatusCodeSame(422);
-        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou aucune pour un amical.', $this->firstViolation());
+        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou « Amicaux ».', $this->firstViolation());
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE team_id = ?', [$u13]), 'aucun match n\'est écrit');
 
         $this->post(['teamId' => $u15] + $body);
@@ -750,7 +792,7 @@ final class FixtureApiTest extends WebTestCase
         $this->putFixture($id, ['teamId' => $u13] + $body);
 
         self::assertResponseStatusCodeSame(422);
-        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou aucune pour un amical.', $this->firstViolation());
+        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou « Amicaux ».', $this->firstViolation());
         self::assertSame($u15, $this->em->getConnection()->fetchOne('SELECT team_id FROM fixture WHERE id = ?', [$id]), 'le match garde son équipe');
     }
 

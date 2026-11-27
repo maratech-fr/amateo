@@ -6,6 +6,7 @@ namespace App\Tests\Security;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
@@ -13,19 +14,30 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\CompetitionType;
+use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Plans\PlanComposition;
+use App\Service\FbiCorrectionLedger;
 use App\Service\FixtureVenueLossMarker;
+use App\Service\TeamEngagementGuard;
+use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\TestWith;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -46,6 +58,8 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class EngagedTeamGuardTest extends WebTestCase
 {
+    use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -112,16 +126,17 @@ final class EngagedTeamGuardTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'et l\'import FBI ne part pas avec elle');
     }
 
-    public function testAFixtureBornFromTheFfbbApiChannelEngagesTheTeam(): void
+    /**
+     * CE TEST A CHANGÉ DE SENS (lot 7, PR 4a, décision du fondateur du 2026-11-23, Q3) : seuls les matchs d'une
+     * compétition NON amicale engagent. Avant, tout match engageait, et un amical du canal API FFBB (numéro de
+     * rencontre fédéral, non placé) rendait l'équipe indélébile. Désormais l'amical de la fédération, rangé dans sa
+     * compétition amicale (« AMICAL PNM »), n'engage plus : l'équipe se supprime et l'amical part avec elle.
+     */
+    public function testAFriendlyFromTheFfbbApiChannelNoLongerEngagesTheTeam(): void
     {
-        // RMM-4 PR-3 — the FFBB-API channel is a NEW writer of fixtures (the amicaux
-        // it materialises). Engagement is derived from a fixture's mere EXISTENCE
-        // (TeamEngagementGuard: `SELECT 1 FROM fixture WHERE team_id`), never from
-        // how it was created: an amical stamped with an ffbbRencontreId, still
-        // UNPLACED, engages its team exactly like an FBI import.
         $client = $this->client;
         $team = $this->createTeam('U15 amical FFBB');
-        $fixture = $this->fixture($team, FixtureStatus::UNPLACED);
+        $fixture = $this->fixture($team, FixtureStatus::UNPLACED, nature: CompetitionType::FRIENDLY);
         $this->scopeGucToClub($this->club->getId());
         $fixture->setFfbbRencontreId('renc-api-1');
         $this->em->flush();
@@ -130,10 +145,198 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
         ]);
 
-        self::assertResponseStatusCodeSame(409, 'un amical créé via l\'API FFBB engage l\'équipe');
+        self::assertResponseStatusCodeSame(204, 'un amical de la fédération n\'engage plus l\'équipe');
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
-        self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'l\'amical ne part pas avec elle');
+        self::assertNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'l\'amical part avec elle');
+    }
+
+    /**
+     * Lot 7, PR 4a (Q3) : une équipe qui n'a qu'un amical posé à la main, rangé dans « Amicaux », change de niveau
+     * (200) puis se supprime (204) ; son amical et l'entrée « à corriger dans FBI » ouverte sur lui partent avec
+     * elle, et « Amicaux », vidée, reste la compétition d'office de la saison.
+     */
+    public function testATeamWithOnlyAFriendlyInAmicauxChangesLevelAndIsDeletedAndAmicauxStays(): void
+    {
+        $this->settleMatches();
+        $team = $this->createTeam('U13 qui ne fait que des amicaux');
+        $team->setLevel(TeamLevel::REGIONAL);
+        $this->em->flush();
+        $fixtureId = $this->postFixture(['teamId' => $team->getId(), 'matchDate' => '2026-03-14', 'homeAway' => 'AWAY', 'opponentLabel' => 'Voisins']);
+        $amicauxId = $this->amicauxId();
+        self::assertSame($amicauxId, $this->em->getConnection()->fetchOne('SELECT competition_id FROM fixture WHERE id = ?', [$fixtureId]), 'témoin : l\'amical est rangé dans « Amicaux »');
+        // Le noyau a redémarré avec la requête : l'entrée s'écrit par le gestionnaire d'entités du conteneur courant.
+        $this->scopeGucToClub($this->club->getId());
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $fixture = $em->find(Fixture::class, $fixtureId);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::getContainer()->get(FbiCorrectionLedger::class)->open($fixture, FbiCorrectionField::KICKOFF, '15:00', '14:00', new DateTimeImmutable);
+        $em->flush();
+        self::assertSame(1, $this->openCorrectionsOfClub(), 'témoin : une entrée « à corriger dans FBI » est ouverte sur l\'amical');
+
+        $this->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [
+            'name' => 'U13 qui ne fait que des amicaux',
+            'sportCategoryId' => $this->sportCategory->getId(),
+            'priorityTierId' => $this->priorityTier->getId(),
+            'level' => 'DEPARTEMENTAL',
+        ]);
+        self::assertResponseIsSuccessful('une équipe qui n\'a que des amicaux change de niveau');
+        self::assertFalse(json_decode((string) $this->client->getResponse()->getContent(), true)['isEngaged'], 'elle n\'est pas servie engagée');
+
+        $this->request('DELETE', \sprintf('/api/teams/%s', $team->getId()));
+        self::assertResponseStatusCodeSame(204, 'une équipe qui n\'a que des amicaux se supprime');
+
+        $connection = $this->em->getConnection();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(0, (int) $connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE id = ?', [$fixtureId]), 'son amical part avec elle');
+        self::assertSame(0, $this->openCorrectionsOfClub(), 'et l\'entrée « à corriger dans FBI » de l\'amical aussi : le compte « à corriger » retombe');
+        self::assertSame(0, (int) $connection->fetchOne('SELECT COUNT(*) FROM fbi_correction WHERE fixture_id = ?', [$fixtureId]), 'aucune entrée, ouverte ou close, ne pend sur un match supprimé');
+        self::assertSame(1, (int) $connection->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly', [$amicauxId]), '« Amicaux » reste');
+    }
+
+    /**
+     * Lot 7, PR 4a (Q3) : championnat, coupe et brassage engagent toujours, même un match importé non placé — le
+     * cas qui fait rougir une condition inversée (« seul l'amical engage »).
+     */
+    #[TestWith([CompetitionType::CHAMPIONSHIP])]
+    #[TestWith([CompetitionType::CUP])]
+    #[TestWith([CompetitionType::BRASSAGE])]
+    public function testEveryNonFriendlyNatureEngagesEvenUnplaced(CompetitionType $nature): void
+    {
+        $client = $this->client;
+        $team = $this->createTeam('U17 en ' . $nature->value);
+        $fixture = $this->fixture($team, FixtureStatus::UNPLACED, nature: $nature);
+        $client->loginUser($this->user);
+
+        $client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()));
+
+        self::assertResponseStatusCodeSame(409, \sprintf('un match non placé d\'une compétition %s engage l\'équipe', $nature->value));
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertNotNull($this->em->getRepository(Fixture::class)->find($fixture->getId()), 'et il ne part pas avec elle');
+    }
+
+    /**
+     * Lot 7, PR 4a : le doute engage. Un match dont la compétition est introuvable protège son équipe — le cas qui
+     * fait rougir une jointure interne vers `competition`. La base l'interdit (clé du match vers l'engagement, puis
+     * vers la compétition) : le décor est forgé sur la connexion propriétaire, clés suspendues par
+     * `session_replication_role` dans une transaction annulée à la fin, et la garde y lit par un gestionnaire
+     * d'entités ouvert sur cette connexion (patron de `PlanEntitlementsTest`). Témoin, par le même montage : l'équipe
+     * qui n'a qu'un match d'une compétition amicale existante n'est pas engagée (sans lui, « tout est engagé »
+     * passerait pour « le doute engage »).
+     */
+    public function testAFixtureWhoseCompetitionIsGoneStillEngages(): void
+    {
+        $admin = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        \assert($admin instanceof Connection);
+        $admin->beginTransaction();
+        try {
+            $admin->executeStatement('SET LOCAL lock_timeout = \'5s\'');
+            $admin->executeStatement('SET LOCAL session_replication_role = replica');
+            $admin->executeStatement('SELECT set_config(\'app.club_id\', ?, true)', [$this->club->getId()]);
+            $adminEm = new EntityManager($admin, $this->em->getConfiguration());
+
+            $friendly = new Competition()->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('AMICAL PNM')->setCompetitionType(CompetitionType::FRIENDLY);
+            $adminEm->persist($friendly);
+            $adminEm->flush();
+            $orphanTeam = (string) $admin->fetchOne('SELECT gen_random_uuid()::text');
+            $friendlyTeam = (string) $admin->fetchOne('SELECT gen_random_uuid()::text');
+            $goneCompetition = (string) $admin->fetchOne('SELECT gen_random_uuid()::text');
+            foreach ([$orphanTeam => $goneCompetition, $friendlyTeam => $friendly->getId()] as $teamId => $competitionId) {
+                $fixture = new Fixture;
+                $fixture->setClubId($this->club->getId());
+                $fixture->setSeasonId($this->season->getId());
+                $fixture->setTeamId($teamId);
+                $fixture->setCompetitionId($competitionId);
+                $fixture->setMatchDate(new DateTimeImmutable('2026-03-14'));
+                $fixture->setHomeAway(FixtureHomeAway::AWAY);
+                $fixture->setOpponentLabel('AS Voisins');
+                $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+                $adminEm->persist($fixture);
+            }
+            $adminEm->flush();
+            self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ?', [$goneCompetition]), 'témoin : la compétition du match est introuvable');
+            self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM fixture WHERE team_id IN (?, ?)', [$orphanTeam, $friendlyTeam]), 'témoin : les deux matchs sont lus');
+
+            $guard = new TeamEngagementGuard($adminEm);
+
+            self::assertTrue($guard->isEngaged($orphanTeam), 'un match dont la compétition est introuvable engage son équipe');
+            self::assertSame([$orphanTeam => true], $guard->engagedTeamIds([$orphanTeam, $friendlyTeam]), 'la lecture servie dit la même chose que la garde');
+            self::assertFalse($guard->isEngaged($friendlyTeam), 'témoin : un match d\'une compétition amicale existante n\'engage pas');
+        } finally {
+            $admin->rollBack();
+        }
+    }
+
+    /**
+     * Abus du périmètre (lot 7, PR 4a, Q9) : un match connu de la fédération — numéro FBI, identifiant de rencontre
+     * fédéral — ou déjà saisi ou validé ne change jamais de compétition vers une compétition amicale, ni vers
+     * « Amicaux » (`""`) ni vers une amicale créée par `POST /api/competitions` : 422 au texte du plan, le match
+     * reste dans son championnat et l'équipe reste engagée.
+     *
+     * @param callable(Fixture): void $known
+     */
+    #[DataProvider('knownToTheFederation')]
+    public function testAMatchKnownToTheFederationNeverMovesToAFriendlyCompetition(callable $known): void
+    {
+        $this->settleMatches();
+        $team = $this->createTeam('U15 en championnat FBI');
+        // Un extérieur : ni gymnase ni accès match n'entrent dans le geste, seule la compétition change.
+        $fixture = $this->fixture($team, FixtureStatus::UNPLACED, FixtureHomeAway::AWAY);
+        $championshipId = (string) $fixture->getCompetitionId();
+        $this->scopeGucToClub($this->club->getId());
+        $known($fixture);
+        $this->em->flush();
+        $friendlyId = $this->postCompetition(['name' => 'AMICAL PNM', 'competitionType' => 'FRIENDLY', 'teamId' => $team->getId()]);
+
+        foreach (['« Amicaux »' => '', 'une compétition amicale créée par l\'API' => $friendlyId] as $target => $competitionId) {
+            $this->request('PUT', \sprintf('/api/fixtures/%s', $fixture->getId()), $this->fixtureBody($fixture, $competitionId));
+
+            self::assertResponseStatusCodeSame(422, 'un match connu de la fédération ne passe pas dans ' . $target);
+            self::assertStringContainsString('Ce match est connu de la fédération : il reste dans sa compétition.', (string) $this->client->getResponse()->getContent());
+            self::assertSame($championshipId, $this->em->getConnection()->fetchOne('SELECT competition_id FROM fixture WHERE id = ?', [$fixture->getId()]), 'le match reste dans son championnat');
+        }
+
+        $this->request('DELETE', \sprintf('/api/teams/%s', $team->getId()));
+        self::assertResponseStatusCodeSame(409, 'l\'équipe reste engagée');
+    }
+
+    /** @return array<string, array{0: callable(Fixture): void}> */
+    public static function knownToTheFederation(): array
+    {
+        $now = new DateTimeImmutable;
+
+        return [
+            'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
+            'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
+            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::SUBMITTED, $now); }],
+            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::VALIDATED, $now); }],
+        ];
+    }
+
+    /**
+     * Le test qui attrape une garde trop large (lot 7, PR 4a, Q9 et C54) : placer à la main un amical de la
+     * fédération en renvoyant la compétition qu'il a déjà rend 200 — la garde compare la compétition d'avant et
+     * celle demandée, jamais la seule valeur reçue.
+     */
+    public function testPlacingAFederationFriendlyByHandWithItsOwnCompetitionPasses(): void
+    {
+        $this->settleMatches();
+        $team = $this->createTeam('U15 amical fédéral');
+        $venue = $this->homeVenue();
+        $fixture = $this->fixture($team, FixtureStatus::UNPLACED, nature: CompetitionType::FRIENDLY);
+        $this->scopeGucToClub($this->club->getId());
+        $fixture->setExternalRef('FBI-4A-AMICAL');
+        $this->em->flush();
+
+        $this->request('PUT', \sprintf('/api/fixtures/%s', $fixture->getId()), [
+            'venueId' => $venue,
+            'kickoffTime' => '20:00',
+            'status' => 'PLACED',
+        ] + $this->fixtureBody($fixture, (string) $fixture->getCompetitionId()));
+
+        self::assertResponseIsSuccessful('placer à la main un amical de la fédération, sa compétition renvoyée, passe');
+        self::assertSame('PLACED', $this->em->getConnection()->fetchOne('SELECT status FROM fixture WHERE id = ?', [$fixture->getId()]));
     }
 
     public function testATeamWithoutAnyFixtureIsDeletable(): void
@@ -609,14 +812,20 @@ final class EngagedTeamGuardTest extends WebTestCase
         return $tier;
     }
 
-    private function fixture(Team $team, FixtureStatus $status, FixtureHomeAway $homeAway = FixtureHomeAway::HOME): Fixture
+    /**
+     * Un match de l'équipe, rangé dans une compétition neuve de la nature donnée (championnat par défaut : depuis la
+     * PR 4a du lot 7, seul un match d'une compétition non amicale engage), l'équipe engagée par la seule porte.
+     */
+    private function fixture(Team $team, FixtureStatus $status, FixtureHomeAway $homeAway = FixtureHomeAway::HOME, CompetitionType $nature = CompetitionType::CHAMPIONSHIP): Fixture
     {
+        $competition = $this->competitionFor($team->getId(), \sprintf('%s %s', $nature->value, uniqid('', true)), $nature);
         $this->scopeGucToClub($this->club->getId());
         $fixture = new Fixture;
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($team->getId());
-        $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+        $fixture->setCompetitionId($competition->getId());
+        $fixture->setMatchDate(new DateTimeImmutable('2026-03-14'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('AS Voisins');
         $fixture->setStatus($status, new DateTimeImmutable);
@@ -624,6 +833,91 @@ final class EngagedTeamGuardTest extends WebTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    /** Le module matchs exige le planning de saison en vigueur (`SocleGuard`) : le décor le pointe. */
+    private function settleMatches(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->settleSeasonPlan($this->season);
+    }
+
+    /**
+     * Une requête du gestionnaire, saison désignée (la saison du décor n'est pas celle du calendrier).
+     *
+     * @param array<string, mixed>|null $body
+     */
+    private function request(string $method, string $uri, ?array $body = null): void
+    {
+        $token = self::getContainer()->get('lexik_jwt_authentication.jwt_manager')->create($this->user);
+        $this->client->request($method, $uri, [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+            'HTTP_X_SEASON_ID' => $this->season->getId(),
+            'CONTENT_TYPE' => 'application/json',
+        ], null === $body ? null : json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    /** @param array<string, mixed> $body */
+    private function postFixture(array $body): string
+    {
+        $this->request('POST', '/api/fixtures', $body);
+        self::assertResponseStatusCodeSame(201, 'témoin : le match est créé');
+
+        return (string) json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
+    }
+
+    /** @param array<string, mixed> $body */
+    private function postCompetition(array $body): string
+    {
+        $this->request('POST', '/api/competitions', $body);
+        self::assertResponseStatusCodeSame(201, 'témoin : la compétition est créée');
+
+        return (string) json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
+    }
+
+    /**
+     * Le corps complet que l'écran renvoie à chaque geste (C54), seule la compétition désignée.
+     *
+     * @return array<string, mixed>
+     */
+    private function fixtureBody(Fixture $fixture, string $competitionId): array
+    {
+        return [
+            'teamId' => $fixture->getTeamId(),
+            'competitionId' => $competitionId,
+            'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
+            'homeAway' => $fixture->getHomeAway()->value,
+            'opponentLabel' => $fixture->getOpponentLabel(),
+            'status' => $fixture->getStatus()->value,
+        ];
+    }
+
+    /** La compétition d'office « Amicaux » de la saison du décor. */
+    private function amicauxId(): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $id = $this->em->getConnection()->fetchOne('SELECT id FROM competition WHERE season_id = ? AND default_friendly', [$this->season->getId()]);
+        self::assertIsString($id, 'la saison a sa compétition d\'office « Amicaux »');
+
+        return $id;
+    }
+
+    /** Ce que compte « à corriger dans FBI » (`EntryDeadlineOutlook` : les entrées ouvertes du club). */
+    private function openCorrectionsOfClub(): int
+    {
+        $this->scopeGucToClub($this->club->getId());
+
+        return (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fbi_correction WHERE club_id = ? AND closed_at IS NULL', [$this->club->getId()]);
+    }
+
+    /** Un gymnase du club, sans fenêtre d'accès déclarée. */
+    private function homeVenue(): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase des amicaux ' . uniqid('', true));
+        $this->em->flush();
+
+        return $venue->getId();
     }
 
     /** Un SECOND rang, pour prouver qu'une équipe engagée peut encore en changer. */

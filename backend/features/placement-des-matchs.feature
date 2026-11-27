@@ -198,17 +198,36 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Et deux équipes et un gymnase jetables
     Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
     Et un amical à domicile le samedi sur ce gymnase, sans créneau posé
+    # Lot 7, PR 4a : un match créé sans compétition est rangé dans « Amicaux », la compétition d'office de la saison.
+    Et cet amical est rangé dans « Amicaux », la compétition des amicaux de la saison
     Quand je lance le placement des matchs
     Alors l'amical n'est jamais proposé au solveur et reste sans créneau
     Et je peux le placer à la main hors de la fenêtre d'accès match
 
-  Scénario: Une compétition « Amical PNF » importée est confiée au solveur comme un championnat
-    L'import range aujourd'hui une division au libellé amical en championnat : son domicile non
-    placé part au solveur comme tout match de compétition, et le solveur le place.
+  Scénario: Une compétition « Amical PNF » importée naît amicale : jamais proposée au solveur, posée à la main hors créneau
+    Le premier mot « Amical » d'une division fait naître une compétition amicale. Son domicile non
+    placé ne part pas au solveur ; le gestionnaire le pose à la main, hors du créneau de match, en
+    renvoyant la compétition du match comme le fait l'écran.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
     Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
     Quand je dépose un fichier FBI où la division « Amical PNF » porte un domicile de la première équipe le samedi dans ce gymnase, sans heure
-    Alors la compétition « Amical PNF » est rangée en championnat
+    Alors la compétition « Amical PNF » est rangée en amical
     Quand je lance le placement des matchs
-    Alors le domicile « Amical PNF » est placé par le solveur
+    Alors le domicile « Amical PNF » n'est jamais proposé au solveur et reste sans créneau
+    Et je peux poser le domicile « Amical PNF » à la main à 20h00, hors de la fenêtre d'accès match, en renvoyant sa compétition
+
+  Scénario: Un match créé à la main passe d'un championnat à « Amicaux » et revient, tant que la fédération ne le connaît pas
+    Un match que le gestionnaire a créé et pas encore saisi dans FBI change librement de compétition,
+    vers « Amicaux » comme retour. Une fois saisi, la fédération le connaît : il reste dans sa compétition.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et un match à domicile de la première équipe le samedi, créé à la main dans son championnat « Championnat jetable »
+    Quand je range ce match dans « Amicaux »
+    Alors ce match est un amical de « Amicaux »
+    Quand je le remets dans « Championnat jetable »
+    Alors ce match est de nouveau un match de championnat
+    Quand je le pose à la main le samedi à 15h00 sur ce gymnase, puis le marque « saisi »
+    Alors le ranger dans « Amicaux » est refusé : « Ce match est connu de la fédération : il reste dans sa compétition. »
+    Et ce match est toujours un match de championnat

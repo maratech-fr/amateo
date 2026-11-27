@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\CrossStack;
 
+use App\Enum\CompetitionType;
 use App\Service\MatchConflictDetector;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -40,6 +41,28 @@ final class LeagueEnvelopeMirrorParityTest extends TestCase
                     (string) $case['name'],
                 ),
             );
+        }
+    }
+
+    /**
+     * Lot 7 PR 4a — la nature d'un match (amical ? coupe ?) se lit sur le type de sa compétition, au serveur
+     * comme à l'écran (`lib/envelope.ts::isFriendlyFixture` / `isCupFixture`, `leagueEnvelope.parity.test.ts`) :
+     * les MÊMES cas (`natureCases`) les traversent, libellé trompeur compris (« Amical PNF » rangée championnat).
+     */
+    public function testBackendNatureOfAFixtureMatchesTheSharedNatureCases(): void
+    {
+        $raw = file_get_contents(self::CASES);
+        self::assertIsString($raw, 'Illisible : ' . self::CASES);
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+        /** @var list<array{name: string, competitionType: string, friendly: bool, cup: bool}> $list */
+        $list = $decoded['natureCases'] ?? [];
+        self::assertNotEmpty($list, 'leagueEnvelope.parity.json ne porte plus aucun cas de nature (natureCases).');
+
+        foreach ($list as $case) {
+            $type = CompetitionType::from($case['competitionType']);
+            self::assertSame($case['friendly'], $type->isFriendly(), \sprintf('PARITÉ ROMPUE (« %s ») : amical.', $case['name']));
+            self::assertSame($case['cup'], CompetitionType::CUP === $type, \sprintf('PARITÉ ROMPUE (« %s ») : coupe.', $case['name']));
         }
     }
 

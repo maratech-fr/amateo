@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import type { VenueMatchWindow } from "../api";
-import { applicableWindows, dateInsideClosure, hasWeeklyAccess, kickoffInsideAccess, kickoffInsideHolidayWindow, kickoffInsideWindow } from "./matchAccess";
+import type { Fixture, VenueMatchWindow } from "../api";
+import { isFriendlyFixture } from "./envelope";
+import { applicableWindows, dateInsideClosure, hasWeeklyAccess, kickoffInsideAccess, kickoffInsideHolidayWindow, kickoffInsideWindow, venueAccessError } from "./matchAccess";
 import cases from "./matchAccess.parity.json";
+
+/**
+ * Lot 7 PR 4a — un match d'une compétition amicale (« Amicaux » d'office comme amical de la
+ * fédération) se pose hors des accès match, signalé ; tout autre est refusé. La nature vient de
+ * `fixture.competitionType` par `isFriendlyFixture`, jamais d'un `competitionId` nul. Le MÊME
+ * fichier de cas (`friendlyAccessCases`) alimente `MatchAccessMirrorParityTest.php` (backend,
+ * `CompetitionType::isFriendly`) : exempter autre chose d'un seul côté rougit ce côté-là.
+ */
+describe("venueAccessError — un amical hors accès est signalé, jamais refusé (parité avec le backend)", () => {
+  const windows: VenueMatchWindow[] = [{ venueId: "v1", dayOfWeek: 6, startTime: "14:00", endTime: "18:00", appliesOnPublicHolidays: false, openingDate: null } as VenueMatchWindow];
+  for (const c of cases.friendlyAccessCases) {
+    it(c.name, () => {
+      const fixture = { id: "fx", teamId: "team-1", competitionId: c.competitionId, competitionType: c.competitionType } as unknown as Fixture;
+      const issue = venueAccessError("v1", "Gymnase", "2026-10-03", "20:00", windows, isFriendlyFixture(fixture));
+      expect(issue?.level).toBe(c.exempt ? "warning" : "error");
+    });
+  }
+});
 
 /**
  * P4-88 — CÔTÉ FRONT de la parité mécanique du prédicat d'accès match. Le MÊME fichier de

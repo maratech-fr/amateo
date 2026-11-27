@@ -30,12 +30,22 @@ Fonctionnalité: Les conflits d'un match disent la vérité
   # en bout reste prouvé par les scénarios SERVEUR gardés ci-dessous (heure murale via plan de période
   # pointé, conflit de personne joueuse/coache, enveloppe de ligue).
 
-  Scénario: Un amical posé un week-end de match est signalé, jamais bloqué (P4-193)
+  Plan du scénario: Un amical posé un week-end de match est signalé, jamais jugé contre la fenêtre de ligue (P4-193)
+    La fenêtre de ligue borne le championnat, jamais l'amical : posé à la main dans « Amicaux » comme
+    rangé dans une compétition amicale, il est signalé sur un créneau de match, jamais hors fenêtre.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
-    Et une rencontre de championnat le samedi et un amical placé le dimanche du même week-end
+    Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
+    Et une rencontre de championnat à domicile le samedi, coup d'envoi le soir hors de la fenêtre, et un amical <amical> placé le dimanche du même week-end
     Quand je demande les conflits des matchs
-    Alors le radar signale l'amical sur un créneau de match, pour cause de week-end de match
+    Alors le radar signale le championnat hors fenêtre de ligue
+    Et le radar signale l'amical sur un créneau de match, pour cause de week-end de match
+    Et le radar ne juge jamais l'amical contre la fenêtre de ligue ni les règles du club
+
+    Exemples:
+      | amical                                     |
+      | posé à la main dans « Amicaux »            |
+      | de la compétition amicale « AMICAL PNM »   |
 
   Scénario: Une joueuse qui coache une autre équipe voit son conflit en rouge
     Une même personne coache une équipe et JOUE dans une autre : deux matchs qui se chevauchent la

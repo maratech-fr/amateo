@@ -17,10 +17,17 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Et le trajet entre le « Gymnase Nord » et le « Gymnase Sud » est saisi à 12 minutes en voiture
     Et l'équipe « U13M1 » est engagée dans « Championnat U13 », sans aucun match
     Et l'équipe « SM1 » est engagée dans « Championnat SM1 », sans aucun match
+    # Seul un match d'une compétition non amicale engage : un amical posé à la main laisse l'équipe supprimable.
+    Et l'équipe « U13M1 » a un amical posé à la main, rangé dans « Amicaux »
+    # La confirmation annonce le match ; l'engagement dans « Amicaux » n'est pas un engagement en compétition.
+    Et la suppression de l'équipe « U13M1 » annonce 1 match et 1 engagement en compétition
     Quand je supprime l'équipe « U13M1 »
     Alors l'équipe « U13M1 » n'a plus ni séance, ni réservation, ni règle, ni lien de coach
-    # Une équipe sans match se supprime : son engagement part, et sa compétition, vidée et sans match, avec lui.
+    # Une équipe sans match d'une compétition non amicale se supprime : son engagement part, et sa compétition, vidée et sans match, avec lui.
     Et sa compétition « Championnat U13 », vidée, a disparu avec son engagement
+    Et l'amical de « U13M1 » est parti avec elle, et son engagement dans « Amicaux » aussi
+    # « Amicaux » est la compétition d'office de la saison : vidée, elle reste.
+    Et « Amicaux » reste la compétition des amicaux de la saison
     Et « SM1 » reste engagée dans « Championnat SM1 »
     Et « Camille » entraîne toujours « U15M1 », et les séances des autres équipes sont intactes
     Quand je supprime le coach « Camille »
