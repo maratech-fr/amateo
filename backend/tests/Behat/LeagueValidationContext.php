@@ -77,11 +77,14 @@ final class LeagueValidationContext extends BaseContext
     /** Combien la dernière lecture gestionnaire a fait passer « validé ligue » (`swept`). */
     private int $lastSwept = -1;
 
-    /** L'amical posé à la main, sans compétition (lot 7, filet des matchs). */
-    private string $manualFriendlyId = '';
+    /** Le match posé à la main : un amical sans compétition, ou un domicile du championnat déposé (lot 7, PR 6b). */
+    private string $manualFixtureId = '';
 
-    /** Le compte « à saisir dans FBI » du club avant que l'amical soit posé. */
+    /** Le compte « à saisir dans FBI » du club avant que le match soit posé à la main. */
     private int $toEnterBefore = -1;
+
+    /** L'heure du match posé à la main, dans l'accès match du samedi (14:00–18:00). */
+    private const string MANUAL_KICKOFF = '15:30';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
@@ -221,59 +224,101 @@ final class LeagueValidationContext extends BaseContext
         $this->assertStatusOf(self::REF_AMICAL, 'VALIDATED');
     }
 
+    /** Lot 7, PR 6b : un amical venu du fichier FBI est d'une compétition FBI, il garde tout son suivi. */
+    #[Then('l\'amical passé est suivi par la fédération')]
+    public function lAmicalPasseEstSuivi(): void
+    {
+        $this->assertTracked($this->fixtureIdOf(self::REF_AMICAL), true);
+    }
+
     #[When('je pose à la main un amical à domicile à « GYM BEHAT », sans compétition')]
     public function jePoseUnAmicalALaMain(): void
     {
-        // La lecture de l'accueil par un gestionnaire balaie d'abord : le compte relu ensuite est stable.
-        $this->toEnterBefore = $this->toEnterCount();
-        $created = $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->matchDate, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical posé à la main'], $this->token);
-        $this->manualFriendlyId = $this->createdId($created, 'amical');
-        $placed = $this->apiPut(\sprintf('fixtures/%s', $this->manualFriendlyId), [
-            'teamId' => $this->teamId,
-            'matchDate' => $this->matchDate,
-            'homeAway' => 'HOME',
-            'opponentLabel' => 'Amical posé à la main',
-            'venueId' => $this->venueId,
-            'kickoffTime' => '15:30',
-            'status' => 'PLACED',
-        ], $this->token);
-        if (200 !== $placed['status'] || 'PLACED' !== ($placed['json']['status'] ?? null)) {
-            throw new RuntimeException(\sprintf('poser l\'amical à la main a répondu %d, statut « %s »', $placed['status'], (string) ($placed['json']['status'] ?? '')));
-        }
+        $this->poseByHand(null);
     }
 
-    #[Then('l\'amical posé à la main compte parmi les matchs à saisir dans FBI')]
-    public function lAmicalComptePourASaisir(): void
+    #[When('je pose à la main un domicile à « GYM BEHAT » dans le championnat déposé')]
+    public function jePoseUnDomicileDansLeChampionnat(): void
+    {
+        if ('' === $this->competitionId) {
+            throw new RuntimeException('aucun championnat déposé — le dépôt FBI a-t-il eu lieu ?');
+        }
+        $this->poseByHand($this->competitionId);
+    }
+
+    #[Then('le match posé à la main est suivi par la fédération')]
+    public function leMatchPoseEstSuivi(): void
+    {
+        $this->assertTracked($this->manualFixtureId, true);
+    }
+
+    #[Then('le match posé à la main n\'est pas suivi par la fédération')]
+    public function leMatchPoseNEstPasSuivi(): void
+    {
+        $this->assertTracked($this->manualFixtureId, false);
+    }
+
+    #[Then('il compte parmi les matchs à saisir dans FBI')]
+    public function ilComptePourASaisir(): void
     {
         $toEnter = $this->toEnterCount();
         if ($this->toEnterBefore + 1 !== $toEnter) {
-            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d après la pose, %d attendu (%d avant)', $toEnter, $this->toEnterBefore + 1, $this->toEnterBefore));
+            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d, %d attendu (%d avant la pose)', $toEnter, $this->toEnterBefore + 1, $this->toEnterBefore));
         }
     }
 
-    #[When('la date de l\'amical posé à la main est révolue')]
-    public function laDateDeLAmicalEstRevolue(): void
-    {
-        // Pointage : le temps passe, le match est joué.
-        $this->dbalExec(\sprintf('UPDATE fixture SET match_date=\'%s\' WHERE id=\'%s\'', self::PAST_DATE, $this->manualFriendlyId), admin: true);
-    }
-
-    #[Then('l\'amical posé à la main est « validé ligue »')]
-    public function lAmicalPoseALaMainEstValide(): void
-    {
-        $status = $this->apiGet(\sprintf('fixtures/%s', $this->manualFriendlyId), $this->token)['json']['status'] ?? null;
-        if ('VALIDATED' !== $status) {
-            throw new RuntimeException(\sprintf('l\'amical posé à la main est « %s » au lieu de « validé ligue »', \is_string($status) ? $status : 'inconnu'));
-        }
-    }
-
-    #[Then('il ne compte plus parmi les matchs à saisir dans FBI')]
-    public function ilNeComptePlusPourASaisir(): void
+    #[Then('il ne compte pas parmi les matchs à saisir dans FBI')]
+    public function ilNeComptePasPourASaisir(): void
     {
         $toEnter = $this->toEnterCount();
         if ($this->toEnterBefore !== $toEnter) {
-            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d, %d attendu une fois l\'amical validé', $toEnter, $this->toEnterBefore));
+            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d, %d attendu (le compte d\'avant la pose)', $toEnter, $this->toEnterBefore));
         }
+    }
+
+    #[When('la date du match posé à la main est révolue')]
+    public function laDateDuMatchPoseEstRevolue(): void
+    {
+        // Pointage : le temps passe, le match est joué.
+        $this->dbalExec(\sprintf('UPDATE fixture SET match_date=\'%s\' WHERE id=\'%s\'', self::PAST_DATE, $this->manualFixtureId), admin: true);
+    }
+
+    #[When('je marque « saisi » le match posé à la main')]
+    public function jeMarqueSaisi(): void
+    {
+        $this->putManual(['venueId' => $this->venueId, 'kickoffTime' => self::MANUAL_KICKOFF, 'status' => 'SUBMITTED'], 'marquer « saisi »');
+    }
+
+    #[When('je remets « à placer » le match posé à la main')]
+    public function jeRemetsAPlacer(): void
+    {
+        // Le geste de l'écran : statut « à placer », gymnase et heure vidés ensemble.
+        $this->putManual(['venueId' => '', 'kickoffTime' => '', 'status' => 'UNPLACED'], 'remettre « à placer »');
+    }
+
+    #[When('je replace le match posé à la main à « GYM BEHAT »')]
+    public function jeReplace(): void
+    {
+        $this->putManual(['venueId' => $this->venueId, 'kickoffTime' => self::MANUAL_KICKOFF, 'status' => 'PLACED'], 'replacer');
+    }
+
+    #[Then('le match posé à la main est « Placé »')]
+    public function leMatchPoseEstPlace(): void
+    {
+        $this->assertServedStatus($this->manualFixtureId, 'PLACED');
+    }
+
+    #[Then('le match posé à la main est « saisi »')]
+    public function leMatchPoseEstSaisi(): void
+    {
+        $this->assertServedStatus($this->manualFixtureId, 'SUBMITTED');
+    }
+
+    #[Then('le match posé à la main est « à placer »')]
+    public function leMatchPoseEstAPlacer(): void
+    {
+        // Le stade servi se calcule (lot 7, PR 6b) : un suivi resté « saisi » servirait SUBMITTED.
+        $this->assertServedStatus($this->manualFixtureId, 'UNPLACED');
     }
 
     #[Given('l\'échéance de saisie du championnat est déjà passée')]
@@ -359,8 +404,8 @@ final class LeagueValidationContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
-        if ('' !== $this->manualFriendlyId) {
-            $this->apiDelete(\sprintf('fixtures/%s', $this->manualFriendlyId), $this->token);
+        if ('' !== $this->manualFixtureId) {
+            $this->apiDelete(\sprintf('fixtures/%s', $this->manualFixtureId), $this->token);
         }
         // Les deux compétitions (championnat + amical) sont portées par la même équipe
         // jetable : elles partent avec elle (cascade teams → competitions), les matchs
@@ -418,14 +463,79 @@ final class LeagueValidationContext extends BaseContext
         }
     }
 
+    /**
+     * Le stade SERVI par l'API, jamais la colonne : depuis la PR 6b du lot 7, « saisi » et « validé » vivent dans le
+     * suivi fédéral et le stade se calcule ({@see \App\Matches\FederalFollowUp::stageOf}).
+     */
     private function assertStatusOf(string $ref, string $expected): void
     {
-        $status = $this->dbalScalar(
-            \sprintf('SELECT status AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref),
+        $this->assertServedStatus($this->fixtureIdOf($ref), $expected, $ref);
+    }
+
+    private function assertServedStatus(string $fixtureId, string $expected, ?string $label = null): void
+    {
+        $result = $this->apiGet(\sprintf('fixtures/%s', $fixtureId), $this->token);
+        $status = $result['json']['status'] ?? null;
+        if ($status !== $expected) {
+            throw new RuntimeException(\sprintf('statut servi « %s » au lieu de « %s » pour la rencontre %s (HTTP %d)', \is_string($status) ? $status : 'inconnu', $expected, $label ?? $fixtureId, $result['status']));
+        }
+    }
+
+    /** `fbiTracked` servi par `GET /api/fixtures/{id}` : la compétition du match est-elle de source FBI ? */
+    private function assertTracked(string $fixtureId, bool $expected): void
+    {
+        $result = $this->apiGet(\sprintf('fixtures/%s', $fixtureId), $this->token);
+        $tracked = $result['json']['fbiTracked'] ?? null;
+        if ($tracked !== $expected) {
+            throw new RuntimeException(\sprintf('fbiTracked servi « %s » au lieu de « %s » pour le match %s (HTTP %d)', var_export($tracked, true), var_export($expected, true), $fixtureId, $result['status']));
+        }
+    }
+
+    private function fixtureIdOf(string $ref): string
+    {
+        $id = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref),
             admin: true,
         );
-        if ($status !== $expected) {
-            throw new RuntimeException(\sprintf('statut « %s » au lieu de « %s » pour la rencontre %s', '' === $status ? 'inconnu' : $status, $expected, $ref));
+        if ('' === $id) {
+            throw new RuntimeException(\sprintf('aucune rencontre %s pour le club — le dépôt FBI a-t-il eu lieu ?', $ref));
+        }
+
+        return $id;
+    }
+
+    /**
+     * Crée un domicile à la main, puis le place à « GYM BEHAT » le samedi à 15:30 : sans compétition, il est rangé dans
+     * « Amicaux ». Le compte « à saisir » d'avant la pose est relu en premier (la lecture balaie d'abord, il est stable).
+     */
+    private function poseByHand(?string $competitionId): void
+    {
+        $this->toEnterBefore = $this->toEnterCount();
+        $body = ['teamId' => $this->teamId, 'matchDate' => $this->matchDate, 'homeAway' => 'HOME', 'opponentLabel' => 'Match posé à la main'];
+        if (null !== $competitionId) {
+            $body['competitionId'] = $competitionId;
+        }
+        $this->manualFixtureId = $this->createdId($this->apiPost('fixtures', $body, $this->token), 'match posé à la main');
+        $this->putManual(['venueId' => $this->venueId, 'kickoffTime' => self::MANUAL_KICKOFF, 'status' => 'PLACED'], 'placer à la main');
+    }
+
+    /**
+     * Le corps complet que l'écran renvoie à chaque geste, compétition du match comprise (C54 du plan du lot 7).
+     *
+     * @param array<string, string> $change
+     */
+    private function putManual(array $change, string $gesture): void
+    {
+        $current = $this->apiGet(\sprintf('fixtures/%s', $this->manualFixtureId), $this->token)['json'];
+        $result = $this->apiPut(\sprintf('fixtures/%s', $this->manualFixtureId), $change + [
+            'teamId' => $this->teamId,
+            'competitionId' => \is_string($current['competitionId'] ?? null) ? $current['competitionId'] : '',
+            'matchDate' => \is_string($current['matchDate'] ?? null) ? substr($current['matchDate'], 0, 10) : $this->matchDate,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Match posé à la main',
+        ], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('%s a répondu %d (200 attendu) : %s', $gesture, $result['status'], json_encode($result['json'], \JSON_THROW_ON_ERROR)));
         }
     }
 
