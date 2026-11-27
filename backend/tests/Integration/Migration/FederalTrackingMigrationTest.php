@@ -151,8 +151,10 @@ final class FederalTrackingMigrationTest extends KernelTestCase
         $row = $admin->fetchAssociative('SELECT club_id, season_id, state, pending_deviations, fbi_echo, kept_venue_label FROM fixture_federal_tracking WHERE fixture_id = ?', [self::FORGED]);
         self::assertIsArray($row, 'le match a sa ligne de suivi');
         self::assertSame([self::CLUB, self::SEASON, 'TO_ENTER'], [$row['club_id'], $row['season_id'], $row['state']], 'club, saison et état du match');
-        self::assertSame($deviations, json_decode((string) $row['pending_deviations'], true), 'les écarts ouverts, à l\'identique');
-        self::assertSame($echo, json_decode((string) $row['fbi_echo'], true), 'le mémo « FBI affiche encore … », à l\'identique');
+        // Le JSON forgé a déjà traversé jsonb (ordre des clés de jsonb) : on compare sans l'ordre des clés, valeurs et
+        // types stricts — rien perdu, rien ajouté.
+        self::assertSame(self::keyOrderFree($deviations), self::keyOrderFree(json_decode((string) $row['pending_deviations'], true)), 'les écarts ouverts, à l\'identique');
+        self::assertSame(self::keyOrderFree($echo), self::keyOrderFree(json_decode((string) $row['fbi_echo'], true)), 'le mémo « FBI affiche encore … », à l\'identique');
         self::assertSame('gymnase nord', $row['kept_venue_label'], 'le libellé de salle gardé');
         self::assertSame('OUT_OF_SYNC', $admin->fetchOne('SELECT review_state FROM fixture WHERE id = ?', [self::FORGED]), 'le traitement du match ne bouge pas');
         foreach (['pending_deviations', 'fbi_echo', 'kept_venue_label'] as $column) {
@@ -179,6 +181,34 @@ final class FederalTrackingMigrationTest extends KernelTestCase
         self::assertSame('MANUAL', $admin->fetchOne('SELECT source FROM competition WHERE default_friendly'), '« Amicaux » est MANUAL');
         self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id IN (?, ?)', [self::FORGED, $placed]), 'aucune ligne de suivi');
         self::assertSame(['UNPLACED', 'PLACED'], [$this->servedStageOf(self::FORGED), $this->servedStageOf($placed)], '« à placer » et « placé » restent servis tels quels');
+    }
+
+    /**
+     * Rien ne se perd hors FBI : un match d'une compétition sans trace fédérale qui portait encore un écart, un mémo
+     * « FBI affiche encore … » ou un libellé de salle gardé reçoit une ligne de suivi « à saisir » qui les garde à
+     * l'identique ; la compétition reste MANUAL et le match reste servi « placé ».
+     */
+    public function testAMatchOutsideFbiKeepsItsDeviationsMemoAndKeptLabelOnAToEnterRow(): void
+    {
+        $admin = self::frozenCaseConnection();
+        $deviations = [['field' => 'kickoff', 'appValue' => '14:00', 'sourceValue' => '15:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-01-20T10:00:00+00:00', 'autoApplied' => false]];
+        $echo = ['field' => 'date', 'value' => '2026-02-08', 'at' => '2026-01-21T09:00:00+00:00'];
+        $this->forgeCompetition($admin, self::BARE_COMPETITION, 'Tournoi du club', null);
+        $this->forgeFixture($admin, self::FORGED, self::BARE_COMPETITION, [
+            'status' => 'PLACED', 'home_away' => 'HOME', 'venue_id' => self::VENUE_NORD, 'kickoff_time' => '14:00', 'placement_source' => 'MANUAL',
+            'pending_deviations' => $deviations, 'fbi_echo' => $echo, 'kept_venue_label' => 'gymnase nord',
+        ]);
+
+        $this->migrateOrFail($admin);
+
+        self::assertSame('MANUAL', $admin->fetchOne('SELECT source FROM competition WHERE id = ?', [self::BARE_COMPETITION]), 'un écart ne fait pas une trace fédérale');
+        $row = $admin->fetchAssociative('SELECT state, pending_deviations, fbi_echo, kept_venue_label FROM fixture_federal_tracking WHERE fixture_id = ?', [self::FORGED]);
+        self::assertIsArray($row, 'le match hors FBI garde une ligne de suivi');
+        self::assertSame('TO_ENTER', $row['state']);
+        self::assertSame(self::keyOrderFree($deviations), self::keyOrderFree(json_decode((string) $row['pending_deviations'], true)), 'l\'écart ouvert, à l\'identique');
+        self::assertSame(self::keyOrderFree($echo), self::keyOrderFree(json_decode((string) $row['fbi_echo'], true)), 'le mémo, à l\'identique');
+        self::assertSame('gymnase nord', $row['kept_venue_label'], 'le libellé de salle gardé');
+        self::assertSame('PLACED', $this->servedStageOf(self::FORGED), 'le match hors FBI reste servi « placé »');
     }
 
     /**
@@ -272,6 +302,20 @@ final class FederalTrackingMigrationTest extends KernelTestCase
             'INSERT INTO fixture SELECT * FROM json_populate_record(NULL::fixture, (SELECT (row_to_json(f)::jsonb || ?::jsonb)::json FROM fixture f WHERE f.id = ?))',
             [json_encode(['id' => $id, 'competition_id' => $competitionId, 'opponent_label' => 'Adversaire forgé'] + $columns, \JSON_THROW_ON_ERROR), self::MODEL_FIXTURE],
         );
+    }
+
+    /** Une valeur JSON décodée, clés d'objet triées à tous les niveaux ; l'ordre d'une liste reste le sien. */
+    private static function keyOrderFree(mixed $value): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+        $value = array_map(self::keyOrderFree(...), $value);
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 
     /** @param callable(): (int|string) $statement */
