@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Entity\Club;
+use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
+use App\Entity\Person;
 use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -165,8 +167,29 @@ trait PlacementHoldingDecorTrait
         return $team->getId();
     }
 
+    /**
+     * Le coach de cet identifiant existe dans le club, avec sa fiche : la porte écarte de la copie un
+     * lien qui nomme un coach absent de la base (lot 5, références disparues), le décor les crée donc.
+     */
+    private function ensureCoach(string $coachId): void
+    {
+        if (null !== $this->em->find(Coach::class, $coachId)) {
+            return;
+        }
+        $person = (new Person)->setClubId($this->club->getId())->setFirstName('Coach')->setLastName(substr($coachId, 0, 8));
+        $this->em->persist($person);
+        $coach = (new Coach($person))
+            ->setId($coachId)
+            ->setClubId($this->club->getId())
+            ->setSeasonId($this->season->getId())
+            ->setIsActive(true);
+        $this->em->persist($coach);
+        $this->em->flush();
+    }
+
     private function link(string $coachId, string $teamId, TeamCoachRole $role = TeamCoachRole::MAIN): void
     {
+        $this->ensureCoach($coachId);
         $link = new TeamCoach;
         $link->setClubId($this->club->getId());
         $link->setSeasonId($this->season->getId());
@@ -179,6 +202,7 @@ trait PlacementHoldingDecorTrait
 
     private function player(string $personId, string $teamId): void
     {
+        $this->ensureCoach($personId);
         $membership = new CoachPlayerMembership;
         $membership->setClubId($this->club->getId());
         $membership->setSeasonId($this->season->getId());
@@ -192,6 +216,9 @@ trait PlacementHoldingDecorTrait
     /** Une séance du vendredi, 90 minutes, dans la version donnée (par défaut le planning de saison). */
     private function session(string $teamId, ?string $coachId, string $start = '20:00', ?string $scheduleId = null): void
     {
+        if (null !== $coachId) {
+            $this->ensureCoach($coachId);
+        }
         $slot = new ScheduleSlotTemplate;
         $slot->setClubId($this->club->getId());
         $slot->setSeasonId($this->season->getId());
@@ -287,6 +314,7 @@ trait PlacementHoldingDecorTrait
     /** Indisponibilité d'entraînement (wizard), le vendredi, sur toute la journée ou une plage. */
     private function wizardUnavailable(string $coachId, ?string $from = null, ?string $until = null): string
     {
+        $this->ensureCoach($coachId);
         $config = ['unavailableDays' => [5]];
         if (null !== $from) {
             $config['fromTime'] = $from;
