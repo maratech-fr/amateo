@@ -322,7 +322,6 @@ final class SoclePlansContext extends BaseContext
     }
 
     #[Given('le coach principal d\'une équipe est changé, sans valider')]
-    #[When('le coach principal d\'une équipe est changé, sans valider')]
     public function leCoachPrincipalDUneEquipeEstChange(): void
     {
         // Une équipe tenue par UN coach principal, dont le lien est dans la copie de la version en vigueur, et un autre
