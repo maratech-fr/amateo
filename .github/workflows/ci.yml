@@ -1487,6 +1487,11 @@ jobs:
           # nature mal convertie libérerait une équipe engagée ou confierait un amical au moteur. Obligatoire jusqu'à
           # l'application en production.
           FILES="$FILES tests/Integration/Migration/CompetitionNatureMigrationTest.php"
+          # NR d'axe CONSTRAINT SEMANTICS (lot conception 7, PR 4b) — le radar borne un domicile de championnat par la
+          # fenêtre de ligue, jamais une coupe ; une coupe n'obéit qu'à son horaire, 08:00-21:00 bornes comprises, férié
+          # compris, et le dit « coupe hors horaires ». Le Lot Gate ne joue pas Behat : sans ce gate, une coupe rejugée
+          # contre la ligue, ou un championnat sorti de sa fenêtre, passerait le Lot Gate.
+          FILES="$FILES tests/Integration/Service/ConflictRadarLeagueWindowTest.php"
           # NR d'axe PLANNING LIFECYCLE (lot conception 4, PR 2) — la version chargée du socle vit sur son
           # plan de saison, un seul pointeur : elle suit « Charger » et chaque génération terminée, et décide
           # seule de la version modifiable. Sans ce gate, un écrivain resté sur l'ancien pointeur laisserait
