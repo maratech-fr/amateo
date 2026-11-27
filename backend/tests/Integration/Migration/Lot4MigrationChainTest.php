@@ -734,7 +734,7 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $reference = $this->providedData()[0] ?? null;
         self::assertIsString($reference);
         $sections = self::readDecorSections();
-        foreach (self::readComplementSections() as $name => [$base, $complement]) {
+        foreach ($this->readComplementSections() as $name => [$base, $complement]) {
             self::assertArrayHasKey($base, $sections, \sprintf('complements.sql : la référence %s nomme la section de base %s, absente de decor-avant.sql', $name, $base));
             $sections[$name] = $sections[$base] . "\n" . $complement;
         }
@@ -779,7 +779,7 @@ final class Lot4MigrationChainTest extends KernelTestCase
      *
      * @return array<string, array{0: string, 1: string}>
      */
-    private static function readComplementSections(): array
+    private function readComplementSections(): array
     {
         $sections = [];
         $current = null;
