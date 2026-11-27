@@ -244,12 +244,12 @@ final class FederalTrackingMigrationTest extends KernelTestCase
     private function servedStageOf(string $fixtureId): string
     {
         $this->scopeGucToClub(self::CLUB);
-        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
         $em->clear();
         $fixture = $em->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture, \sprintf('le match %s est lisible', $fixtureId));
 
-        return static::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value;
+        return self::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value;
     }
 
     /** Une compétition de U13 F, copie de « Championnat 1 » sous un autre nom, dans le schéma d'avant. */

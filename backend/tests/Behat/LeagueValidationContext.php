@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Behat;
 
 use App\Controller\CompetitionEntryDeadlinesController;
+use App\Matches\FederalFollowUp;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
@@ -54,6 +55,9 @@ final class LeagueValidationContext extends BaseContext
 
     private const string VENUE_NAME = 'GYM BEHAT';
 
+    /** L'heure du match posé à la main, dans l'accès match du samedi (14:00–18:00). */
+    private const string MANUAL_KICKOFF = '15:30';
+
     private string $token = '';
 
     private string $clubId = '';
@@ -82,9 +86,6 @@ final class LeagueValidationContext extends BaseContext
 
     /** Le compte « à saisir dans FBI » du club avant que le match soit posé à la main. */
     private int $toEnterBefore = -1;
-
-    /** L'heure du match posé à la main, dans l'accès match du samedi (14:00–18:00). */
-    private const string MANUAL_KICKOFF = '15:30';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
@@ -465,7 +466,7 @@ final class LeagueValidationContext extends BaseContext
 
     /**
      * Le stade SERVI par l'API, jamais la colonne : depuis la PR 6b du lot 7, « saisi » et « validé » vivent dans le
-     * suivi fédéral et le stade se calcule ({@see \App\Matches\FederalFollowUp::stageOf}).
+     * suivi fédéral et le stade se calcule ({@see FederalFollowUp::stageOf}).
      */
     private function assertStatusOf(string $ref, string $expected): void
     {

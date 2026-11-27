@@ -127,8 +127,8 @@ final class Lot7MigrationChainTest extends KernelTestCase
         // Lot 7, PR 6b : le suivi fédéral quitte le match ; le stade que l'API sert, lu par la porte, ne change pour
         // aucun match du décor — la référence 18 porte les quatre stades, domicile et extérieur.
         $this->scopeGucToClub(self::ER_CLUB);
-        $followUp = static::getContainer()->get(FederalFollowUp::class);
-        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
         $em->clear();
         foreach ($stagesBefore as $id => $stage) {
             $fixture = $em->find(Fixture::class, (string) $id);

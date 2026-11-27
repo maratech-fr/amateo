@@ -893,7 +893,7 @@ final class EngagedTeamGuardTest extends WebTestCase
             'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
             'homeAway' => $fixture->getHomeAway()->value,
             'opponentLabel' => $fixture->getOpponentLabel(),
-            'status' => static::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value,
+            'status' => self::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value,
         ];
     }
 
