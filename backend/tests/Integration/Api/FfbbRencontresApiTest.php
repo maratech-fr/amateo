@@ -346,6 +346,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'the already-paired competition is reused, never duplicated');
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
         self::assertSame($competitionId, $fixture?->getCompetitionId());
+        self::assertSame('FBI', $this->scoped($clubId)->fetchOne('SELECT source FROM competition WHERE id = ?', [$competitionId]), 'lot 7, PR 6b : la compétition créée à la main où le canal API range un match devient FBI');
     }
 
     /**
@@ -369,6 +370,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame([$twin->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune seconde compétition de ce nom pour l\'équipe');
         self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$twin->getId()]), 'sa référence fédérale est reposée');
         self::assertSame($twin->getId(), $connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]), 'le match entre dans la compétition ré-adoptée');
+        self::assertSame('FBI', $connection->fetchOne('SELECT source FROM competition WHERE id = ?', [$twin->getId()]), 'lot 7, PR 6b : la compétition ré-adoptée, créée à la main, devient FBI');
     }
 
     /**

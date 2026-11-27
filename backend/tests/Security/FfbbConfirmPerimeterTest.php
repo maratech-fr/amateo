@@ -160,6 +160,29 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         self::assertResponseStatusCodeSame(409, 'l\'équipe reste engagée : le reclassement n\'a pas ouvert la cascade');
     }
 
+    /**
+     * Lot 7, PR 6b : apparier à la fédération une compétition créée à la main (MANUAL) la fait FBI — ses matchs sont
+     * désormais suivis, à saisir dans FBI. « Amicaux », la compétition d'office, reste MANUAL même appariée.
+     */
+    public function testPairingAHandMadeCompetitionMakesItFbiButNeverAmicaux(): void
+    {
+        [$token, , $clubId] = $this->register('FCPD');
+        $this->useStubClubCode($clubId);
+        $seasonId = $this->seasonOf($clubId)->getId();
+        $team = $this->createTeam($clubId);
+        $handMade = $this->createCompetition($clubId, $seasonId, $team->getId(), 'PNM');
+        $this->scopeGucToClub($clubId);
+        $amicaux = $this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId);
+        self::assertSame(['MANUAL', 'MANUAL'], $this->sourcesOf($clubId, [$handMade->getId(), $amicaux]), 'témoin : les deux naissent hors FBI');
+
+        $this->confirm($token, FfbbHttpClientStub::COMPETITION_ID, $team->getId(), $handMade->getId());
+        self::assertResponseStatusCodeSame(200);
+        $this->confirm($token, FfbbHttpClientStub::FRIENDLY_COMPETITION_ID, $team->getId(), $amicaux);
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame(['FBI', 'MANUAL'], $this->sourcesOf($clubId, [$handMade->getId(), $amicaux]), 'la compétition appariée devient FBI ; « Amicaux » reste MANUAL');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -194,6 +217,18 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         self::assertSame($seasonId, $competition->getSeasonId());
 
         return $competition;
+    }
+
+    /**
+     * @param list<string> $competitionIds
+     *
+     * @return list<string> la source de chaque compétition, lue en base, dans l'ordre donné
+     */
+    private function sourcesOf(string $clubId, array $competitionIds): array
+    {
+        $this->scopeGucToClub($clubId);
+
+        return array_map(fn (string $id): string => (string) $this->em->getConnection()->fetchOne('SELECT source FROM competition WHERE id = ?', [$id]), $competitionIds);
     }
 
     /** @return list<string> les équipes engagées dans la compétition, lues en base */

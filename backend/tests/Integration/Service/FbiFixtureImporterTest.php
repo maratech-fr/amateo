@@ -392,6 +392,28 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$this->team->getId()]), 'aucune seconde compétition pour l\'équipe');
     }
 
+    /**
+     * Lot 7, PR 6b : un dépôt qui range ses rencontres dans une compétition créée à la main (MANUAL) la fait FBI — ses
+     * matchs, déposés ou posés à la main, sont désormais suivis. « Amicaux », la compétition d'office, reste MANUAL même
+     * quand une division amicale y est appariée.
+     */
+    public function testADepositIntoAHandMadeCompetitionMakesItFbiButNeverAmicaux(): void
+    {
+        $handMade = $this->competitionFor($this->team->getId(), 'D2');
+        $amicaux = $this->friendlyCompetitionIdFor($this->team->getId(), $this->club->getId(), $this->team->getSeasonId());
+        $sources = fn (): array => array_map(fn (string $id): string => (string) $this->em->getConnection()->fetchOne('SELECT source FROM competition WHERE id = ?', [$id]), [$handMade->getId(), $amicaux]);
+        self::assertSame(['MANUAL', 'MANUAL'], $sources(), 'témoin : les deux naissent hors FBI');
+
+        $result = $this->importMapped([['D2', 'S1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''], ['Amical PNF', 'S2', 'BC TESTVILLE - 1', 'AS Y', '10/10/2026', '', '']], [
+            ['division' => 'D2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $handMade->getId()],
+            ['division' => 'Amical PNF', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $amicaux],
+        ]);
+
+        self::assertSame(2, $result['created'], 'témoin : les deux rencontres sont déposées');
+        self::assertSame([$handMade->getId(), $this->team->getId()], $this->fixtureCompetitionAndTeam('S1'), 'témoin : la rencontre entre dans la compétition créée à la main');
+        self::assertSame(['FBI', 'MANUAL'], $sources(), 'la compétition créée à la main devient FBI ; « Amicaux » reste MANUAL');
+    }
+
     // ── Poule guard + completeness + suggestion (P1-4 PR F2) ─────────────────
 
     public function testWrongFileOnAPairedDivisionIsRefusedNamedAndSkipped(): void
