@@ -21,7 +21,9 @@ let plansData: unknown[] = [];
 vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
 // P4-269 — le bandeau résume le radar « personne à deux endroits » du planning en vigueur.
 let placedConflictsData: { conflicts: { personId: string }[]; relays?: { personId: string; personName: string; lateMinutes: number; adjointName: string }[] } | undefined = { conflicts: [] };
-vi.mock("@/features/planning/queries", () => ({ usePlacedConflicts: () => ({ data: placedConflictsData }) }));
+// Lot 5, PR 5 : ce qui attend la validation du planning de saison (`GET /api/schedule_plans/{id}/pending-changes`).
+let pendingChangesData: { pending: boolean; hasWorkVersion: boolean; changes: { family: string; count: number; destroys: boolean }[] } | undefined = { pending: false, hasWorkVersion: false, changes: [] };
+vi.mock("@/features/planning/queries", () => ({ usePlacedConflicts: () => ({ data: placedConflictsData }), usePendingChanges: () => ({ data: pendingChangesData }) }));
 // Le bandeau lit le NOM du plan sur me.seasonPlan (retour fondateur 2026-07-18).
 // Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
 const session = vi.hoisted(() => ({ canManage: true }));
@@ -156,6 +158,26 @@ describe("SeasonPlanBanner", () => {
     expect(screen.queryByText(/à deux endroits/)).not.toBeInTheDocument();
     expect(screen.getByText(/relais/i)).toBeInTheDocument();
     placedConflictsData = { conflicts: [] };
+  });
+
+  /**
+   * Lot 5, PR 5, ligne 33 du plan : le bandeau du cockpit dit quand des modifications attendent la validation du
+   * planning de saison, et ne dit rien quand rien n'attend. Jumeau Behat, cité : `le-socle-commande-les-plans.feature`,
+   * « L'écran sait quand des modifications attendent la validation ».
+   */
+  it("lot 5 — signale les modifications en attente de validation, et seulement quand il y en a", () => {
+    try {
+      pendingChangesData = { pending: true, hasWorkVersion: true, changes: [] };
+      const { unmount } = renderBanner();
+      expect(screen.getByText(COCKPIT_TEXTS.pendingChangesPill)).toBeInTheDocument();
+      unmount();
+
+      pendingChangesData = { pending: false, hasWorkVersion: false, changes: [] };
+      renderBanner();
+      expect(screen.queryByText(COCKPIT_TEXTS.pendingChangesPill)).not.toBeInTheDocument();
+    } finally {
+      pendingChangesData = { pending: false, hasWorkVersion: false, changes: [] };
+    }
   });
 
   /**

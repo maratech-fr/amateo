@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -131,6 +131,8 @@ vi.mock("./api", () => {
   // P4-266 — l'empreinte de structure servie par plan. Par défaut `null` : aucune cause de
   // péremption dérivée, « Régénérer » non grisé. Les cas dédiés surchargent.
   getStructureHash: vi.fn(() => Promise.resolve({ currentStructureHash: null })),
+  // Lot 5, PR 5 : ce qui attend la validation du planning de saison. Par défaut rien ; les cas dédiés surchargent.
+  getPendingChanges: vi.fn(() => Promise.resolve({ pending: false, hasWorkVersion: false, changes: [] })),
   // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
   // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
   getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 })),
@@ -332,6 +334,8 @@ beforeEach(() => {
   vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", window: { startDate: "2026-09-07", endDate: "2026-09-13" }, moved: [], unplaced: [], changedSlotIds: [], teams: [], ranks: [] });
   // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
   vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, absences: [], conflicts: [] });
+  // Lot 5, PR 5 : ré-armement — défaut « rien n'attend la validation », les cas dédiés surchargent.
+  vi.mocked(getPendingChanges).mockResolvedValue({ pending: false, hasWorkVersion: false, changes: [] });
   navigate.mockClear();
   seasonState.isReadonly = false;
   usePlanningStore.setState({ viewMode: "gymnase", selectedScheduleId: null, selectedSlotId: null, resourceFilter: [] });
@@ -812,6 +816,28 @@ describe("PlanningPage (integration)", () => {
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /rouvrir/i })).toBeInTheDocument();
     expect(screen.getByText("Terminé")).toBeInTheDocument();
+  });
+
+  /**
+   * Lot 5, PR 5, ligne 33 du plan : l'écran dit quand des modifications attendent la validation du planning de saison
+   * (servi par `GET /api/schedule_plans/{id}/pending-changes`), et ne dit rien quand rien n'attend. Jumeau Behat, cité :
+   * `le-socle-commande-les-plans.feature`, « L'écran sait quand des modifications attendent la validation ».
+   */
+  it("lot 5 — sur la version EN VIGUEUR, annonce les modifications qui attendent la validation", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    vi.mocked(getPendingChanges).mockResolvedValue({ pending: true, hasWorkVersion: false, changes: [{ family: "TeamCoach", count: 1, destroys: true }] });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText(PLANNING_TEXTS.pendingChangesBanner)).toBeInTheDocument();
+  });
+
+  it("lot 5 — rien n'attend la validation : aucune annonce", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    await waitFor(() => expect(getPendingChanges).toHaveBeenCalled());
+    expect(screen.queryByText(PLANNING_TEXTS.pendingChangesBanner)).not.toBeInTheDocument();
   });
 
   it("embarqué (wizard) : sur la version EN VIGUEUR, n'offre PLUS « Rouvrir » (déplacé sur /planning) ni « Valider »", async () => {
