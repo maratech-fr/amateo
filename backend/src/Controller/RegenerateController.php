@@ -17,7 +17,6 @@ use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\SocleGuard;
 use App\Service\WriteTargetSeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -56,7 +55,6 @@ final class RegenerateController extends AbstractController implements SeasonSco
         private readonly RequestStack $requestStack,
         private readonly GenerationComplexityGuard $complexityGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly SocleGuard $socleGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly DeploymentGate $deploymentGate,
         private readonly ClubActivityTrace $clubActivityTrace,
@@ -104,10 +102,10 @@ final class RegenerateController extends AbstractController implements SeasonSco
             return $this->json(['error' => 'Seule une version terminée peut être régénérée.'], Response::HTTP_CONFLICT);
         }
         // ADR-0002 inv. 1 — la version CHOISIE est le planning en vigueur : on n'y
-        // travaille pas, on le rouvre d'abord. Le statut VALIDATED portait cette
-        // garde ; il n'existe plus, seul le pointeur dit « en vigueur ».
+        // travaille pas, on la retravaille d'abord (lot 5). Le statut VALIDATED portait
+        // cette garde ; il n'existe plus, seul le pointeur dit « en vigueur ».
         if ($this->schedulePlanProvisioner->isChosen($source->getId())) {
-            return $this->json(['error' => 'La version choisie est le planning en vigueur. Rouvrez-le avant de régénérer.'], Response::HTTP_CONFLICT);
+            return $this->json(['error' => 'La version choisie est le planning en vigueur. Retravaillez-le avant de régénérer.'], Response::HTTP_CONFLICT);
         }
         // Never branch while any version of the season is still solving.
         $inFlight = $this->entityManager->getRepository(Schedule::class)->count([
@@ -163,12 +161,9 @@ final class RegenerateController extends AbstractController implements SeasonSco
         $seasonId = $source->getSeasonId();
         $loadedId = null;
         $this->entityManager->wrapInTransaction(function () use ($newSchedule, $seasonId, $source, &$loadedId): void {
-            // P2-9bis (planning lifecycle) : défense en profondeur du socle en vigueur.
-            // SOUS le verrou de plan-scope de la saison (tenu jusqu'au commit — une garde
-            // qui lit hors verrou n'est qu'un TOCTOU) : tant que le plan SEASON pointe une
-            // version choisie, on refuse d'en préparer une autre. Miroir de processPost.
+            // SOUS le verrou de plan-scope de la saison (tenu jusqu'au commit). Un socle en vigueur
+            // ne refuse plus rien (lot 5) : la nouvelle version est de travail, le pointeur ne bouge pas.
             $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
-            $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
             // Lue sous le verrou, AVANT que la nouvelle version n'existe.
             $loadedId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan((string) $source->getSchedulePlanId());
             $this->entityManager->persist($newSchedule);

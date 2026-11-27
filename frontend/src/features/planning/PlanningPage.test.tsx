@@ -814,7 +814,7 @@ describe("PlanningPage (integration)", () => {
     expect(await screen.findByText("U11")).toBeInTheDocument();
     // Being pointed at IS being validated: the only way forward is « Rouvrir ».
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /rouvrir/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retravailler" })).toBeInTheDocument();
     expect(screen.getByText("Terminé")).toBeInTheDocument();
   });
 

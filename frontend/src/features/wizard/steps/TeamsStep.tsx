@@ -18,7 +18,6 @@ import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { Select } from "@/shared/components/ui/select";
 import { groupTeamsByTier, TIER_MEANING, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
-import { useSocleValidated } from "@/shared/lib/socle";
 
 import { TEAM_COLUMNS } from "../lib/teamColumns";
 
@@ -54,12 +53,8 @@ const LEVEL_VALUES: (TeamLevel | "")[] = ["", "ELITE", "NATIONAL", "REGIONAL", "
 
 /**
  * « Modifier les données du club » (décision fondateur 2026-09-28) : par ce chemin (mode saison,
- * socle EN VIGUEUR), le nombre de séances par semaine d'une équipe EXISTANTE est une CONTRAINTE du
- * planning en vigueur — visible mais verrouillé, exactement comme les créneaux. On complète le
- * modèle (niveau, rang, mutualisation) sans rouvrir ; pour changer les séances, il faut rouvrir le
- * planning de saison. La CRÉATION d'une équipe reste libre (son formulaire porte son propre champ,
- * jamais verrouillé — sinon on ne pourrait plus créer d'équipe utile). Sans socle validé (onboarding,
- * ou après « Rouvrir »), rien n'est verrouillé. Le texte affiché = `TEAMS_TEXTS.sessionsLockHint`.
+ * socle EN VIGUEUR), le nombre de séances par semaine d'une équipe se modifie comme le reste (lot 5) :
+ * le planning validé reste en vigueur, la modification attend la validation.
  */
 
 /** A team is "competitive" unless it plays at a loisir level (or has none set). */
@@ -94,13 +89,9 @@ interface RowProps {
   /** P2-45 — sous-ligne des liens : « Mutualisée avec … · Passerelle avec … (Préféré) ».
    *  null = ni groupe ni passerelle → aucun texte ajouté (densité nominale). */
   linksLabel?: string | null;
-  /** Décision fondateur 2026-09-28 — socle en vigueur : le nombre de séances d'une équipe
-   *  EXISTANTE est en lecture seule (contrainte du planning en vigueur). Le POURQUOI est dit
-   *  une fois au-dessus de la liste ; ici on rend seulement le champ non éditable. */
-  sessionsLocked?: boolean;
 }
 
-function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel, sessionsLocked }: RowProps) {
+function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLinks, rankLabel, canUp, canDown, onMove, linksLabel }: RowProps) {
   // Local edit buffers (saved on blur). name/sessions only change through this row ; l'entente
   // (CTC) a migré dans la modale Liens (D4), la ligne n'en porte plus que le REPÈRE.
   const [name, setName] = useState(team.name);
@@ -191,16 +182,11 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           aria-label={TEAMS_TEXTS.colSessionsAria}
           type="number"
           min={1}
-          // Socle en vigueur : la valeur reste VISIBLE (readOnly, pas disabled — un champ
-          // désactivé sort de l'ordre de tabulation et n'est plus lu) mais non éditable. Le
-          // onBlur est verrouillé aussi (ceinture + bretelles : readOnly bloque déjà la frappe).
-          readOnly={true === sessionsLocked}
-          title={true === sessionsLocked ? TEAMS_TEXTS.sessionsLockHint : undefined}
           compact
-          className={cn(TEAM_COLUMNS.sessions, true === sessionsLocked && "cursor-not-allowed bg-muted/40 text-muted-foreground")}
+          className={TEAM_COLUMNS.sessions}
           value={sessions}
           onChange={(e) => setSessions(e.target.value)}
-          onBlur={() => true !== sessionsLocked && Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
+          onBlur={() => Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
         />
         </ReadOnlyFieldset>
         {/* Rang is not edited inline: changing a team's tier is done via the
@@ -430,11 +416,6 @@ function TeamsEditor() {
   // La saison de TRAVAIL résolue (X-Season-Id, sinon saison courante serveur) : c'est
   // exactement ce que l'en-tête posera, donc le seasonId du corps que le serveur exige.
   const workingSeasonId = useWorkingSeason()?.id;
-  // « Modifier les données du club » (décision fondateur 2026-09-28) : TeamsEditor n'est rendu
-  // qu'en mode SAISON (TeamsStep bascule sur PeriodTeams en mode période), donc socle validé ⇒ on
-  // est sur ce chemin. Le nombre de séances d'une équipe EXISTANTE y est verrouillé (contrainte du
-  // planning en vigueur) ; le formulaire de CRÉATION reste libre.
-  const sessionsLocked = useSocleValidated();
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const del = useDeleteTeam();
@@ -938,14 +919,6 @@ function TeamsEditor() {
                   {TEAMS_TEXTS.engagedListRest}
                 </p>
               )}
-              {sessionsLocked && (
-                // « Modifier les données du club » (socle en vigueur) : le POURQUOI, UNE fois pour la
-                // liste — chaque champ « Séances/sem » d'une équipe existante est en lecture seule.
-                <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  {TEAMS_TEXTS.sessionsLockedNoticeLead}
-                  {TEAMS_TEXTS.sessionsLockHint}
-                </p>
-              )}
               <div className="flex items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
                 {/* Le « # » est la position dans l'ordre par RANG : en liste plate il se
                     lirait 7, 3, 14, 1… soit comme un défaut d'affichage (revue #347). Il
@@ -986,7 +959,6 @@ function TeamsEditor() {
                           canDown={index < group.length - 1 && !reorderBusy}
                           onMove={null === tier ? undefined : (dir) => moveInTier(team, dir)}
                           linksLabel={linksLabelOf(team)}
-                          sessionsLocked={sessionsLocked}
                         />
                       ))}
                     </div>
@@ -997,7 +969,7 @@ function TeamsEditor() {
                 // et le badge de rang par ligne porte l'information qu'elles donnaient.
                 <div className="rounded-lg border border-border bg-card px-2">
                   {flatTeams.map((team) => (
-                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team)} sessionsLocked={sessionsLocked} />
+                    <TeamRow key={team.id} team={team} categories={categories} tiers={tiers} onField={onField} onDelete={setToDelete} onOpenLinks={setLinksTeam} rankLabel={rankLabelOf(team)} linksLabel={linksLabelOf(team)} />
                   ))}
                 </div>
               )}
@@ -1035,7 +1007,7 @@ function TeamsEditor() {
       {/* P2-45 — la modale Liens de l'équipe. En SAISON, les passerelles sont ÉDITABLES
           (readOnlyLinks=false) et la mutualisation écrit sur le socle (schedulePlanId null). */}
       {null !== linksTeam ? (
-        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} dailyCapReadOnly={sessionsLocked} onClose={() => setLinksTeam(null)} />
+        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} onClose={() => setLinksTeam(null)} />
       ) : null}
       {/* P3-7 — la modale d'import. Montée seulement club + saison connus (l'onboarding les a
           toujours) ; le bouton reste visible même sinon, mais n'ouvre rien à vide. */}

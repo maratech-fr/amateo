@@ -67,16 +67,20 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      * Lot 4, PR 4 — une règle permanente a sa ligne dans chaque plan de période de sa saison, au défaut de la nature :
      * la porte pose celles qui manquent (rejouable, ne touche aucune ligne existante). Une règle datée n'en a aucune.
      * Une portée élargie ou restreinte par cette écriture change ce que les périodes appliquent par défaut, comme quand
-     * le défaut se recalculait à chaque lecture ; une coche posée contre le défaut ne bouge pas.
+     * le défaut se recalculait à chaque lecture ; une coche posée contre le défaut ne bouge pas. Planning de saison
+     * validé (lot 5) : les lignes des périodes suivent le socle en vigueur, la portée n'y entre qu'à la validation
+     * ({@see PlanComposition::propagateSocleChanges}).
      *
      * @param Constraint $entity
      */
     protected function afterPersist(object $entity): void
     {
         if ($this->scopeBeforeWrite instanceof ConstraintScope) {
-            $this->planComposition->onScopeChanged($entity, $this->scopeBeforeWrite);
+            if (!$this->socleInForce($entity)) {
+                $this->planComposition->onScopeChanged($entity, $this->scopeBeforeWrite);
+                $this->entityManager->flush();
+            }
             $this->scopeBeforeWrite = null;
-            $this->entityManager->flush();
         }
         if ($this->createdByThisWrite && null === $entity->getCalendarEntryId()) {
             $this->planComposition->ensureLines($entity->getSeasonId());
@@ -207,7 +211,10 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             if ([] !== $this->planComposition->ruleLinesOfConstraintDifferingFromDefault($entity->getId(), $previousScope)) {
                 $this->refuse('Cette contrainte a des décochages par plan : retirez-les avant de la dater.');
             }
-            $this->planComposition->removeRuleLines($entity->getId());
+            // Planning de saison validé (lot 5) : ses lignes de période partent à la validation.
+            if (!$this->socleInForce($entity)) {
+                $this->planComposition->removeRuleLines($entity->getId());
+            }
             $entity->setCalendarEntryId($input->calendarEntryId);
         }
         if (null !== $input->isActive) {
@@ -239,8 +246,17 @@ class ConstraintStateProcessor extends AbstractStateProcessor
     protected function cascadeBeforeDelete(object $entity): void
     {
         // A permanent constraint has a line in every period plan (lot 4, PR 4); the lines
-        // are keyed on constraintId and would orphan on a bare delete.
-        $this->planComposition->removeRuleLines($entity->getId());
+        // are keyed on constraintId and would orphan on a bare delete. Under a validated
+        // season plan (lot 5) the periods follow the plan in force: its lines go at validation.
+        if (!$this->socleInForce($entity)) {
+            $this->planComposition->removeRuleLines($entity->getId());
+        }
+    }
+
+    /** Le planning de saison de la règle est-il validé ? Les lignes des périodes suivent alors le socle en vigueur. */
+    private function socleInForce(Constraint $entity): bool
+    {
+        return null !== $this->schedulePlanProvisioner->chosenOfSeasonPlan($entity->getSeasonId());
     }
 
     private function isVenueClosed(Constraint $entity): bool

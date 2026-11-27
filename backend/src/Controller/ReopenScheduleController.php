@@ -7,11 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
-use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
-use App\Entity\Season;
-use App\Service\FutureHolidayCollectePurger;
-use App\Service\OverlayManager;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -24,24 +20,24 @@ use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
 /**
- * Reopen the version a plan points at → the plan un-points it and becomes an
+ * Reopen the version a PERIOD plan points at → the plan un-points it and becomes an
  * "espace de travail" again, editable (ADR-0002 inv. 2). The inverse of
- * ValidateScheduleController. Reopening the season plan's chosen version while
- * period overlays exist destroys them (inv. 14) — guarded by a 409 the client
- * confirms with {"confirmDeleteOverlays": true}. See planning-lifecycle-validated.md.
+ * ValidateScheduleController. The season plan no longer reopens (lot 5): it is reworked
+ * (ReworkScheduleController) and its version in force stays in force — 409 here.
+ * See planning-lifecycle-validated.md.
  */
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ReopenScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;
 
+    public const string SEASON_PLAN_MESSAGE = 'Le planning de saison ne se rouvre plus : retravaillez-le.';
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly OverlayManager $overlayManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
-        private readonly FutureHolidayCollectePurger $collectePurger,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -70,6 +66,11 @@ final class ReopenScheduleController extends AbstractController implements Seaso
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
 
+        // Le planning de saison ne se rouvre plus (lot 5) : on le retravaille, la version en vigueur le reste.
+        if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
+            return $this->json(['error' => self::SEASON_PLAN_MESSAGE], Response::HTTP_CONFLICT);
+        }
+
         // Tout ce qui décide, puis le dépointage, sous le verrou de portée du plan et
         // DANS la transaction — même raison qu'à la validation, qui sérialise sur ce
         // verrou ET supprime des versions dessous. Sans lui, un reopen lisait « je suis
@@ -85,41 +86,6 @@ final class ReopenScheduleController extends AbstractController implements Seaso
                 return $this->json(['error' => 'Seule la version choisie d\'un planning peut être rouverte.'], Response::HTTP_CONFLICT);
             }
 
-            // Garde destructive : dépointer le calendrier de base invalide les plans
-            // secondaires bâtis dessus (inv. 14). Clé sur le pointeur, comme le release
-            // qu'elle protège — les clé sur deux vérités différentes laissait un reopen
-            // orphaniser des plans secondaires vivants sans jamais demander confirmation.
-            if ($schedule->getId() === $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId())) {
-                $overlays = $this->overlayManager->periodPlansInvalidatedBySeasonChange($schedule->getClubId(), $schedule->getSeasonId());
-                if ([] !== $overlays) {
-                    // Q8bis — rouvrir le socle emporte AUSSI la collecte et les doléances des
-                    // vacances à venir : annoncées (chiffre) et purgées au même geste confirmé.
-                    $futureHolidayMotherIds = $this->collectePurger->futureHolidayMotherIds($schedule->getClubId(), $schedule->getSeasonId());
-                    if (!$this->confirmedDeleteOverlays()) {
-                        return $this->json([
-                            'code' => 'overlays_exist',
-                            'error' => 'Rouvrir le planning de la saison supprime les plannings de période à venir, qui devront être refaits.',
-                            'count' => \count($overlays),
-                            'coachWishCount' => $this->collectePurger->countReceivedWishes($futureHolidayMotherIds),
-                            'overlays' => array_map(static fn (CalendarEntry $e): array => [
-                                'entryId' => $e->getId(),
-                                'title' => $e->getTitle(),
-                            ], $overlays),
-                        ], Response::HTTP_CONFLICT);
-                    }
-                    foreach ($overlays as $entry) {
-                        // Le PLAN entier (versions + grille copiée + réglages) : rouvrir le
-                        // socle périme la copie dont chaque période était partie.
-                        // force: the user explicitly confirmed destroying the overlays,
-                        // the one in force included (this IS the authorized destructive path).
-                        $this->overlayManager->deletePeriodPlanForEntry($entry, force: true);
-                    }
-                    // Q8bis — la collecte + les doléances des vacances à venir partent avec
-                    // (campagne → jetons en cascade). Jamais une vacance déjà commencée.
-                    $this->collectePurger->purge($futureHolidayMotherIds);
-                }
-            }
-
             // inv. 2 : rouvrir dépointe — le plan redevient un espace de travail.
             if (!$this->schedulePlanProvisioner->releaseSchedule($schedule->getId())) {
                 // Aucun plan ne la pointait plus : ne pas annoncer une réouverture qui
@@ -130,17 +96,5 @@ final class ReopenScheduleController extends AbstractController implements Seaso
 
             return $this->json(['id' => $schedule->getId(), 'chosen' => false], Response::HTTP_OK);
         });
-    }
-
-    private function confirmedDeleteOverlays(): bool
-    {
-        $request = $this->requestStack->getCurrentRequest();
-        $content = $request?->getContent();
-        if (!\is_string($content) || '' === $content) {
-            return false;
-        }
-        $data = json_decode($content, true);
-
-        return \is_array($data) && true === ($data['confirmDeleteOverlays'] ?? false);
     }
 }

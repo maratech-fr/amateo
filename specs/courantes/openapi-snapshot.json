@@ -21634,6 +21634,63 @@
                 ]
             }
         },
+        "/api/schedule_plans/{id}/pending-changes": {
+            "get": {
+                "operationId": "getApiSchedulePlanPendingChanges",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What waits for the validation of the season plan: the cold settings that differ from the copy of the version in force, family by family, and whether a work version is loaded. Always false and empty for a period plan or a season plan never validated. Read-only, open to members.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "pending": {
+                                            "type": "boolean",
+                                            "description": "Something waits for the validation"
+                                        },
+                                        "hasWorkVersion": {
+                                            "type": "boolean",
+                                            "description": "A version other than the one in force is loaded"
+                                        },
+                                        "changes": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "description": "Short name of the changed family (e.g. TeamCoach)"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer",
+                                                        "description": "Rows added, removed or changed"
+                                                    },
+                                                    "destroys": {
+                                                        "type": "boolean",
+                                                        "description": "Validating it would delete the period plans not yet started"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Unknown plan, or another club's (never an existence oracle)"
+                    }
+                },
+                "summary": "What waits for the validation of the season plan"
+            }
+        },
         "/api/schedule_plans/{id}/structure-hash": {
             "get": {
                 "operationId": "getApiSchedulePlanStructureHash",
@@ -21752,7 +21809,7 @@
                         "description": "Resource not found"
                     },
                     "409": {
-                        "description": "Version not completed, a generation is running (code=generation_in_progress), the plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)"
+                        "description": "Version not completed, a generation is running (code=generation_in_progress), the period plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)"
                     }
                 },
                 "summary": "Load a version: put the plan settings back to those of this version (no solve)"
@@ -21789,16 +21846,52 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Plan un-pointed: the season has no version in force again"
+                        "description": "Period plan un-pointed: the period has no version in force again"
                     },
                     "401": {
                         "description": "Unauthorized"
                     },
                     "409": {
-                        "description": "This version is not the one in force"
+                        "description": "A season plan (it no longer reopens: rework it), or this version is not the one in force"
                     }
                 },
-                "summary": "Un-point the plan so it can be regenerated"
+                "summary": "Un-point a period plan so it can be regenerated"
+            }
+        },
+        "/api/schedules/{id}/rework": {
+            "post": {
+                "operationId": "postApiScheduleRework",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "A work copy of the season version in force (its sessions, frozen input and settings copy) is now the loaded version of the plan. The version in force stays in force until the copy is validated; pending changes are kept.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "The work copy id"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Resource not found"
+                    },
+                    "409": {
+                        "description": "Not the version in force of a season plan, or a generation is running (code=generation_in_progress)"
+                    }
+                },
+                "summary": "Rework the season plan in force: copy it into a loaded work version"
             }
         },
         "/api/schedules/{id}/socle-deviation": {

@@ -145,14 +145,12 @@ class ScheduleStateProcessor extends AbstractStateProcessor
         // together. A linkSchedule failure must never leave a committed-but-unnumbered
         // schedule occupying the period slot.
         $this->entityManager->wrapInTransaction(function () use ($schedule, $weekGuardEntryId, $isSeasonPost, $resolvedSeasonId): void {
-            // P2-7 (planning lifecycle) : le socle en vigueur est unique. Sous le verrou de
-            // plan-scope de la saison (tenu jusqu'au commit — un pg_advisory_xact_lock pris
-            // hors transaction se relâcherait au statement suivant, cf. l.103-105), si le plan
-            // SEASON pointe déjà une version choisie, on refuse d'en préparer une autre :
-            // rouvrir (dépointer) est le geste explicite qui rouvre l'espace de travail.
+            // Sous le verrou de plan-scope de la saison (tenu jusqu'au commit — un
+            // pg_advisory_xact_lock pris hors transaction se relâcherait au statement suivant).
+            // Un socle en vigueur ne refuse plus rien (lot 5) : la version née ici est de
+            // travail, le pointeur ne bouge pas — le socle en vigueur reste unique.
             if ($isSeasonPost) {
                 $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($resolvedSeasonId));
-                $this->socleGuard->assertSeasonPlanNotChosen($resolvedSeasonId);
             }
             // P2-5 E1 (exclusivité bloc/semaines) : une période DÉCOUPÉE ne se génère
             // plus « d'un bloc ». SOUS le verrou du plan-scope de l'entrée (tenu

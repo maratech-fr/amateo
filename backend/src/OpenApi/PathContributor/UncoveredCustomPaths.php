@@ -83,11 +83,51 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 operationId: 'postApiScheduleReopen',
                 tags: ['Schedules'],
                 responses: [
-                    '200' => new Response('Plan un-pointed: the season has no version in force again'),
+                    '200' => new Response('Period plan un-pointed: the period has no version in force again'),
                     '401' => $unauthorized,
-                    '409' => new Response('This version is not the one in force'),
+                    '409' => new Response('A season plan (it no longer reopens: rework it), or this version is not the one in force'),
                 ],
-                summary: 'Un-point the plan so it can be regenerated',
+                summary: 'Un-point a period plan so it can be regenerated',
+            )),
+            '/api/schedules/{id}/rework' => new PathItem(post: new Operation(
+                operationId: 'postApiScheduleRework',
+                tags: ['Schedules'],
+                responses: [
+                    '201' => $this->schemas->jsonResponse('A work copy of the season version in force (its sessions, frozen input and settings copy) is now the loaded version of the plan. The version in force stays in force until the copy is validated; pending changes are kept.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'string', 'description' => 'The work copy id'],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '404' => $notFound,
+                    '409' => new Response('Not the version in force of a season plan, or a generation is running (code=generation_in_progress)'),
+                ],
+                summary: 'Rework the season plan in force: copy it into a loaded work version',
+            )),
+            '/api/schedule_plans/{id}/pending-changes' => new PathItem(get: new Operation(
+                operationId: 'getApiSchedulePlanPendingChanges',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('What waits for the validation of the season plan: the cold settings that differ from the copy of the version in force, family by family, and whether a work version is loaded. Always false and empty for a period plan or a season plan never validated. Read-only, open to members.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'pending' => ['type' => 'boolean', 'description' => 'Something waits for the validation'],
+                            'hasWorkVersion' => ['type' => 'boolean', 'description' => 'A version other than the one in force is loaded'],
+                            'changes' => ['type' => 'array', 'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'family' => ['type' => 'string', 'description' => 'Short name of the changed family (e.g. TeamCoach)'],
+                                    'count' => ['type' => 'integer', 'description' => 'Rows added, removed or changed'],
+                                    'destroys' => ['type' => 'boolean', 'description' => 'Validating it would delete the period plans not yet started'],
+                                ],
+                            ]],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '404' => new Response('Unknown plan, or another club\'s (never an existence oracle)'),
+                ],
+                summary: 'What waits for the validation of the season plan',
             )),
             '/api/schedule_plans/{id}/transcribe-from-socle' => new PathItem(post: new Operation(
                 operationId: 'postApiSchedulePlanTranscribeFromSocle',
@@ -136,7 +176,7 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                     '200' => new Response('The plan settings are back to those of this version, which is now the loaded version of its plan (body: id, status). Does NOT generate.'),
                     '401' => $unauthorized,
                     '404' => $notFound,
-                    '409' => new Response('Version not completed, a generation is running (code=generation_in_progress), the plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)'),
+                    '409' => new Response('Version not completed, a generation is running (code=generation_in_progress), the period plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)'),
                 ],
                 summary: 'Load a version: put the plan settings back to those of this version (no solve)',
             )),

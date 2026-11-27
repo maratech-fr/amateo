@@ -287,18 +287,39 @@ final class PlanComposition
      */
     public function onScopeChanged(Constraint $constraint, ConstraintScope $previous): void
     {
-        $scope = $constraint->getScope();
-        if ($previous === $scope || null !== $constraint->getCalendarEntryId()) {
+        if (null !== $constraint->getCalendarEntryId()) {
             return;
         }
-        $lines = $this->entityManager->getRepository(PlanConstraint::class)->findBy(['constraintId' => $constraint->getId()]);
-        $types = $this->planTypesOf(array_map(static fn (PlanConstraint $line): string => $line->getSchedulePlanId(), $lines));
-        foreach ($lines as $line) {
-            $type = $types[$line->getSchedulePlanId()] ?? null;
-            if ($type instanceof SchedulePlanType && $line->applies() === $type->keepsSocleConstraintByDefault($previous)) {
-                $line->setApplies($type->keepsSocleConstraintByDefault($scope));
+        $this->followScope($constraint->getId(), $previous, $constraint->getScope());
+    }
+
+    /**
+     * La validation du planning de saison (lot 5) : les lignes de règle des plans de période suivent la version qui
+     * entre en vigueur, comparée à celle qu'elle remplace. Une règle permanente sortie de la copie (supprimée ou datée)
+     * perd ses lignes ; une règle dont la portée a changé fait suivre les lignes restées au défaut de l'ancienne portée
+     * ({@see onScopeChanged}) ; une règle entrée reçoit ses lignes au défaut ({@see ensureLines}, qui lit l'en vigueur).
+     * Sans version remplacée (première validation), les lignes ont suivi le travail au fil des gestes : seules les
+     * manquantes sont posées. Toutes les périodes de la saison sont concernées, commencées comprises.
+     */
+    public function propagateSocleChanges(string $seasonId, ?PlanState $replaced, PlanState $inForce): void
+    {
+        $before = $replaced?->toArray()['Constraint'] ?? [];
+        $after = $inForce->toArray()['Constraint'] ?? [];
+        foreach ($before as $constraintId => $rule) {
+            $constraintId = (string) $constraintId;
+            if (!isset($after[$constraintId])) {
+                $this->removeRuleLines($constraintId);
+
+                continue;
+            }
+            $previous = ConstraintScope::tryFrom(\is_string($rule['scope'] ?? null) ? $rule['scope'] : '');
+            $scope = ConstraintScope::tryFrom(\is_string($after[$constraintId]['scope'] ?? null) ? $after[$constraintId]['scope'] : '');
+            if ($previous instanceof ConstraintScope && $scope instanceof ConstraintScope) {
+                $this->followScope($constraintId, $previous, $scope);
             }
         }
+        $this->entityManager->flush();
+        $this->ensureLines($seasonId);
     }
 
     /** Retire les lignes d'une règle de chaque plan de période (elle devient datée). Ne flush pas. */
@@ -384,6 +405,22 @@ final class PlanComposition
         }
 
         return $lines;
+    }
+
+    /** Les lignes d'une règle restées au défaut de l'ancienne portée passent au défaut de la nouvelle. Ne flush pas. */
+    private function followScope(string $constraintId, ConstraintScope $previous, ConstraintScope $scope): void
+    {
+        if ($previous === $scope) {
+            return;
+        }
+        $lines = $this->entityManager->getRepository(PlanConstraint::class)->findBy(['constraintId' => $constraintId]);
+        $types = $this->planTypesOf(array_map(static fn (PlanConstraint $line): string => $line->getSchedulePlanId(), $lines));
+        foreach ($lines as $line) {
+            $type = $types[$line->getSchedulePlanId()] ?? null;
+            if ($type instanceof SchedulePlanType && $line->applies() === $type->keepsSocleConstraintByDefault($previous)) {
+                $line->setApplies($type->keepsSocleConstraintByDefault($scope));
+            }
+        }
     }
 
     /**

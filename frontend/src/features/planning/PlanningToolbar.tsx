@@ -33,6 +33,8 @@ interface PlanningToolbarProps {
   onRegenerate: () => void;
   onValidate: () => void;
   onReopen: () => void;
+  /** Lot 5 — « Retravailler » la version en vigueur du planning de saison (la page confirme puis copie). */
+  onRework: () => void;
   onDelete: () => void;
   /** « Charger cette version », tout plan : la page confirme puis charge. */
   onLoad: () => void;
@@ -79,6 +81,7 @@ export function PlanningToolbar({
   onRegenerate,
   onValidate,
   onReopen,
+  onRework,
   onDelete,
   onLoad,
   disableRegenerate = false,
@@ -217,14 +220,15 @@ export function PlanningToolbar({
             {PLANNING_TEXTS.validate}
           </Button>
         ) : null}
-        {/* Rouvrir est le geste de l'écran /planning (la version EN VIGUEUR) : borné à
-            `!embedded`. Valider (embedded) et Rouvrir (standalone) sont les deux sorties
-            symétriques — Valider atterrit sur /planning, Rouvrir ramène au wizard étape
-            Génération. Dans le wizard, une version en vigueur ne montre donc plus Rouvrir. */}
+        {/* Rouvrir / Retravailler sont les gestes de l'écran /planning (la version EN VIGUEUR) :
+            bornés à `!embedded`. Valider (embedded) et eux (standalone) sont les sorties
+            symétriques — Valider atterrit sur /planning, eux ramènent au wizard étape Génération.
+            Le planning de saison ne se rouvre plus (lot 5) : il se retravaille, sa version validée
+            reste en vigueur ; une période garde « Rouvrir ». */}
         {canManage && !embedded && isChosen ? (
-          <Button size="sm" variant="outline" disabled={actionBusy} onClick={onReopen}>
+          <Button size="sm" variant="outline" disabled={actionBusy} onClick={isOverlay ? onReopen : onRework}>
             <LockOpen className="size-4" />
-            {PLANNING_TEXTS.reopen}
+            {isOverlay ? PLANNING_TEXTS.reopen : PLANNING_TEXTS.rework}
           </Button>
         ) : null}
         {/* Vue et filtre, accolés (P4-43). Le filtre vivait en ligne 2 derrière l'export,

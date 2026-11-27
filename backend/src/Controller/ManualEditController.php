@@ -1071,7 +1071,7 @@ final class ManualEditController extends AbstractController implements SeasonSco
     private function editRefusal(Schedule $schedule): ?JsonResponse
     {
         return match ($this->versionEditability->check($schedule)) {
-            VersionEditability::CHOSEN => $this->json(['code' => VersionEditability::CHOSEN, 'error' => VersionEditability::CHOSEN_EDIT_MESSAGE], Response::HTTP_CONFLICT),
+            VersionEditability::CHOSEN => $this->json(['code' => VersionEditability::CHOSEN, 'error' => $this->versionEditability->chosenEditMessage($schedule)], Response::HTTP_CONFLICT),
             VersionEditability::NOT_LOADED => $this->json(['code' => VersionEditability::NOT_LOADED, 'error' => VersionEditability::NOT_LOADED_EDIT_MESSAGE], Response::HTTP_CONFLICT),
             default => null,
         };

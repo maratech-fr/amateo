@@ -11,6 +11,8 @@ use App\Entity\CalendarEntry;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\FutureHolidayCollectePurger;
 use App\Service\OrphanedFixtureFinder;
@@ -57,6 +59,8 @@ final class ValidateScheduleController extends AbstractController implements Sea
         private readonly FixtureVenueLossMarker $fixtureVenueLossMarker,
         private readonly FutureHolidayCollectePurger $collectePurger,
         private readonly VersionEditability $versionEditability,
+        private readonly PlanStates $planStates,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -178,6 +182,10 @@ final class ValidateScheduleController extends AbstractController implements Sea
             // (Cas normal : à la 1re validation aucun plan secondaire n'existe — inv. 13 les
             // interdit sans socle pointé — donc la garde ne coûte rien.)
             $currentlyChosen = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
+            // Lot 5 : la copie de la version qui quitte la vigueur, lue avant que la suppression des sœurs ne l'emporte —
+            // les lignes de règle des périodes suivront l'écart entre elle et la version validée.
+            $socleChanges = null === $entryId && $schedule->getId() !== $currentlyChosen && $this->planStates->has($schedule->getId());
+            $replaced = $socleChanges && null !== $currentlyChosen && $this->planStates->has($currentlyChosen) ? $this->planStates->of($currentlyChosen) : null;
             $overlaysToDelete = [];
             $futureHolidayMotherIds = [];
             if (null === $entryId && $schedule->getId() !== $currentlyChosen) {
@@ -246,6 +254,11 @@ final class ValidateScheduleController extends AbstractController implements Sea
             // ARCHIVED). Les pointeurs ont tous été déplacés sur la gagnante ci-dessus.
             foreach ($siblings as $sibling) {
                 $this->overlayManager->deleteVersion($sibling);
+            }
+
+            // Lot 5 : les lignes de règle des plans de période (commencés compris) suivent le socle qui entre en vigueur.
+            if ($socleChanges) {
+                $this->planComposition->propagateSocleChanges($schedule->getSeasonId(), $replaced, $this->planStates->of($schedule->getId()));
             }
 
             // P2-52 (RMM-10) — LA VALIDATION EST LA GÂCHETTE. Un match pointant une salle

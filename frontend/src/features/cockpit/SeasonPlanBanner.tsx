@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useMe } from "@/shared/session/queries";
 import { STATUS_LABELS, type Schedule } from "@/features/planning/api";
-import { usePlacedConflicts } from "@/features/planning/queries";
+import { usePendingChanges, usePlacedConflicts } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
 import { Button } from "@/shared/components/ui/button";
@@ -59,6 +59,8 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   // Chantier H — les relais (retards tolérés ouverts par un adjoint) : comptés et affichés À PART,
   // jamais fondus dans les conflits « à deux endroits » (un relais est toléré, pas un conflit).
   const relayCount = (placedConflicts?.relays ?? []).length;
+  // Lot 5 — des modifications attendent la validation du planning de saison : le serveur le calcule.
+  const { data: pendingChanges } = usePendingChanges(socleValidated ? (me?.seasonPlan?.id ?? null) : null);
 
   // Validated (state 3) → consult the plan. Not yet (state 2) → back to the
   // wizard's generation step to finish/validate it.
@@ -78,10 +80,9 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
   };
 
   // « Modifier les données du club » (décision fondateur 2026-09-28) : compléter le modèle
-  // (coachs déclarés tard, équipes, gymnases) alors que le socle est EN VIGUEUR, SANS « Rouvrir »
-  // (qui détruirait les plans de période futurs). On sort d'un éventuel mode période et on ouvre le
-  // wizard sur l'étape Équipes ; les contraintes et la génération y sont verrouillées (le serveur
-  // refuse déjà la génération en 409), les modifications s'appliqueront à la prochaine génération.
+  // (coachs déclarés tard, équipes, gymnases) alors que le socle est EN VIGUEUR. On sort d'un
+  // éventuel mode période et on ouvre le wizard sur l'étape Équipes ; le planning validé reste en
+  // vigueur, ce qui est modifié attend la validation (lot 5).
   const editClubData = () => {
     useWizardStore.getState().exitPeriodMode();
     useWizardStore.getState().jumpTo("teams");
@@ -104,6 +105,7 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
                   {COCKPIT_TEXTS.conflictedPeoplePill(conflictedPeople)}
                 </StatusPill>
               ) : null}
+              {true === pendingChanges?.pending ? <StatusPill variant="warning">{COCKPIT_TEXTS.pendingChangesPill}</StatusPill> : null}
               {relayCount > 0 ? (
                 <StatusPill variant="warning" icon={<CalendarClock className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
                   {COCKPIT_TEXTS.relayPill(relayCount)}

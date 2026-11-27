@@ -12,7 +12,8 @@ use App\Entity\Schedule;
  *
  * Seule la version CHARGÉE se modifie ({@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan},
  * plan de saison comme plan de période) ; les autres se consultent. La version en vigueur a son
- * propre motif : le geste qui en sort est « Rouvrir », pas « Charger ».
+ * propre motif : le geste qui en sort est « Retravailler » pour le planning de saison, « Rouvrir » pour
+ * une période, jamais « Charger ».
  */
 final class VersionEditability
 {
@@ -26,6 +27,9 @@ final class VersionEditability
 
     public const string CHOSEN_EDIT_MESSAGE = 'Ce planning est validé (lecture seule) — rouvrez-le avant de le modifier.';
 
+    /** Le planning de saison ne se rouvre plus (lot 5) : sa version en vigueur se retravaille. */
+    public const string CHOSEN_SEASON_EDIT_MESSAGE = 'Ce planning est en vigueur (lecture seule) : retravaillez-le pour le modifier.';
+
     public function __construct(
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {}
@@ -38,6 +42,12 @@ final class VersionEditability
         }
 
         return null !== $loadedScheduleId && $loadedScheduleId !== $scheduleId ? self::NOT_LOADED : null;
+    }
+
+    /** Le texte du refus d'une retouche sur la version en vigueur, selon la nature de son plan. */
+    public function chosenEditMessage(Schedule $schedule): string
+    {
+        return $this->schedulePlanProvisioner->isSeasonSchedule($schedule) ? self::CHOSEN_SEASON_EDIT_MESSAGE : self::CHOSEN_EDIT_MESSAGE;
     }
 
     /** Le motif du refus (`not_loaded_version`, `chosen_version`), ou null si la version se modifie. */

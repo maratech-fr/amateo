@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock, Plus, Route, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Route, Sparkles, Trash2 } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -18,7 +18,6 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { nextVenueColor } from "@/shared/lib/color";
 import { readState } from "@/shared/lib/readState";
-import { useSocleValidated } from "@/shared/lib/socle";
 import { useTravelStream } from "@/shared/lib/travelStream";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -281,13 +280,9 @@ export function VenuesStep() {
 }
 
 function VenuesEditor() {
-  // Décision fondateur 2026-09-28 — « Modifier les données du club » : quand le socle (plan de
-  // saison) est VALIDÉ, la fiche du gymnase reste éditable mais la GRILLE des créneaux
-  // d'entraînement passe en lecture seule (les créneaux sont une contrainte : on rouvre le planning
-  // pour les changer). `VenuesEditor` n'est rendu qu'en mode SAISON (`VenuesStep` route la période
-  // vers `PeriodVenues`), donc le socle validé suffit à décider. Faux en onboarding ou après
-  // « Rouvrir » → l'édition redevient normale.
-  const slotsReadOnly = useSocleValidated();
+  // « Modifier les données du club » : quand le socle (plan de saison) est VALIDÉ, la grille des créneaux
+  // se modifie comme avant la validation (lot 5) — le planning validé reste en vigueur, la modification
+  // attend la validation.
   const { data: venues = [], isSuccess: venuesLoaded } = useWizardVenues();
   // Accordéon « Ajouter un gymnase » (demande fondateur 2026-08-05 : l'encart prenait trop de
   // place). Tant que le gestionnaire n'y a pas touché, il est ouvert pour un club sans gymnase, et
@@ -477,12 +472,8 @@ function VenuesEditor() {
     consumedSlotRef.current = slotTarget;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot : positionne sur le créneau ciblé (sélection du gymnase + ouverture de son éditeur)
     setSelectedId(slot.venueId);
-    // En lecture seule on positionne sur le gymnase du créneau mais on N'OUVRE PAS l'éditeur — un
-    // deep-link ne doit pas rouvrir un chemin d'édition que le socle validé ferme.
-    if (!slotsReadOnly) {
-      setEditingSlot(slot);
-    }
-  }, [slotTarget, slots, slotsReadOnly]);
+    setEditingSlot(slot);
+  }, [slotTarget, slots]);
   // P3-16 — l'impact vient du serveur, et seulement quand une suppression attend confirmation.
   const venueImpact = useDeletionImpact("venue", pendingDeleteVenue?.id ?? null);
 
@@ -894,27 +885,13 @@ function VenuesEditor() {
             </div>
           </div>
 
-          {/* Lecture seule (socle validé) : la barre de pose n'a pas lieu d'être — on la remplace
-              par la MENTION qui dit pourquoi la grille ne répond plus au clic. */}
-          {/* Planning validé : les créneaux sont une contrainte, mais les occupations restent
-              modifiables — le gestionnaire garde une barre « À poser : Occupation ». Un Membre
-              voit le bandeau d'aujourd'hui, sans barre. */}
-          {slotsReadOnly ? (
-            <NoticeBanner
-              tone="muted"
-              role="status"
-              className="mb-3"
-              icon={<Lock className="size-4 text-muted-foreground" />}
-              message={canManage ? WIZARD_TEXTS.slotsReadOnlyNoticeManager : WIZARD_TEXTS.slotsReadOnlyNotice}
-            />
-          ) : null}
           {!canManage ? null : (
           /* Slot-placement toolbar — what the click places, then the duration of the next
               dropped block. Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toPlaceLabel}</span>
-            <PlacementKindBar kind={placementKind} onKind={setPlacementKind} label={occupancyLabel} onLabel={setOccupancyLabel} kindLocked={slotsReadOnly} />
+            <PlacementKindBar kind={placementKind} onKind={setPlacementKind} label={occupancyLabel} onLabel={setOccupancyLabel} />
             {/* D8 — même sélecteur partagé ; pas d'heure connue ici (le début vient du clic
                 sur la grille) : la borne de minuit est vérifiée à la pose (`slotPlacementError`). */}
             <DurationSelect aria-label={WIZARD_TEXTS.durationToPlaceLabel} className="h-9" wrapperClassName="w-24" value={duration} onChange={setDuration} />
@@ -923,7 +900,7 @@ function VenuesEditor() {
                 question se pose. */}
             {/* « un créneau » tout court devenait ambigu dès qu'une plage match s'affiche
                 dans la même grille : on dit ce que le clic pose. */}
-            <span className="text-xs text-muted-foreground">{slotsReadOnly || "occupancy" === placementKind ? WIZARD_TEXTS.occupancyClickGridHint : WIZARD_TEXTS.clickGridHint}</span>
+            <span className="text-xs text-muted-foreground">{"occupancy" === placementKind ? WIZARD_TEXTS.occupancyClickGridHint : WIZARD_TEXTS.clickGridHint}</span>
             {/* La hachure est un motif MUET sans ce mot : elle apparaît dans la grille sans
                 que rien n'en dise le sens. La légende ne s'affiche que s'il y a quelque
                 chose à légender. */}
@@ -938,7 +915,7 @@ function VenuesEditor() {
               </span>
             ) : null}
           </div>
-          {!slotsReadOnly && "occupancy" === placementKind ? <p className="-mt-2 mb-3 text-xs text-muted-foreground">{WIZARD_TEXTS.occupancyHelp}</p> : null}
+          {"occupancy" === placementKind ? <p className="-mt-2 mb-3 text-xs text-muted-foreground">{WIZARD_TEXTS.occupancyHelp}</p> : null}
           </>
           )}
 
@@ -947,13 +924,12 @@ function VenuesEditor() {
             slots={venueSlots}
             matchWindows={venueMatchWindows}
             selectedSlotId={editingSlot?.id ?? null}
-            // Planning validé : seuls les créneaux sont inertes (gestionnaire) ; un Membre ne pose rien.
+            // Un Membre ne pose rien.
             readOnly={!canManage}
-            slotsLocked={slotsReadOnly}
             occupancies={venueOccupancies}
             onSelectOccupancy={canManage ? (occupancy) => setEditingOccupancy(occupancy) : undefined}
             onAdd={(dayOfWeek, startTime) => {
-              if (slotsReadOnly || "occupancy" === placementKind) {
+              if ("occupancy" === placementKind) {
                 const label = occupancyLabel.trim();
                 const invalidOccupancy = "" === label ? WIZARD_TEXTS.occupancyMissingLabel : occupancyPlacementError(venueSlots, venueOccupancies, dayOfWeek, startTime, duration);
                 if (null !== invalidOccupancy) {
@@ -985,7 +961,7 @@ function VenuesEditor() {
             />
           ) : null}
 
-          {null !== editingSlot && !slotsReadOnly && canManage ? (
+          {null !== editingSlot && canManage ? (
             <SlotEditor
               key={editingSlot.id}
               slot={editingSlot}
