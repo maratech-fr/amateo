@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27) et PR 4b (la coupe a sa règle, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27), PR 4b (la coupe a sa règle, livrée le 2026-11-27) et PR 5 (le repli de ligue est dit, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
@@ -9,8 +9,8 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b, 4a et 4b livrées (§4, « Écarts au plan, tels que livrés »), les quatre autres à faire.
-- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b, 4a et 4b sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b, 4a, 4b et 5 livrées (§4, « Écarts au plan, tels que livrés »), les deux autres à faire.
+- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b, 4a, 4b et 5 sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
 | PR du lot 7 | Fichiers partagés avec | Contrainte |
@@ -429,6 +429,17 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - (9) Le plafond `frontend/act-warnings-ceiling.json` passe de 27 à 23 (mesuré sur deux runs). `conflictLabels.test.ts` est adapté mécaniquement (le 15ᵉ type).
 - (10) Contrôle visuel : les icônes de l'indication de coupe (`CupHint`, `PlacementPanel`) sont corrigées après les captures ; `matches.spec.ts` joué (7 passés). Captures dans `captures/lot7-pr4b/` (ignoré par git).
 - (11) Observation antérieure à la PR, hors périmètre : le bouton « Rendre au système » déborde de quelques pixels dans la carte du panneau d'un match posé (`PlacementPanel.tsx`, vers la ligne 411). Limite écrite (§11), non corrigée.
+
+**PR 5 livrée le 2026-11-27** sur `lot/conception`, non déployée.
+
+**Écarts au plan, tels que livrés (PR 5)**
+- (1) **Ton `accent`, pas « information »** : le `NoticeBanner` prend la couleur du club (rosé sur un club à accent rouge), texte en `text-foreground`, contraste correct, cohérent avec les autres bandeaux accent de l'app. Décision : gardé ; pas d'icône, comme ses voisins.
+- (2) `role="status"` ; le bandeau est hors `ManagerOnly` : un Membre le voit aussi.
+- (3) Le libellé de référence « Auvergne-Rhône-Alpes » est en dur (`LeagueMatchWindow::FEDERATION_DEFAULT_LEAGUE_LABEL`) et testé en clair.
+- (4) Le serveur compare la ligue effective à `league_match_window`, jamais à `ffbb_league` ; le quatrième cas de `LeagueMatchWindowsApiTest` garde ce piège.
+- (5) `resolvedTeamWindows` était absent du schéma OpenAPI de la route avant la PR et n'y est pas ajouté ; seul `leagueFallback` y entre (snapshot régénéré).
+- (6) Contrôle visuel : aucune re-baseline de `matchs-contraintes-club-chromium-linux.png` (la section Ligue est fermée dans la capture). Captures dans `captures/lot7-pr5/` (ignoré par git).
+- (7) Pas de scénario Behat : le plan n'en nomme pas. Le test Vitest rend l'écran deux fois (serveur en repli, puis au catalogue).
 
 ### PR 5 · « Le repli de ligue est dit » (`neo`, backend et un bandeau)
 
