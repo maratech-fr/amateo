@@ -892,11 +892,14 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
   const teamsRes = await page.request.get("/api/teams?itemsPerPage=100");
   expect(teamsRes.ok(), "GET /api/teams").toBeTruthy();
   const teamId = ((await teamsRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
-  const venuesRes = await page.request.get("/api/venues?itemsPerPage=100");
-  expect(venuesRes.ok(), "GET /api/venues").toBeTruthy();
-  const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
+  // Un domicile de championnat exige l'accès match du gymnase ce jour-là : un gymnase ouvert le samedi.
+  const windowsRes = await page.request.get("/api/venue_match_windows?itemsPerPage=200");
+  expect(windowsRes.ok(), "GET /api/venue_match_windows").toBeTruthy();
+  const saturdayWindow = membersOf(await windowsRes.json()).find((w) => 6 === Number(w.dayOfWeek));
+  const venueId = saturdayWindow?.venueId as string | undefined;
+  const kickoffTime = String(saturdayWindow?.startTime ?? "").slice(0, 5);
   expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
-  expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+  expect(venueId, "le club seedé a un gymnase ouvert aux matchs le samedi").toBeTruthy();
   const meRes = await page.request.get("/api/me");
   expect(meRes.ok(), "GET /api/me").toBeTruthy();
   const clubName = String((await meRes.json()).club?.name ?? "");
@@ -928,9 +931,9 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
   try {
     for (const [opponentLabel, competitionId] of [[tracked, championship?.id], [byHand, null]] as const) {
       const created = await page.request.post("/api/fixtures", {
-        data: { teamId, matchDate: saturday, homeAway: "HOME", opponentLabel, venueId, kickoffTime: "15:00", status: "PLACED", competitionId },
+        data: { teamId, matchDate: saturday, homeAway: "HOME", opponentLabel, venueId, kickoffTime, status: "PLACED", competitionId },
       });
-      expect(created.ok(), `POST /api/fixtures (${opponentLabel})`).toBeTruthy();
+      expect(created.ok(), `POST /api/fixtures (${opponentLabel}) : ${await created.text()}`).toBeTruthy();
       createdIds.push((await created.json()).id as string);
     }
 
