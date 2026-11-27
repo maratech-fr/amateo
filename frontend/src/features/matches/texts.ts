@@ -32,6 +32,12 @@ export const MATCHES_TEXTS = {
   teamVenueForbiddenTitle: "Gymnase interdit à l'équipe",
   awayNoFootprintTitle: "Extérieur sans heure ni habitude",
   friendlyOnMatchSlotTitle: "Amical sur un créneau de match",
+  /** Lot 7, PR 4b — la règle des coupes : les heures viennent de `CUP_KICKOFF_MIN`/`CUP_KICKOFF_MAX`, les jours de `days.ts`. */
+  cupKickoffOutOfHoursTitle: "Coupe hors horaires",
+  cupKickoffOutOfHoursSummary: (team: string, date: string, kickoff: string, min: string, max: string) => `Match ${team} du ${date} à ${kickoff} : une coupe se joue entre ${min} et ${max}. Pose libre, à surveiller.`,
+  panelCupWeekend: (saturday: string, sunday: string, min: string, max: string) => `Coupe : ${saturday} ou ${sunday} au choix, coup d'envoi entre ${min} et ${max}.`,
+  panelCupWeekday: (min: string, max: string) => `Coupe : date imposée, coup d'envoi entre ${min} et ${max}.`,
+  panelCupOut: (min: string, max: string) => `Coupe : coup d'envoi hors ${min}–${max}.`,
   /** Formulaire de match : la compétition d'office des amicaux, première option du sélecteur. */
   friendlyCompetitionOption: "Amicaux",
   fixtureCompetitionLabel: "Compétition",

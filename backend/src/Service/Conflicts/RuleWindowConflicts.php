@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Entity\LeagueWindowInterface;
 use App\Enum\FixtureHomeAway;
 use App\Matches\ConflictType;
+use App\Matches\CupKickoffRule;
 use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
 
@@ -31,11 +32,11 @@ final class RuleWindowConflicts
      * @param list<Fixture>                              $fixtures
      * @param array<string, list<LeagueWindowInterface>> $envelope
      * @param list<string>                               $publicHolidays dates fériées (Y-m-d) — un match férié n'est jamais hors fenêtre de ligue (PR2)
-     * @param array<string, true>                        $friendlyIds    les compétitions amicales
+     * @param array<string, true>                        $exemptIds      les compétitions sans fenêtre de ligue : amicales et coupes
      *
      * @return list<array<string, mixed>>
      */
-    public function leagueWindowViolations(array $fixtures, array $envelope, array $publicHolidays = [], array $friendlyIds = []): array
+    public function leagueWindowViolations(array $fixtures, array $envelope, array $publicHolidays = [], array $exemptIds = []): array
     {
         $conflicts = [];
         foreach ($fixtures as $fixture) {
@@ -53,7 +54,8 @@ final class RuleWindowConflicts
             // FFBB : il ne peut donc jamais être « hors fenêtre autorisée par la
             // ligue » (décision fondateur, 2026-09-08, P4-190). Les autres
             // familles (VENUE_OVERLAP, MATCH_MATCH…) continuent de s'appliquer.
-            if (isset($friendlyIds[(string) $fixture->getCompetitionId()])) {
+            // Une coupe non plus (lot 7, PR 4b) : elle n'obéit qu'à son horaire ({@see self::cupKickoffViolations}).
+            if (isset($exemptIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             $windows = $envelope[$fixture->getTeamId()] ?? [];
@@ -74,6 +76,39 @@ final class RuleWindowConflicts
                 'type' => ConflictType::LEAGUE_WINDOW_VIOLATION->value,
                 'severity' => 2,
                 'windows' => $windowArrays,
+                'fixture' => ConflictMoments::bareFixtureView($fixture),
+            ];
+        }
+
+        return $conflicts;
+    }
+
+    /**
+     * Severity 3 (lot 7, PR 4b) — un domicile de COUPE posé dont le coup d'envoi sort de 08:00–21:00, bornes
+     * comprises ({@see CupKickoffRule}). Le jour n'est jamais jugé (week-end au choix du club, date imposée en
+     * semaine), et la borne vaut aussi un jour férié. La pose à la main reste PERMISE : ceci la SIGNALE.
+     *
+     * @param list<Fixture>       $fixtures
+     * @param array<string, true> $cupIds   les compétitions de coupe
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function cupKickoffViolations(array $fixtures, array $cupIds): array
+    {
+        $conflicts = [];
+        foreach ($fixtures as $fixture) {
+            $kickoffTime = $fixture->getKickoffTime();
+            if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
+                continue;
+            }
+            if (!isset($cupIds[(string) $fixture->getCompetitionId()]) || CupKickoffRule::accepts($kickoffTime->format('H:i'))) {
+                continue;
+            }
+            $conflicts[] = [
+                'type' => ConflictType::CUP_KICKOFF_OUT_OF_HOURS->value,
+                'severity' => 3,
+                'kickoffMin' => CupKickoffRule::KICKOFF_MIN,
+                'kickoffMax' => CupKickoffRule::KICKOFF_MAX,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];
         }

@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Fixture;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Matches\HandPlaced;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -23,6 +24,7 @@ final class MatchPlacementResultApplier
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
+        private readonly HandPlaced $handPlaced,
     ) {}
 
     /**
@@ -57,6 +59,10 @@ final class MatchPlacementResultApplier
 
     private function solverMayWrite(Fixture $fixture): bool
     {
+        // Un amical ou une coupe se place à la main (lot 7, Q6 et Q7) : le retour du moteur n'écrit jamais dessus.
+        if ($this->handPlaced->is($fixture)) {
+            return false;
+        }
         if (FixtureStatus::UNPLACED === $fixture->getStatus()) {
             return true;
         }

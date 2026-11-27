@@ -90,7 +90,9 @@ export type ConflictType =
   | "FRIENDLY_ON_MATCH_SLOT"
   // P4-288 — une équipe sans niveau ayant au moins une rencontre retenue : ses matchs
   // sont posés sans les créneaux de sa ligue (le niveau conditionne l'enveloppe).
-  | "TEAM_LEVEL_MISSING";
+  | "TEAM_LEVEL_MISSING"
+  // Lot 7, PR 4b — un domicile de coupe posé hors de 08:00–21:00 (gravité 3, jamais bloquant).
+  | "CUP_KICKOFF_OUT_OF_HOURS";
 
 /**
  * P4-207 — l'axe TRAITEMENT d'un conflit (où en est sa RÉSOLUTION), distinct de la
@@ -198,6 +200,9 @@ export interface Conflict {
   windows?: LeagueKickoffWindow[] | VenueAccessWindow[];
   /** CLUB_RULE_VIOLATION (severity 3, P4-272 ③) — the HARD club rules the placed kickoff violates. */
   rules?: ClubRuleViolationRule[];
+  /** CUP_KICKOFF_OUT_OF_HOURS (severity 3, lot 7 PR 4b) — les bornes du coup d'envoi d'une coupe, « HH:MM », comprises. */
+  kickoffMin?: string;
+  kickoffMax?: string;
   /**
    * COMPETITION_INCOMPLETE — cohérence de complétude d'une compétition appariée
    * (règle fondateur 2026-10-01). `imported` = rencontres rattachées (n), `expected` =

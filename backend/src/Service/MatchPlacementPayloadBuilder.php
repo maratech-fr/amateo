@@ -26,7 +26,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
-use App\Matches\FriendlyCompetitions;
+use App\Matches\HandPlaced;
 use App\Service\Conflicts\DayHoldings;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -45,7 +45,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * - the league envelope is resolved per team by LeagueEnvelopeResolver
  *   (tolerant join — unmapped team = no league HARD + an INFO diagnostic).
  *
- * Match kinds (a FRIENDLY = a match of a FRIENDLY competition is handled apart, below):
+ * Match kinds (a FRIENDLY = a match of a FRIENDLY competition, and a CUP, are handled apart, below):
  * - competition HOME UNPLACED → TO_PLACE ;
  * - competition HOME PLACED by the SOLVER → TO_PLACE carrying its current
  *   placement (stability bonus + hint) ;
@@ -60,6 +60,8 @@ use Doctrine\ORM\EntityManagerInterface;
  *   anchored (venue+kickoff) → FIXED (its gym stays protected against the other
  *   matches, PLACED+SOLVER legacy included) ; UNPLACED or unanchored → absent
  *   from the payload (null) ;
+ * - a CUP follows the same rule (lot 7 PR 4b, Q7): no league window, the solver cannot pick its
+ *   Saturday or Sunday, the manager places it by hand ({@see HandPlaced}) ;
  * - AWAY → informative footprint (real or estimated hour, else none). The solver IGNORES an
  *   AWAY match's person footprint entirely (P4-240 ③ décision B), so neither its estimated-hour
  *   flag nor its round-trip travel is sent (contract 1.3, ALIGN-20) — the conflict radar computes
@@ -97,7 +99,7 @@ final class MatchPlacementPayloadBuilder
         private readonly MatchConflictDetector $conflictDetector,
         private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly PlanHoldingInputs $planHoldingInputs,
-        private readonly FriendlyCompetitions $friendlyCompetitions,
+        private readonly HandPlaced $handPlaced,
     ) {}
 
     /**
@@ -205,9 +207,8 @@ final class MatchPlacementPayloadBuilder
         // Matches.
         $toPlaceCount = 0;
         $matchRows = [];
-        $friendlyIds = null !== $seasonId ? $this->friendlyCompetitions->friendlyIdsOf($seasonId) : [];
         foreach ($fixtures as $fixture) {
-            $row = $this->matchRow($fixture, $habitIndex, $window, $friendlyIds);
+            $row = $this->matchRow($fixture, $habitIndex, $window);
             if (null === $row) {
                 continue;
             }
@@ -420,12 +421,11 @@ final class MatchPlacementPayloadBuilder
 
     /**
      * @param array<string, array<int, TeamMatchHabit>> $habitIndex
-     * @param array{from: string, to: string}|null      $window      P4-240 ④ — fenêtre de placement (dates Y-m-d incluses), null = tout le club
-     * @param array<string, true>                       $friendlyIds les compétitions amicales de la saison
+     * @param array{from: string, to: string}|null      $window     P4-240 ④ — fenêtre de placement (dates Y-m-d incluses), null = tout le club
      *
      * @return array<string, mixed>|null null = skipped (unanchorable submitted match, or dropped out-of-window)
      */
-    private function matchRow(Fixture $fixture, array $habitIndex, ?array $window, array $friendlyIds): ?array
+    private function matchRow(Fixture $fixture, array $habitIndex, ?array $window): ?array
     {
         $base = [
             'id' => $fixture->getId(),
@@ -463,11 +463,11 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
-        // A FRIENDLY (a match of a FRIENDLY competition, lot 7 PR 4a) is NEVER handed
-        // to the solver (P4-193): it is never TO_PLACE. It falls straight through to
+        // A FRIENDLY or a CUP (lot 7, PR 4a and PR 4b — Q6, Q7) is placed by hand,
+        // NEVER handed to the solver: it is never TO_PLACE. It falls straight through to
         // the anchor branch — placed+anchored → FIXED (its gym stays protected),
         // UNPLACED/unanchored → null (absent). The PLACED+SOLVER case is caught here too.
-        $isFriendly = isset($friendlyIds[(string) $fixture->getCompetitionId()]);
+        $isHandPlaced = $this->handPlaced->is($fixture);
 
         $isSolverPlaced = FixtureStatus::PLACED === $fixture->getStatus()
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();
@@ -475,7 +475,7 @@ final class MatchPlacementPayloadBuilder
         // dans la branche d'ancrage ci-dessous : déjà posé (venue+kickoff, SOLVER compris)
         // → FIXED (ancre, sa salle protégée, il ne bouge pas — le résultat ne le réécrit
         // pas, il n'est jamais renvoyé par le moteur) ; non posé → null (absent du payload).
-        if (!$isFriendly && $inWindow && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
+        if (!$isHandPlaced && $inWindow && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
             $row = $base + [
                 'kind' => 'TO_PLACE',
                 'currentVenueId' => $isSolverPlaced ? $fixture->getVenueId() : null,

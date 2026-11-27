@@ -309,7 +309,7 @@ export function CalendarPage() {
   const isMonth = "mois" === consultTemporality;
   const isPhase = "phase" === consultTemporality;
 
-  // Domiciles placés hors enveloppe ligue (surface de travail de la grille).
+  // Domiciles placés hors enveloppe ligue, ou coupes hors horaires (surface de travail de la grille).
   const outOfEnvelope = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const fixture of allFixtures) {

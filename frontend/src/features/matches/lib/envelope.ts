@@ -50,9 +50,25 @@ export function isCupFixture(fixture: Fixture): boolean {
   return "CUP" === fixture.competitionType;
 }
 
+/**
+ * ⚠️ MIROIR DÉCLARÉ (régime 2) — la règle d'une coupe (lot 7, PR 4b) : pas de fenêtre de ligue, un coup
+ * d'envoi entre 08:00 et 21:00, intervalle FERMÉ, quel que soit le jour (férié compris). Mêmes bornes et même
+ * prédicat que `App\Matches\CupKickoffRule` (backend, lu par le radar). Cas partagés
+ * `leagueEnvelope.parity.json` (`cupBounds`, `cupCases`), gardés par `LeagueEnvelopeMirrorParityTest`.
+ */
+export const CUP_KICKOFF_MIN = "08:00";
+export const CUP_KICKOFF_MAX = "21:00";
+
+export function cupKickoffInside(kickoff: string): boolean {
+  const min = timeToMinutes(kickoff);
+  return min >= timeToMinutes(CUP_KICKOFF_MIN) && min <= timeToMinutes(CUP_KICKOFF_MAX);
+}
+
 export interface EnvelopeResult {
-  /** True only when the team maps to at least one league window (HARD guard active). */
+  /** True when a rule is active: the team maps to at least one league window, or the match is a cup. */
   mapped: boolean;
+  /** Une coupe : sa règle est l'horaire 08:00–21:00, jamais la fenêtre de ligue (`windows` est vide). */
+  cup?: boolean;
   /** The windows that apply to the fixture's team (empty when unmapped). */
   windows: LeagueWindow[];
   /** Whether the fixture's DATE falls on an allowed day (only meaningful when mapped). */
@@ -73,6 +89,10 @@ export interface EnvelopeResult {
  * The old client-side tolerant join is gone: two implementations of the same
  * join had already started to diverge. An unmapped team ([] or absent) keeps
  * the PR-2 degradation: advisory reference, never a block.
+ *
+ * Lot 7, PR 4b — la nature du match (`competitionType`) décide de sa règle : un amical n'a aucune enveloppe ; une
+ * coupe a une enveloppe ACTIVE bornée par {@link cupKickoffInside}, tout jour, férié compris ; un championnat ou
+ * un brassage, la fenêtre de ligue de son équipe.
  */
 export function resolveEnvelope(
   fixture: Fixture,
@@ -80,16 +100,24 @@ export function resolveEnvelope(
   windows: LeagueWindow[],
   holidays: string[],
 ): EnvelopeResult {
+  // Miroir de `RuleWindowConflicts::leagueWindowViolations` : un férié est dans l'enveloppe.
+  const holiday = holidays.includes(fixture.matchDate);
+  if (isFriendlyFixture(fixture)) {
+    return { mapped: false, cup: false, windows: [], dayOk: true, timeOk: () => true, holiday };
+  }
+  if (isCupFixture(fixture)) {
+    return { mapped: true, cup: true, windows: [], dayOk: true, timeOk: cupKickoffInside, holiday };
+  }
+
   const ids = new Set(resolvedTeamWindows[fixture.teamId] ?? []);
   const matched = windows.filter((w) => ids.has(w.id));
 
   const day = isoWeekday(fixture.matchDate);
   const dayWindows = matched.filter((w) => w.dayOfWeek === day);
-  // Miroir de `RuleWindowConflicts::leagueWindowViolations` : un férié est dans l'enveloppe.
-  const holiday = holidays.includes(fixture.matchDate);
 
   return {
     mapped: matched.length > 0,
+    cup: false,
     windows: matched,
     dayOk: holiday || dayWindows.length > 0,
     // Miroir déclaré ci-dessus : le prédicat d'appartenance à l'enveloppe ligue vit
