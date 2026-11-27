@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\Basketball\FfbbLeague;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\LeagueMatchWindow;
@@ -15,6 +16,7 @@ use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Plans\PlanComposition;
+use App\Repository\Basketball\FfbbLeagueRepository;
 use App\Service\ClubLeagueWindowSeeder;
 use App\Service\LeagueResolver;
 use App\Service\SeasonResolver;
@@ -67,6 +69,78 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         $data = $this->responseData();
         self::assertSame('AURA', $data['league']);
         self::assertNotEmpty($data['items']);
+    }
+
+    /**
+     * Lot 7 PR 5 — le repli de ligue est dit : un club dont la ligue est au
+     * catalogue `league_match_window` ne reçoit aucun repli (`leagueFallback: null`).
+     */
+    public function testCataloguedLeagueServesNoFallback(): void
+    {
+        [$user] = $this->clubUser('AURA');
+
+        $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertArrayHasKey('leagueFallback', $data);
+        self::assertNull($data['leagueFallback']);
+    }
+
+    /**
+     * Lot 7 PR 5 — une ligue lisible absente du catalogue (BOFC) reçoit le repli,
+     * qui nomme sa clé et la ligue de référence.
+     */
+    public function testUncataloguedLeagueServesTheFallbackWithItsKey(): void
+    {
+        [$user] = $this->clubUser('BFC');
+
+        $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(
+            ['clubLeague' => 'BOFC', 'referenceLeagueLabel' => 'Auvergne-Rhône-Alpes'],
+            $this->responseData()['leagueFallback'] ?? null,
+        );
+    }
+
+    /**
+     * Lot 7 PR 5 — un code FFBB illisible (aucune ligue dérivée) reçoit le repli,
+     * sans clé de ligue.
+     */
+    public function testUnreadableCodeServesTheFallbackWithoutKey(): void
+    {
+        [$user] = $this->clubUser('A11');
+
+        $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(
+            ['clubLeague' => null, 'referenceLeagueLabel' => 'Auvergne-Rhône-Alpes'],
+            $this->responseData()['leagueFallback'] ?? null,
+        );
+    }
+
+    /**
+     * Lot 7 PR 5 — le repli se juge contre le catalogue `league_match_window`
+     * (clé interne AURA), jamais contre l'annuaire fédéral `ffbb_league` (code
+     * ARA) : un club AURA ne voit aucun repli même quand l'annuaire porte ARA et
+     * pas AURA. Le cas qui rougit si la comparaison lit la mauvaise table.
+     */
+    public function testFallbackIgnoresTheFederalDirectoryKey(): void
+    {
+        $directory = self::getContainer()->get(FfbbLeagueRepository::class);
+        $ara = new FfbbLeague;
+        $ara->setCode('ARA');
+        $ara->setName('Ligue Auvergne-Rhône-Alpes');
+        $directory->upsert($ara, false);
+        self::assertNotNull($directory->findByCode('ARA'), 'précondition : l\'annuaire fédéral porte ARA');
+        self::assertNull($directory->findByCode('AURA'), 'précondition : l\'annuaire fédéral ne porte pas la clé interne AURA');
+
+        [$user] = $this->clubUser('AURA');
+
+        $this->client->request('GET', '/api/league-match-windows', [], [], $this->authHeaders($user));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertArrayHasKey('leagueFallback', $data);
+        self::assertNull($data['leagueFallback']);
     }
 
     public function testCopyIsPerClubAndTenantIsolated(): void

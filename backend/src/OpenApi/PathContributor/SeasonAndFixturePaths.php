@@ -61,6 +61,15 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'kickoffMin' => ['type' => 'string'],
                             'kickoffMax' => ['type' => 'string'],
                         ]]],
+                        'leagueFallback' => [
+                            'type' => 'object',
+                            'nullable' => true,
+                            'description' => 'Null when the club league is in the window catalogue; otherwise the club inherits the reference league windows',
+                            'properties' => [
+                                'clubLeague' => ['type' => 'string', 'nullable' => true, 'description' => 'Club league key, null when the FFBB club code yields no league'],
+                                'referenceLeagueLabel' => ['type' => 'string', 'description' => 'Readable name of the reference league whose windows are served'],
+                            ],
+                        ],
                     ],
                 ]),
                 '400' => new Response('No club in context'),
