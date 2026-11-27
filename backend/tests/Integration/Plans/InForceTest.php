@@ -132,15 +132,6 @@ final class InForceTest extends KernelTestCase
         self::assertSame([self::ER_TEAM_SM1 . '→' . self::ER_COACH_B], $links, 'seul SM1 → B reste : A, supprimé, est ignoré ; C, posé sans valider, ne vaut pas');
     }
 
-    /** La validation du socle : V1 terminée, pointée et chargée, avec la copie de l'état du jour. */
-    private function validateSocleNow(): void
-    {
-        $version = $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::COMPLETED);
-        $this->chooseAndLoadSocle(self::ER_SOCLE_V1);
-        $states = self::getContainer()->get(PlanStates::class);
-        $states->store($version, $states->capture($version->getSchedulePlanId()));
-    }
-
     protected function setUp(): void
     {
         self::bootKernel();
@@ -152,5 +143,14 @@ final class InForceTest extends KernelTestCase
     {
         $this->unpinEngineRequestClock();
         parent::tearDown();
+    }
+
+    /** La validation du socle : V1 terminée, pointée et chargée, avec la copie de l'état du jour. */
+    private function validateSocleNow(): void
+    {
+        $version = $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::COMPLETED);
+        $this->chooseAndLoadSocle(self::ER_SOCLE_V1);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($version->getSchedulePlanId()));
     }
 }

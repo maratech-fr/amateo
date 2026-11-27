@@ -206,6 +206,14 @@ final class EngineRequestKeySourcesTest extends KernelTestCase
         'coachUnavailabilities[].kickoffMin' => [self::HOT, null, null, 'indisponibilité de match d\'un coach, module matchs'],
     ];
 
+    /** @return iterable<string, array{string}> */
+    public static function inForceReaders(): iterable
+    {
+        foreach (['periode-12-vacances-reglages', 'periode-13-fermeture-reglages', 'placement-5-club-entier', 'placement-6-fenetre', 'placement-21-equipe-creee-apres-validation'] as $reference) {
+            yield $reference => [$reference];
+        }
+    }
+
     /** Une clé sans source fait échouer ; une source qu'aucune des quatre demandes ne porte plus aussi. */
     public function testEveryKeyOfTheRequestHasOneSource(): void
     {
@@ -346,14 +354,6 @@ final class EngineRequestKeySourcesTest extends KernelTestCase
         self::assertSame($hash, ScheduleConstraintBuilder::structureHash($corrected), 'le corriger non plus');
     }
 
-    /** @return iterable<string, array{string}> */
-    public static function inForceReaders(): iterable
-    {
-        foreach (['periode-12-vacances-reglages', 'periode-13-fermeture-reglages', 'placement-5-club-entier', 'placement-6-fenetre', 'placement-21-equipe-creee-apres-validation'] as $reference) {
-            yield $reference => [$reference];
-        }
-    }
-
     /**
      * Non validé : un champ froid de chaque famille du socle, modifié en base après la validation, laisse la demande
      * d'une période ou du placement identique à sa référence (elle lit l'en vigueur, la copie de la validation). Les
@@ -414,7 +414,7 @@ final class EngineRequestKeySourcesTest extends KernelTestCase
 
     protected function tearDown(): void
     {
-        if (static::$booted) {
+        if (self::$booted) {
             $this->unpinEngineRequestClock();
         }
         parent::tearDown();
