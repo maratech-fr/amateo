@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"/home/marabou/projects/scheduler/.claude/hooks/bounded-loop-guard.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/bounded-loop-guard.sh\"",
             "timeout": 5
           }
         ]
