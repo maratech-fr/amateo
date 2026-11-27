@@ -13,10 +13,12 @@ export function deadlinesSummary(competitions?: Competition[]): string | null {
   if (undefined === competitions) {
     return null;
   }
-  const m = competitions.length;
+  // « Amicaux », la compétition d'office des amicaux, n'a pas de ligne d'échéance (patron `EntryDeadlinesEditor`).
+  const rows = competitions.filter((c) => true !== c.defaultFriendly);
+  const m = rows.length;
   // Une échéance EFFECTIVE (club OU proposée par la communauté) est servie dans
   // `effectiveEntryDeadline` — jamais recalculée côté front (api.ts:86-92).
-  const n = competitions.filter((c) => null != c.effectiveEntryDeadline).length;
+  const n = rows.filter((c) => null != c.effectiveEntryDeadline).length;
   // « N renseignée(s) sur M compétition(s) » : chaque accord porte sur son propre nombre.
   return `${n} renseignée${n > 1 ? "s" : ""} sur ${m} compétition${m > 1 ? "s" : ""}`;
 }

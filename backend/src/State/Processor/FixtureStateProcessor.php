@@ -440,15 +440,16 @@ class FixtureStateProcessor extends AbstractStateProcessor
 
     /**
      * « Amicaux » de la saison du match, son équipe engagée au passage (écriture immédiate, C42). Club et saison sont
-     * ceux du match (le match existant) ou de la requête (le match neuf) : jamais ceux d'un autre club (RLS).
+     * ceux du match (le match existant) ou ceux que la requête a résolus (le match neuf : `_club_id`, `_season_id`,
+     * posés par le serveur, jamais l'en-tête brut) — jamais ceux d'un autre club (RLS).
      */
     private function defaultFriendlyFor(Fixture $fixture): string
     {
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $request?->attributes->get('_club_id');
-        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
-        $clubId = $this->entityManager->contains($fixture) ? $fixture->getClubId() : (\is_string($clubId) ? $clubId : null);
-        $seasonId = $this->entityManager->contains($fixture) ? $fixture->getSeasonId() : $this->resolveSeasonId($clubId, \is_string($seasonId) ? $seasonId : null);
+        $seasonId = $request?->attributes->get('_season_id');
+        $clubId = $this->entityManager->contains($fixture) ? $fixture->getClubId() : (\is_string($clubId) && '' !== $clubId ? $clubId : null);
+        $seasonId = $this->entityManager->contains($fixture) ? $fixture->getSeasonId() : (\is_string($seasonId) && '' !== $seasonId ? $seasonId : null);
         if (null === $clubId || null === $seasonId) {
             $this->refuse('Aucune saison en cours : créez d\'abord la saison.');
         }
