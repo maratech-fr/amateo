@@ -262,14 +262,18 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertSame($team->getId(), $row['suggestedTeamId']);
     }
 
+    /**
+     * Lot 7, PR 4a : une compétition AMICALE n'alimente jamais le pont de suggestion, quel que soit le nom qu'elle
+     * porte — ici « DM2 », que la signature lit comme le championnat (son témoin de nature championnat est
+     * {@see testEngagementListSuggestsTheFbiMappedTeamBySignature}, suggéré).
+     */
     public function testAnAmicalCompetitionIsNeverBridged(): void
     {
-        // « Amical DM2 » would match the championship signature if it were not an
-        // amical — the FRIENDLY type must exclude it from the bridge.
         [$tokenA, , $clubA] = $this->register('FFPM');
         $this->useStubClubCode($clubA);
         $team = $this->createTeam($clubA);
-        $this->createCompetition($clubA, $this->seasonOf($clubA)->getId(), $team->getId(), 'Amical DM2');
+        $this->scopeGucToClub($clubA);
+        $this->competitionFor($team->getId(), 'DM2', CompetitionType::FRIENDLY);
 
         $row = $this->engagementRow($tokenA, FfbbHttpClientStub::COMPETITION_ID);
         self::assertNull($row['suggestionSource'], 'an amical is never a bridge candidate');

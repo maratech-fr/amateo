@@ -41,6 +41,7 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
@@ -62,6 +63,7 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Mime\RawMessage;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Tenant/season isolation NR for the new match entities (spec gestion-matchs,
@@ -263,6 +265,35 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertNotSame($amicauxB, $this->responseData()['competitionId'] ?? null, 'l\'amical de A entre dans la « Amicaux » de A');
         $this->scopeGucToClub($clubA->getId());
         self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly AND club_id = ?', [$this->responseData()['competitionId'] ?? '', $clubA->getId()]), 'compétition d\'office du club A');
+    }
+
+    /**
+     * Abus (lot 7, PR 4a) : un match posé pour une équipe que le club n'a pas — identifiant inventé, ou équipe d'un
+     * autre club — est refusé (422) et n'écrit rien : ni match, ni engagement dans « Amicaux » portant cet identifiant,
+     * chez aucun des deux clubs. Témoin : le même amical pour une équipe du club passe (201).
+     * ⚠ ROUGE à l'écriture (passe tank PR 4a) : `POST /api/fixtures` ne contrôle pas l'équipe, et « Amicaux »
+     * l'engage au passage ({@see FriendlyCompetitions::engageIn}) — trou signalé, à fermer par `neo`.
+     */
+    public function testAFriendlyForATeamTheClubDoesNotHaveIsRefusedAndWritesNothing(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('ghta');
+        [$clubB, , $seasonB] = $this->createClubUser('ghtb');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $friendly = ['matchDate' => '2026-10-04', 'homeAway' => 'AWAY', 'opponentLabel' => 'Amical'];
+
+        foreach (['inventée' => Uuid::v4()->toRfc4122(), 'd\'un autre club' => $teamB->getId()] as $case => $teamId) {
+            $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamId] + $friendly, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('équipe %s : refusé', $case));
+            foreach ([$clubA, $clubB] as $club) {
+                $this->scopeGucToClub($club->getId());
+                self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE team_id = ?', [$teamId]), \sprintf('équipe %s : aucun match écrit', $case));
+                self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$teamId]), \sprintf('équipe %s : aucun engagement écrit', $case));
+            }
+        }
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : un amical pour une équipe du club passe');
     }
 
     public function testWriteOnArchivedSeasonIsRefused(): void
