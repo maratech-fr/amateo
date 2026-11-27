@@ -343,7 +343,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         $pastFriendly->setClubId($this->clubId);
         $pastFriendly->setSeasonId($this->ids['season']);
         $pastFriendly->setTeamId($this->ids['team']);
-        $pastFriendly->setCompetitionId(null);
+        $pastFriendly->setCompetitionId($this->friendlyCompetitionIdFor($this->ids['team'], $this->clubId, $this->ids['season']));
         $pastFriendly->setMatchDate(new DateTimeImmutable('-10 days'));
         $pastFriendly->setHomeAway(FixtureHomeAway::HOME);
         $pastFriendly->setOpponentLabel('Amical passé MR');

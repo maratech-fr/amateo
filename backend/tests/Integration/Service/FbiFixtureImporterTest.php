@@ -1216,6 +1216,41 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame($comp?->getId(), $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '7'])?->getCompetitionId());
     }
 
+    /**
+     * Abus par reclassement (lot 7, PR 4a) : une compétition existante ne devient jamais amicale. Une division
+     * « Amical PNF » proposée sur un championnat de l'équipe ne le renomme ni ne le reclasse : la proposition est
+     * ignorée, la division suit son propre libellé et naît dans une compétition amicale à elle ; le championnat
+     * garde son nom, sa nature, et l'équipe reste engagée par lui.
+     */
+    public function testAFriendlyDivisionProposedOnAChampionshipNeitherRenamesNorReclassesIt(): void
+    {
+        $championship = $this->rawCompetition('PNF');
+        $championshipId = $championship->getId();
+
+        $result = $this->importer->import(
+            $this->xlsx([['Amical PNF', '41', 'AS Voisins', 'BC TESTVILLE - 1', '14/11/2026', '15:30', '']]),
+            $this->club,
+            [['division' => 'Amical PNF', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId(), 'competitionId' => $championshipId]],
+            [],
+            null,
+            [],
+            [],
+        );
+
+        self::assertSame(1, $result['created'], 'témoin : la rencontre amicale est importée');
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Competition::class)->find($championshipId);
+        self::assertInstanceOf(Competition::class, $reloaded);
+        self::assertSame('PNF', $reloaded->getName(), 'le championnat proposé n\'est pas renommé au libellé amical');
+        self::assertSame(CompetitionType::CHAMPIONSHIP, $reloaded->getCompetitionType(), 'ni reclassé en amical');
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['teamId' => $this->team->getId(), 'externalRef' => '41']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertNotSame($championshipId, $fixture->getCompetitionId(), 'la rencontre amicale n\'entre pas dans le championnat proposé');
+        $friendly = $this->em->getRepository(Competition::class)->find((string) $fixture->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $friendly);
+        self::assertSame(['Amical PNF', CompetitionType::FRIENDLY], [$friendly->getName(), $friendly->getCompetitionType()], 'elle suit son propre libellé, dans une compétition amicale née amicale');
+    }
+
     // ── Reconciliation FBI (RMM-4) ─────────────────────────────────────────
 
     public function testPlacedHomeDateDivergenceIsAReportedDeviationNotWritten(): void
@@ -3508,6 +3543,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->team->getSeasonId());
         $fixture->setTeamId($this->team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($this->team->getId(), $this->club->getId(), $this->team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable($dateYmd));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel($opponent);

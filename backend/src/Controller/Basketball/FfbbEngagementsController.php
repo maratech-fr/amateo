@@ -14,6 +14,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
 use App\Matches\EngagementView;
 use App\Repository\ClubRepository;
@@ -109,8 +110,9 @@ final class FfbbEngagementsController extends AbstractController
                 $byCanonicalName[$this->normalize($competition->getFfbbCompetitionName())] = $competition;
             }
             // Only an UNPAIRED xlsx competition feeds the bridge (a paired one is
-            // already reached by its ffbb id / canonical name above).
-            if (null === $competition->getFfbbCompetitionId()) {
+            // already reached by its ffbb id / canonical name above). A friendly one
+            // (« Amicaux », « Amical … ») never bridges, whatever its name parses to.
+            if (null === $competition->getFfbbCompetitionId() && !$competition->getCompetitionType()->isFriendly()) {
                 $signature = $this->divisionSignature->fromCode($competition->getName());
                 if (null !== $signature) {
                     $bridgeCandidates[] = ['competition' => $competition, 'signature' => $signature];
@@ -485,9 +487,9 @@ final class FfbbEngagementsController extends AbstractController
         if (null !== $competitionId) {
             $byId = $this->entityManager->getRepository(Competition::class)->findOneBy(['id' => $competitionId]);
             if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $teamId)) {
-                $inferredType = $this->inferCompetitionType($canonicalName);
-                if ($inferredType instanceof CompetitionType) {
-                    $byId->setCompetitionType($inferredType);
+                $reclass = CompetitionClassifier::reclassOf($byId, $canonicalName);
+                if ($reclass instanceof CompetitionType) {
+                    $byId->setCompetitionType($reclass);
                 }
 
                 return $byId;
@@ -500,17 +502,16 @@ final class FfbbEngagementsController extends AbstractController
     /** @param list<Competition> $competitions */
     private function findOrCreateCompetition(array &$competitions, string $teamId, string $canonicalName, string $seasonId): Competition
     {
-        $inferredType = $this->inferCompetitionType($canonicalName);
         foreach ($competitions as $competition) {
             if ($this->competitionRegistry->isEngaged($competition, $teamId)
                 && ($competition->getFfbbCompetitionName() === $canonicalName || $this->normalize($competition->getName()) === $this->normalize($canonicalName))
             ) {
-                // P4-195 — sur une compétition RÉUTILISÉE dont le NOM infère
-                // positivement coupe/brassage, on repose le type (répare une Coupe
-                // du Rhône stockée en championnat, mesuré 1/68). Un type posé à la
-                // main via le CRUD sur un nom qui n'infère RIEN reste respecté.
-                if ($inferredType instanceof CompetitionType) {
-                    $competition->setCompetitionType($inferredType);
+                // P4-195 — sur une compétition RÉUTILISÉE non amicale dont le NOM dit
+                // coupe/brassage, on repose le type (répare une Coupe du Rhône stockée en
+                // championnat, mesuré 1/68). Jamais vers ni depuis amical (lot 7, PR 4a).
+                $reclass = CompetitionClassifier::reclassOf($competition, $canonicalName);
+                if ($reclass instanceof CompetitionType) {
+                    $competition->setCompetitionType($reclass);
                 }
 
                 return $competition;
@@ -518,30 +519,11 @@ final class FfbbEngagementsController extends AbstractController
         }
 
         $clubId = $this->resolveCurrentClubId($this->requestStack) ?? '';
-        $competition = $this->competitionRegistry->create($clubId, $seasonId, $canonicalName, $inferredType ?? CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $canonicalName, CompetitionClassifier::classify($canonicalName));
         $this->competitionRegistry->engage($competition, $teamId);
         $competitions[] = $competition;
 
         return $competition;
-    }
-
-    /**
-     * Positive type inference from the federal name (P4-195) — « coupe » → CUP
-     * (checked BEFORE « brassage »), « brassage » → BRASSAGE. Null = no positive
-     * inference (default CHAMPIONSHIP on create; a hand-set CRUD type left alone
-     * on reuse).
-     */
-    private function inferCompetitionType(string $name): ?CompetitionType
-    {
-        $normalized = $this->normalize($name);
-        if (str_contains($normalized, 'coupe')) {
-            return CompetitionType::CUP;
-        }
-        if (str_contains($normalized, 'brassage')) {
-            return CompetitionType::BRASSAGE;
-        }
-
-        return null;
     }
 
     private function normalize(string $value): string

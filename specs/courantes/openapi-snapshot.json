@@ -30987,6 +30987,11 @@
                         "default": "",
                         "type": "string"
                     },
+                    "defaultFriendly": {
+                        "description": "\u00ab Amicaux \u00bb, the season's default friendly competition: a match set without a competition lands there.",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "startDate": {
                         "description": "Y-m-d.",
                         "type": [
@@ -31113,7 +31118,8 @@
                         "enum": [
                             "CHAMPIONSHIP",
                             "CUP",
-                            "BRASSAGE"
+                            "BRASSAGE",
+                            "FRIENDLY"
                         ],
                         "type": [
                             "string",
@@ -31170,6 +31176,11 @@
                     "competitionType": {
                         "default": "",
                         "type": "string"
+                    },
+                    "defaultFriendly": {
+                        "description": "\u00ab Amicaux \u00bb, the season's default friendly competition: a match set without a competition lands there.",
+                        "default": false,
+                        "type": "boolean"
                     },
                     "startDate": {
                         "description": "Y-m-d.",
@@ -31303,6 +31314,11 @@
                             "competitionType": {
                                 "default": "",
                                 "type": "string"
+                            },
+                            "defaultFriendly": {
+                                "description": "\u00ab Amicaux \u00bb, the season's default friendly competition: a match set without a competition lands there.",
+                                "default": false,
+                                "type": "boolean"
                             },
                             "startDate": {
                                 "description": "Y-m-d.",
@@ -32334,6 +32350,19 @@
                             "null"
                         ]
                     },
+                    "competitionType": {
+                        "description": "The nature of the match's competition: CHAMPIONSHIP \u00b7 CUP \u00b7 BRASSAGE \u00b7 FRIENDLY (a friendly).",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "CHAMPIONSHIP",
+                            "CUP",
+                            "BRASSAGE",
+                            "FRIENDLY"
+                        ]
+                    },
                     "matchDate": {
                         "description": "Y-m-d.",
                         "default": "",
@@ -32624,6 +32653,19 @@
                             "null"
                         ]
                     },
+                    "competitionType": {
+                        "description": "The nature of the match's competition: CHAMPIONSHIP \u00b7 CUP \u00b7 BRASSAGE \u00b7 FRIENDLY (a friendly).",
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "CHAMPIONSHIP",
+                            "CUP",
+                            "BRASSAGE",
+                            "FRIENDLY"
+                        ]
+                    },
                     "matchDate": {
                         "description": "Y-m-d.",
                         "default": "",
@@ -32819,6 +32861,19 @@
                                 "type": [
                                     "string",
                                     "null"
+                                ]
+                            },
+                            "competitionType": {
+                                "description": "The nature of the match's competition: CHAMPIONSHIP \u00b7 CUP \u00b7 BRASSAGE \u00b7 FRIENDLY (a friendly).",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "enum": [
+                                    "CHAMPIONSHIP",
+                                    "CUP",
+                                    "BRASSAGE",
+                                    "FRIENDLY"
                                 ]
                             },
                             "matchDate": {

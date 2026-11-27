@@ -20,6 +20,7 @@ use App\Service\ClosurePinRemover;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueClosureImpact;
 use App\Tests\ClosurePinDecorTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -41,6 +42,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueClosureImpactTest extends WebTestCase
 {
     use ClosurePinDecorTrait;
+    use CreatesCompetitionsTrait;
 
     private EntityManagerInterface $em;
 
@@ -171,6 +173,7 @@ final class VenueClosureImpactTest extends WebTestCase
         $fixture->setClubId($d['club']->getId());
         $fixture->setSeasonId($d['season']->getId());
         $fixture->setTeamId((string) $d[$team]);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor((string) $d[$team], $d['club']->getId(), $d['season']->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);

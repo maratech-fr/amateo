@@ -539,13 +539,21 @@ final class MatchConflictDetector
             }
         }
         $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
+        // Lot 7, PR 4a — un amical est un match d'une compétition AMICALE : exempté de l'enveloppe de ligue, des
+        // règles du club et des interdictions de gymnase, signalé sur un créneau de match.
+        $friendlyIds = [];
+        foreach ($competitions as ['competition' => $competition]) {
+            if ($competition->getCompetitionType()->isFriendly()) {
+                $friendlyIds[$competition->getId()] = true;
+            }
+        }
         $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule, closedDatesByVenue: $closedDatesByVenue);
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
-            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays),
-            ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
-            ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
+            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays, $friendlyIds),
+            ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules, $friendlyIds),
+            ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam, $friendlyIds),
             ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),
             ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $holdings, $closedDatesByVenue),
             // Chantier H volet matchs (amendement b) — coup d'envoi dans l'indispo DÉCLARÉE d'un
@@ -557,7 +565,7 @@ final class MatchConflictDetector
             ...$this->venueConflicts->venueTrainingOverlapConflicts($views, $seasonScheduleId, $activePeriods, $slotsBySchedule, $publicHolidays, $closedDatesByVenue),
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
-            ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows, $publicHolidays),
+            ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows, $friendlyIds, $publicHolidays),
             // P4-288 — ajouté EN FIN pour que le $conflicts[0] des familles plus graves
             // reste inchangé : une info repliée (sévérité 7), jamais une alerte en tête.
             ...$this->teamLevelMissingItems($activeFixtures, $levelByTeam),
@@ -672,7 +680,7 @@ final class MatchConflictDetector
     }
 
     /**
-     * Severity 5 (« À surveiller ») — a placed HOME FRIENDLY (competitionId null,
+     * Severity 5 (« À surveiller ») — a placed HOME FRIENDLY (a FRIENDLY competition,
      * venue + kickoff) sitting on a match slot. The solver no longer places
      * friendlies (P4-193) and their manual placement is FREE: this ALERTS, it
      * never blocks (founder decision, 2026-09-10). ONE item per fixture, carrying
@@ -694,17 +702,18 @@ final class MatchConflictDetector
      * @param list<FixtureView>      $views
      * @param list<Fixture>          $fixtures
      * @param list<VenueMatchWindow> $matchWindows
+     * @param array<string, true>    $friendlyIds    les compétitions amicales
      * @param list<string>           $publicHolidays dates fériées (Y-m-d)
      *
      * @return list<array<string, mixed>>
      */
-    private function friendlyOnMatchSlotConflicts(array $views, array $fixtures, array $matchWindows, array $publicHolidays = []): array
+    private function friendlyOnMatchSlotConflicts(array $views, array $fixtures, array $matchWindows, array $friendlyIds, array $publicHolidays = []): array
     {
         // Weekends (key = the Saturday's date) where a NON-friendly match is
         // played, on the Saturday or the Sunday. Friday does not count.
         $matchWeekends = [];
         foreach ($fixtures as $fixture) {
-            if (null === $fixture->getCompetitionId()) {
+            if (isset($friendlyIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             $weekendKey = $this->weekendSaturdayKey($fixture->getMatchDate());
@@ -716,7 +725,7 @@ final class MatchConflictDetector
         $conflicts = [];
         foreach ($views as $view) {
             $fixture = $view['fixture'];
-            if (null !== $fixture->getCompetitionId()
+            if (!isset($friendlyIds[(string) $fixture->getCompetitionId()])
                 || FixtureHomeAway::HOME !== $fixture->getHomeAway()
                 || null === $fixture->getVenueId()
                 || !$fixture->getKickoffTime() instanceof DateTimeImmutable

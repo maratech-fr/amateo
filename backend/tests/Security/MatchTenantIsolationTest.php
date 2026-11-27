@@ -41,6 +41,7 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
@@ -62,6 +63,7 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Mime\RawMessage;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Tenant/season isolation NR for the new match entities (spec gestion-matchs,
@@ -112,7 +114,8 @@ final class MatchTenantIsolationTest extends WebTestCase
     public function testPostStampsTheResolvedClubAndSeason(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');
-        $teamId = '11111111-1111-4111-8111-111111111111';
+        // Un match désigne une équipe du club (lot 7, PR 4a) : l'équipe du décor existe.
+        $teamId = $this->createTeam($clubA, $seasonA, 'U15 A')->getId();
 
         $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'teamId' => $teamId,
@@ -230,6 +233,68 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertIsArray($imported, 'le match importé désigne un engagement du club qui dépose');
         self::assertSame($teamA->getId(), $imported['team_id']);
         self::assertNotSame($competitionB->getId(), $imported['competition_id']);
+    }
+
+    /**
+     * Abus (lot 7, PR 4a) : « Amicaux » est la compétition d'office de chaque club. Un match du club A qui désigne
+     * la « Amicaux » du club B est refusé (422), sans match ni engagement écrit chez B — l'engagement créé au passage
+     * dans une compétition amicale ne franchit jamais la frontière du club ; un amical posé sans compétition par A
+     * entre dans la « Amicaux » de A, jamais dans celle de B.
+     */
+    public function testAFriendlyNeverLandsInAnotherClubsAmicaux(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('amia');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('amib');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $friendly = ['matchDate' => '2026-10-04', 'homeAway' => 'AWAY', 'opponentLabel' => 'Amical'];
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamB->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : le club B pose son amical');
+        $amicauxB = (string) ($this->responseData()['competitionId'] ?? '');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly', [$amicauxB]), 'témoin : l\'amical de B est rangé dans la « Amicaux » de B');
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId(), 'competitionId' => $amicauxB] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(422, 'la « Amicaux » d\'un autre club est hors de portée');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame([$teamB->getId()], $this->em->getConnection()->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$amicauxB]), 'aucun engagement écrit dans la « Amicaux » de B');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE competition_id = ?', [$amicauxB]), 'aucun match du club A n\'y entre');
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        self::assertNotSame($amicauxB, $this->responseData()['competitionId'] ?? null, 'l\'amical de A entre dans la « Amicaux » de A');
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ? AND default_friendly AND club_id = ?', [$this->responseData()['competitionId'] ?? '', $clubA->getId()]), 'compétition d\'office du club A');
+    }
+
+    /**
+     * Abus (lot 7, PR 4a) : un match posé pour une équipe que le club n'a pas — identifiant inventé, ou équipe d'un
+     * autre club — est refusé (422) et n'écrit rien : ni match, ni engagement dans « Amicaux » portant cet identifiant,
+     * chez aucun des deux clubs. Témoin : le même amical pour une équipe du club passe (201).
+     * ⚠ ROUGE à l'écriture (passe tank PR 4a) : `POST /api/fixtures` ne contrôle pas l'équipe, et « Amicaux »
+     * l'engage au passage ({@see FriendlyCompetitions::engageIn}) — trou signalé, à fermer par `neo`.
+     */
+    public function testAFriendlyForATeamTheClubDoesNotHaveIsRefusedAndWritesNothing(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('ghta');
+        [$clubB, , $seasonB] = $this->createClubUser('ghtb');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $friendly = ['matchDate' => '2026-10-04', 'homeAway' => 'AWAY', 'opponentLabel' => 'Amical'];
+
+        foreach (['inventée' => Uuid::v4()->toRfc4122(), 'd\'un autre club' => $teamB->getId()] as $case => $teamId) {
+            $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamId] + $friendly, \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('équipe %s : refusé', $case));
+            foreach ([$clubA, $clubB] as $club) {
+                $this->scopeGucToClub($club->getId());
+                self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE team_id = ?', [$teamId]), \sprintf('équipe %s : aucun match écrit', $case));
+                self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$teamId]), \sprintf('équipe %s : aucun engagement écrit', $case));
+            }
+        }
+
+        $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId()] + $friendly, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : un amical pour une équipe du club passe');
     }
 
     public function testWriteOnArchivedSeasonIsRefused(): void
@@ -1602,6 +1667,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel($opponent);
@@ -1618,6 +1684,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
@@ -1688,6 +1755,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adversaire sans empreinte');
@@ -1728,6 +1796,7 @@ final class MatchTenantIsolationTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId($team->getId());
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
             $fixture->setHomeAway(FixtureHomeAway::HOME);
             $fixture->setOpponentLabel('Adversaire');
@@ -1756,6 +1825,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');

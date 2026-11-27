@@ -20,6 +20,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -219,12 +220,13 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
     }
 
     /**
-     * NR P4-193 (§7.1 contrat backend↔engine) : un AMICAL (competitionId null)
-     * n'est jamais confié au solveur. Il n'est jamais TO_PLACE : non placé →
-     * ABSENT du payload ; placé et ancré → FIXED (son gymnase reste protégé) ;
-     * AWAY → footprint informatif comme un match de compétition. Un match de
-     * championnat, lui, reste TO_PLACE (inchangé). Si cette partition casse, le
-     * solveur se remet à déplacer/placer des amicaux.
+     * NR P4-193 (§7.1 contrat backend↔engine) : un AMICAL — un match d'une compétition
+     * AMICALE, « Amicaux » ou celle de la fédération (lot 7, PR 4a, Q6) — n'est jamais confié
+     * au solveur. Il n'est jamais TO_PLACE : non placé → ABSENT du payload ; placé et ancré →
+     * FIXED (son gymnase reste protégé) ; posé par le solveur → FIXED aussi (Q6 : il devient
+     * une ancre) ; AWAY → footprint informatif comme un match de compétition. Un match de
+     * championnat, lui, reste TO_PLACE (inchangé). Si cette partition casse, le solveur se
+     * remet à déplacer/placer des amicaux.
      */
     #[Group('phase1')]
     public function testFriendlyFixturesAreHandledApartFromCompetitionOnes(): void
@@ -240,6 +242,13 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $friendlyPlaced->setKickoffTime(new DateTimeImmutable('15:30'));
         $friendlyPlaced->setPlacementSource(FixturePlacementSource::MANUAL);
         $friendlyAway = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
+        $federal = $this->federalFriendly($club, $season, $teamId);
+        $federalBySolver = $this->makeFixture($em, $club, $season, $teamId, '2026-10-31', FixtureHomeAway::HOME, $federal);
+        $federalBySolver->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $federalBySolver->setVenueId($venue->getId());
+        $federalBySolver->setKickoffTime(new DateTimeImmutable('15:30'));
+        $federalBySolver->setPlacementSource(FixturePlacementSource::SOLVER);
+        $federalUnplaced = $this->makeFixture($em, $club, $season, $teamId, '2026-11-07', FixtureHomeAway::HOME, $federal);
         $em->flush();
 
         $matches = $builder->build($club, $season->getId())['payload']['matches'];
@@ -260,6 +269,9 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // le radar calcule le trajet depuis l'entité, hors payload moteur.
         self::assertArrayNotHasKey('roundTripMinutes', $byId[$friendlyAway->getId()]);
         self::assertArrayNotHasKey('kickoffEstimated', $byId[$friendlyAway->getId()]);
+        // Amical de la fédération : posé par le solveur → ancre FIXED ; non placé → ABSENT (Q6).
+        self::assertSame('FIXED', $byId[$federalBySolver->getId()]['kind'] ?? null, 'un amical de la fédération posé par le solveur devient une ancre');
+        self::assertArrayNotHasKey($federalUnplaced->getId(), $byId, 'un amical de la fédération non placé ne va jamais au solveur');
         // Championnat (la rencontre seedée, UNPLACED) : TO_PLACE — inchangé.
         self::assertSame('TO_PLACE', $byId[$seededFixture->getId()]['kind'] ?? null);
     }
@@ -428,18 +440,31 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $em->persist($opening);
     }
 
-    private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
+    /** Un match de `$competitionId` ; sans compétition nommée, un amical de « Amicaux ». */
+    private function makeFixture(EntityManagerInterface $em, Club $club, Season $season, string $teamId, string $date, FixtureHomeAway $homeAway, ?string $competitionId = null): Fixture
     {
         $fixture = new Fixture;
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($competitionId ?? self::getContainer()->get(FriendlyCompetitions::class)->engageInDefault($club->getId(), $season->getId(), $teamId)->getId());
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Amical');
         $em->persist($fixture);
 
         return $fixture;
+    }
+
+    /** Une compétition amicale de la fédération (« AMICAL PNM »), l'équipe engagée. */
+    private function federalFriendly(Club $club, Season $season, string $teamId): string
+    {
+        $registry = self::getContainer()->get(CompetitionRegistry::class);
+        $competition = $registry->create($club->getId(), $season->getId(), 'AMICAL PNM', CompetitionType::FRIENDLY);
+        $registry->engage($competition, $teamId);
+        self::getContainer()->get('doctrine.orm.entity_manager')->flush();
+
+        return $competition->getId();
     }
 
     /**

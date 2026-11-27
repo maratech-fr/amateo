@@ -94,6 +94,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
     // TeamLevel → déduction null (jamais comblé) → alignement no-op.
     public const YOUNG_PR17_COMPETITION_ID = '900000000000010';
     public const YOUNG_PR17_NAME = 'Pré régionale masculine U17';
+    // Lot 7, PR 4a — un engagement fédéral au libellé amical : l'apparier à une compétition de championnat qui
+    // porte des matchs ne la range jamais en amical (une compétition existante ne devient jamais amicale).
+    public const FRIENDLY_COMPETITION_ID = '900000000000011';
+    public const FRIENDLY_NAME = 'Amical PNM';
 
     /** @var list<array{code: string, compId: string, pouleId: string, name: string, sexe: string, categorie: array{code: string, libelle: string}, niveau: array{code: string, libelle: string}}> */
     private const BRIDGE = [
@@ -124,6 +128,10 @@ final class FfbbHttpClientStub implements HttpClientInterface
         ['code' => 'PRC17C', 'compId' => self::YOUNG_PR17_COMPETITION_ID, 'pouleId' => '910000000000010',
             'name' => self::YOUNG_PR17_NAME, 'sexe' => 'Masculin',
             'categorie' => ['code' => 'U17', 'libelle' => 'U17'], 'niveau' => ['code' => 'PRR', 'libelle' => 'Pré régional']],
+        // Amical fédéral (lot 7, PR 4a) — un libellé que le classifieur range en amical à la création.
+        ['code' => 'APNMC', 'compId' => self::FRIENDLY_COMPETITION_ID, 'pouleId' => '910000000000011',
+            'name' => self::FRIENDLY_NAME, 'sexe' => 'Masculin',
+            'categorie' => ['code' => 'SE', 'libelle' => 'Seniors'], 'niveau' => ['code' => 'REG', 'libelle' => 'Régional']],
     ];
 
     /**

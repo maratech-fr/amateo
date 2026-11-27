@@ -23,6 +23,7 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -40,6 +41,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FixtureReviewApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -808,6 +810,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
@@ -872,6 +875,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adversaire');
@@ -924,6 +928,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
@@ -962,6 +967,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setExternalRef($ref);
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);

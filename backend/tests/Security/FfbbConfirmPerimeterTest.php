@@ -131,6 +131,35 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         }
     }
 
+    /**
+     * Abus par reclassement (lot 7, PR 4a) : une compétition existante ne devient jamais amicale. Apparier un
+     * championnat qui porte des matchs à une ligne fédérale « Amical … » y pose les références fédérales, jamais la
+     * nature amicale : ses matchs restent ceux d'un championnat et l'équipe reste engagée (suppression refusée, 409).
+     */
+    public function testPairingAChampionshipToAFederalFriendlyLineNeverMakesItFriendly(): void
+    {
+        [$token, , $clubId] = $this->register('FCPC');
+        $this->useStubClubCode($clubId);
+        $seasonId = $this->seasonOf($clubId)->getId();
+        $team = $this->createTeam($clubId);
+        $championship = $this->createCompetition($clubId, $seasonId, $team->getId(), 'PNM');
+        $fixtureId = $this->createFixture($clubId, $seasonId, $team->getId(), $championship->getId())->getId();
+
+        $this->confirm($token, FfbbHttpClientStub::FRIENDLY_COMPETITION_ID, $team->getId(), $championship->getId());
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Competition::class)->find($championship->getId());
+        self::assertInstanceOf(Competition::class, $reloaded);
+        self::assertSame(FfbbHttpClientStub::FRIENDLY_COMPETITION_ID, $reloaded->getFfbbCompetitionId(), 'témoin : l\'appariement a bien porté sur ce championnat');
+        self::assertSame(CompetitionType::CHAMPIONSHIP, $reloaded->getCompetitionType(), 'un championnat apparié à une ligne « Amical … » reste un championnat');
+        self::assertSame($championship->getId(), $this->em->getRepository(Fixture::class)->find($fixtureId)?->getCompetitionId(), 'son match reste dans sa compétition');
+
+        $this->client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(409, 'l\'équipe reste engagée : le reclassement n\'a pas ouvert la cascade');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

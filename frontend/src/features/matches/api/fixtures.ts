@@ -29,11 +29,17 @@ export interface PendingDeviation {
   appliedAt?: string | null;
 }
 
+/** La nature d'une compétition, écrite une fois par le serveur ; `FRIENDLY` = un amical. */
+export type CompetitionNature = "CHAMPIONSHIP" | "CUP" | "BRASSAGE" | "FRIENDLY";
+
 export interface Fixture {
   id: string;
   teamId: string;
   seasonId: string;
+  /** Jamais nul côté serveur (lot 7 PR 4a) : un amical est rangé dans une compétition amicale. */
   competitionId: string | null;
+  /** La nature de la compétition du match, servie par le serveur — la seule lecture de « amical ? ». */
+  competitionType?: CompetitionNature;
   /** Y-m-d */
   matchDate: string;
   homeAway: HomeAway;

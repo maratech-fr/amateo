@@ -163,7 +163,7 @@ suit le motif normal : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_a
 `readonly_tenant` (`amateo_read`). Ses clés sont COMPOSÉES avec le club, posées à la main (invisibles de Doctrine :
 ne jamais committer le DROP que propose `migration-diff`) : `(competition_id, club_id)` → `competition (id, club_id)`
 `ON DELETE CASCADE`, et, dans l'autre sens, `fixture (competition_id, team_id, club_id)` → `engagement
-(competition_id, team_id, club_id)` `ON DELETE RESTRICT` (un match sans compétition n'est pas contrôlé). **Aucune clé
+(competition_id, team_id, club_id)` `ON DELETE RESTRICT` (`fixture.competition_id` est NOT NULL : tout match a une compétition, « Amicaux » d'office à défaut ; `Version20261204120000`). **Aucune clé
 vers `team`** : la suppression d'une équipe passe par sa cascade applicative (`CascadePlan::forTeam`, étape
 `TeamEngagementStep`). Aucune donnée libre. Gardé par `tests/Security/MatchTenantIsolationTest.php`
 (`testTheBaseRefusesAnEngagementOrAMatchOnAnotherClubsCompetition`), `RlsIsolationTest` et `PurgeCompletenessTest`.

@@ -533,5 +533,38 @@
       ],
       "adopted": true
     }
+  ],
+  "_friendlyAccessComment": "Lot 7 PR 4a — un match d'une compétition AMICALE (« Amicaux » d'office ou amical de la fédération, compétition jamais nulle) n'est pas tenu aux accès match : hors accès, sa pose est signalée, jamais refusée ; tout autre match (championnat, coupe, brassage) est refusé. La nature se lit sur `competitionType`, jamais sur un `competitionId` nul ni sur le libellé. Décor commun : gymnase v1 ouvert aux matchs le samedi 14:00–18:00, match le samedi 2026-10-03 à 20:00 (hors accès). Consommé par matchAccess.parity.test.ts (front, venueAccessError nourri par lib/envelope.ts::isFriendlyFixture) ET par MatchAccessMirrorParityTest.php (backend, CompetitionType::isFriendly, qui exempte des accès match la pose et le radar). `exempt` est le verdict des deux côtés.",
+  "friendlyAccessCases": [
+    {
+      "name": "amical de la fédération (« AMICAL PNM ») hors accès — signalé, pas refusé",
+      "competitionId": "comp-amical-pnm", "competitionName": "AMICAL PNM", "competitionType": "FRIENDLY",
+      "exempt": true
+    },
+    {
+      "name": "match de « Amicaux » hors accès — signalé, pas refusé",
+      "competitionId": "comp-amicaux", "competitionName": "Amicaux", "competitionType": "FRIENDLY",
+      "exempt": true
+    },
+    {
+      "name": "championnat hors accès — refusé",
+      "competitionId": "comp-champ", "competitionName": "DMU13-2", "competitionType": "CHAMPIONSHIP",
+      "exempt": false
+    },
+    {
+      "name": "coupe hors accès — refusée",
+      "competitionId": "comp-coupe", "competitionName": "Coupe du Rhône", "competitionType": "CUP",
+      "exempt": false
+    },
+    {
+      "name": "brassage hors accès — refusé",
+      "competitionId": "comp-brassage", "competitionName": "Brassage U15", "competitionType": "BRASSAGE",
+      "exempt": false
+    },
+    {
+      "name": "le libellé ne décide pas : « Amical PNF » rangée championnat hors accès — refusée",
+      "competitionId": "comp-nom-amical", "competitionName": "Amical PNF", "competitionType": "CHAMPIONSHIP",
+      "exempt": false
+    }
   ]
 }

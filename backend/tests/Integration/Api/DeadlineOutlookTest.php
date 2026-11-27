@@ -173,7 +173,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId(null);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Amical Adv');

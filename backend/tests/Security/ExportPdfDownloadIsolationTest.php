@@ -21,6 +21,7 @@ use App\Service\ProductIdentity;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use ArrayObject;
 use DateTimeImmutable;
@@ -72,6 +73,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 final class ExportPdfDownloadIsolationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -292,6 +294,7 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($year . '-11-14'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponent);

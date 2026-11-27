@@ -28,6 +28,7 @@ use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentPairingKey;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FrozenClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -50,6 +51,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 #[Group('integration')]
 final class OpponentTravelResolverTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private const string OPPONENT_CODE = 'ARA0069123';
@@ -94,6 +96,7 @@ final class OpponentTravelResolverTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($label); // aucun code organisme : adversaire sans code
@@ -124,6 +127,7 @@ final class OpponentTravelResolverTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($label);
@@ -488,6 +492,7 @@ final class OpponentTravelResolverTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
             $fixture->setHomeAway(FixtureHomeAway::AWAY);
             $fixture->setOpponentLabel('Adverse cap ' . $i);
@@ -557,6 +562,7 @@ final class OpponentTravelResolverTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
             $fixture->setHomeAway(FixtureHomeAway::AWAY);
             $fixture->setOpponentLabel($label);
@@ -582,6 +588,7 @@ final class OpponentTravelResolverTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adverse Trajet');

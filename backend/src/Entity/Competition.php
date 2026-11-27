@@ -18,8 +18,9 @@ use Doctrine\ORM\Mapping as ORM;
  * one per competition today, except friendlies later (Q8). No uniqueness on the name: two
  * competitions of the same name are legitimate (two club teams in one division); « no two
  * competitions of the same name for one team » is held by the registry (normalized compare).
- * Season-scoped, tenant-owned. Friendly matches carry no competition (a Fixture with a null
- * competitionId).
+ * Season-scoped, tenant-owned. Every match has a competition: a friendly lives in a FRIENDLY one —
+ * its federal one (« AMICAL PNM ») or the season's default « Amicaux » ({@see $defaultFriendly},
+ * one per club and season, several engagements, never pruned).
  */
 #[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: CompetitionRepository::class)]
@@ -28,6 +29,8 @@ use Doctrine\ORM\Mapping as ORM;
 // Cible de la clé composée (competition_id, club_id) de l'engagement : un engagement ne désigne
 // jamais la compétition d'un autre club (une clé simple ignorerait la RLS).
 #[ORM\UniqueConstraint(name: 'uniq_competition_id_club', columns: ['id', 'club_id'])]
+// Une seule compétition d'office « Amicaux » par club et saison.
+#[ORM\UniqueConstraint(name: 'uniq_competition_default_friendly', columns: ['club_id', 'season_id'], options: ['where' => '(default_friendly = true)'])]
 #[ORM\HasLifecycleCallbacks]
 class Competition implements TenantOwnedInterface
 {
@@ -56,6 +59,10 @@ class Competition implements TenantOwnedInterface
 
     #[ORM\Column(length: 20, enumType: CompetitionType::class)]
     private CompetitionType $competitionType;
+
+    /** La compétition d'office « Amicaux » de la saison, écrite par `FriendlyCompetitions` seulement. */
+    #[ORM\Column(name: 'default_friendly', type: 'boolean', options: ['default' => false])]
+    private bool $defaultFriendly = false;
 
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?DateTimeImmutable $startDate = null;
@@ -188,6 +195,11 @@ class Competition implements TenantOwnedInterface
         $this->competitionType = $competitionType;
 
         return $this;
+    }
+
+    public function isDefaultFriendly(): bool
+    {
+        return $this->defaultFriendly;
     }
 
     public function getStartDate(): ?DateTimeImmutable

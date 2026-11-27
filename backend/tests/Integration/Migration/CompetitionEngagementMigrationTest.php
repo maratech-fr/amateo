@@ -73,12 +73,22 @@ final class CompetitionEngagementMigrationTest extends KernelTestCase
 
         $this->migrateOrFail();
 
+        $after = $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id');
         self::assertSame(
             array_map(static fn (array $row): string => (string) $row['name'], $before),
-            $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id'),
-            'mêmes compétitions, mêmes identifiants, mêmes noms : rien n\'est réuni ni ajouté',
+            array_intersect_key($after, $before),
+            'mêmes compétitions, mêmes identifiants, mêmes noms : rien n\'est réuni',
         );
-        $engagements = $admin->fetchAllAssociative('SELECT competition_id, team_id, club_id, season_id FROM engagement ORDER BY competition_id');
+        // Lot 7, PR 4a (la chaîne joue jusqu'à la dernière migration) : la seule compétition qui s'ajoute est
+        // « Amicaux », la compétition d'office, une par saison.
+        $added = array_diff_key($after, $before);
+        self::assertSame(array_fill_keys(array_keys($added), 'Amicaux'), $added, 'rien n\'est ajouté, sauf la compétition d\'office');
+        self::assertSame(
+            (int) $admin->fetchOne('SELECT COUNT(*) FROM season'),
+            (int) $admin->fetchOne('SELECT COUNT(*) FROM competition WHERE default_friendly AND name = \'Amicaux\' AND competition_type = \'FRIENDLY\''),
+            'une compétition d\'office « Amicaux » par saison',
+        );
+        $engagements = $admin->fetchAllAssociative('SELECT competition_id, team_id, club_id, season_id FROM engagement WHERE competition_id NOT IN (SELECT id FROM competition WHERE default_friendly) ORDER BY competition_id');
         self::assertSame(
             array_map(static fn (string $id, array $row): array => ['competition_id' => $id, 'team_id' => $row['team_id'], 'club_id' => $row['club_id'], 'season_id' => $row['season_id']], array_keys($before), $before),
             $engagements,
@@ -89,7 +99,14 @@ final class CompetitionEngagementMigrationTest extends KernelTestCase
             $admin->fetchAllKeyValue('SELECT e.competition_id, e.team_id FROM engagement e JOIN competition c ON c.id = e.competition_id WHERE c.name = \'DF2\' ORDER BY e.competition_id'),
             'les deux « DF2 » restent deux compétitions, une par équipe',
         );
-        self::assertSame($fixturesBefore, $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id'), 'aucun match n\'est repointé');
+        $amicaux = $admin->fetchOne('SELECT id FROM competition WHERE default_friendly LIMIT 1');
+        $fixturesAfter = $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id');
+        foreach ($fixturesBefore as $id => $teamAndCompetition) {
+            // Avant la PR 4a, un amical n'a pas de compétition (`concat_ws` saute le nul) : il est versé dans « Amicaux ».
+            $expected = str_contains((string) $teamAndCompetition, '|') ? $teamAndCompetition : $teamAndCompetition . '|' . $amicaux;
+            self::assertSame($expected, $fixturesAfter[$id] ?? null, \sprintf('le match %s n\'est pas repointé ; un amical sans compétition est versé dans « Amicaux »', $id));
+        }
+        self::assertSame(array_keys($fixturesBefore), array_keys($fixturesAfter), 'aucun match ne s\'ajoute ni ne part');
     }
 
     /** Poule, journées attendues, libellé FBI et échéance survivent à la conversion, chacun à sa nouvelle place. */

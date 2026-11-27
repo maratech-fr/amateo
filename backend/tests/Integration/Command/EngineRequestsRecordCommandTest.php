@@ -27,6 +27,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\EngineRequestFingerprint;
@@ -557,7 +558,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $friendly->setClubId(self::ER_CLUB);
         $friendly->setSeasonId(self::ER_SEASON);
         $friendly->setTeamId(self::ER_TEAM_U15);
-        $friendly->setCompetitionId(null);
+        $friendly->setCompetitionId(self::getContainer()->get(FriendlyCompetitions::class)->engageInDefault(self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U15)->getId());
         $friendly->setMatchDate(new DateTimeImmutable('2025-12-13'));
         $friendly->setHomeAway(FixtureHomeAway::HOME);
         $friendly->setOpponentLabel('Adversaire 51');

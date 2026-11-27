@@ -28,6 +28,7 @@ use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
 use App\Service\ConflictRadarLoader;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -45,6 +46,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class ConflictRadarPeriodHoldingTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -293,6 +295,7 @@ final class ConflictRadarPeriodHoldingTest extends WebTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId(self::TEAM_MATCH);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor(self::TEAM_MATCH, $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate($date);
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');

@@ -686,6 +686,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setClubId($season->getClubId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $season->getClubId(), $season->getId()));
         // D1 rule 3 filters matches strictly BEFORE the club's civil today (ClubDay,
         // Europe/Paris) — the radar this test drives now applies it. A near-future,
         // memoised day keeps every seeded match active whatever the wall clock or the
@@ -709,6 +710,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setClubId($season->getClubId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $season->getClubId(), $season->getId()));
         $fixture->setMatchDate($this->matchDay());
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adv extérieur');

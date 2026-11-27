@@ -16,6 +16,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -36,6 +37,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueExternalLabelApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -333,6 +335,7 @@ final class VenueExternalLabelApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire');

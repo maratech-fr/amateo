@@ -26,6 +26,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -79,6 +80,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ImportVenueRequiredTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -568,6 +570,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Placé');

@@ -28,6 +28,10 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * la conversion ne perd ni ne déplace aucun match à placer. Elle ne voit pas le risque de l'import et du radar
  * (plan §8) : `CompetitionEngagementMigrationTest` garde la conversion ligne à ligne.
  *
+ * Depuis la PR 4a, la chaîne joue aussi la conversion de la nature : « Amicaux » naît dans chaque saison, un amical
+ * sans compétition y est versé, « Amical PNF » devient amicale — la référence 17 change en conséquence (le domicile
+ * non placé de « Amical PNF » sort de la demande, celui posé par le système devient une ancre), les autres non.
+ *
  * Jumeau : `Lot4MigrationChainTest` (références 1 à 15, schéma d'avant le lot 4) joue aussi cette migration.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le groupe `phase1` est requis.
@@ -81,9 +85,26 @@ final class Lot7MigrationChainTest extends KernelTestCase
         self::assertNotSame([], $played, 'la chaîne joue la migration de la PR 3b');
         self::assertNotNull($admin->fetchOne('SELECT to_regclass(\'public.engagement\')'), 'la table des engagements existe après la chaîne');
 
-        self::assertSame($competitionsBefore, $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id'), 'aucune compétition ne change d\'identifiant ni de nom, aucune ne s\'ajoute ni ne part');
-        self::assertSame($engagedTeamByCompetition, array_map(strval(...), $admin->fetchAllKeyValue('SELECT competition_id, team_id FROM engagement ORDER BY competition_id')), 'un engagement par compétition, celui de son ancienne équipe');
-        self::assertSame($fixturesBefore, $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id'), 'aucun match n\'est repointé : même équipe, même compétition');
+        $competitionsAfter = $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id');
+        self::assertSame($competitionsBefore, array_intersect_key($competitionsAfter, $competitionsBefore), 'aucune compétition ne change d\'identifiant ni de nom, aucune ne part');
+        // Lot 7, PR 4a : la seule compétition qui s'ajoute est « Amicaux », la compétition d'office, une par saison.
+        $added = array_diff_key($competitionsAfter, $competitionsBefore);
+        self::assertSame(
+            (int) $admin->fetchOne('SELECT COUNT(*) FROM season'),
+            (int) $admin->fetchOne('SELECT COUNT(*) FROM competition WHERE default_friendly AND name = \'Amicaux\' AND competition_type = \'FRIENDLY\''),
+            'une compétition d\'office « Amicaux » par saison',
+        );
+        self::assertSame(array_fill_keys(array_keys($added), 'Amicaux'), $added, 'la conversion n\'ajoute que la compétition d\'office');
+        $engagements = array_map(strval(...), $admin->fetchAllKeyValue('SELECT competition_id, team_id FROM engagement WHERE competition_id NOT IN (SELECT id FROM competition WHERE default_friendly) ORDER BY competition_id'));
+        self::assertSame($engagedTeamByCompetition, $engagements, 'un engagement par compétition du décor, celui de son ancienne équipe');
+        $amicaux = $admin->fetchOne('SELECT id FROM competition WHERE default_friendly LIMIT 1');
+        $fixturesAfter = $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id');
+        foreach ($fixturesBefore as $id => $teamAndCompetition) {
+            // Avant la PR 4a, un amical n'a pas de compétition (`concat_ws` saute le nul) : il est versé dans « Amicaux ».
+            $expected = str_contains((string) $teamAndCompetition, '|') ? $teamAndCompetition : $teamAndCompetition . '|' . $amicaux;
+            self::assertSame($expected, $fixturesAfter[$id] ?? null, \sprintf('le match %s garde son équipe et sa compétition ; un amical sans compétition est versé dans « Amicaux »', $id));
+        }
+        self::assertSame(array_keys($fixturesBefore), array_keys($fixturesAfter), 'aucun match ne s\'ajoute ni ne part');
 
         $this->scopeGucToClub(self::ER_CLUB);
         $this->assertReference($reference, $this->runPlacement(null));

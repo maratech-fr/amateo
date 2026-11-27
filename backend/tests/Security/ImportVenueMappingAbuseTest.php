@@ -22,6 +22,7 @@ use App\Service\Fbi\FbiDeviationService;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Integration\Service\ImportVenueRequiredTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -54,6 +55,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 final class ImportVenueMappingAbuseTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -334,6 +336,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setClubId($clubA);
         $fixture->setSeasonId($team->getSeasonId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubA, $team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Arbitrage');
@@ -517,6 +520,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($team->getSeasonId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubId, $team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Placé');

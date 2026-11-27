@@ -1481,6 +1481,12 @@ jobs:
           # la conversion s'arrête sans rien écrire plutôt que de fabriquer un engagement. Obligatoire jusqu'à
           # l'application en production.
           FILES="$FILES tests/Integration/Migration/CompetitionEngagementMigrationTest.php"
+          # NR de migration de données (lot conception 7, PR 4a, axes PÉRIMÈTRE ENGAGÉ et CONTRAT BACKEND-MOTEUR) — la
+          # conversion pose la nature que dit le classifieur (« Amical … » amicale, « Coupe … » coupe), une « Amicaux »
+          # par saison, et verse chaque match sans compétition dans « Amicaux » avec l'engagement de son équipe. Une
+          # nature mal convertie libérerait une équipe engagée ou confierait un amical au moteur. Obligatoire jusqu'à
+          # l'application en production.
+          FILES="$FILES tests/Integration/Migration/CompetitionNatureMigrationTest.php"
           # NR d'axe PLANNING LIFECYCLE (lot conception 4, PR 2) — la version chargée du socle vit sur son
           # plan de saison, un seul pointeur : elle suit « Charger » et chaque génération terminée, et décide
           # seule de la version modifiable. Sans ce gate, un écrivain resté sur l'ancien pointeur laisserait

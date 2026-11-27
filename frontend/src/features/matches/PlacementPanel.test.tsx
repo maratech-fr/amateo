@@ -223,7 +223,7 @@ describe("PlacementPanel", () => {
 
   // ── Amical : placement libre hors créneau (P4-193) ───────────────────────
 
-  const friendly: Fixture = { ...fixture, competitionId: null };
+  const friendly: Fixture = { ...fixture, competitionId: null, competitionType: "FRIENDLY" };
 
   it("un amical hors fenêtre d'accès : avertissement NEUTRE, bouton ACTIF (placement libre)", async () => {
     const user = userEvent.setup();

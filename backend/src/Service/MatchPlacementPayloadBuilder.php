@@ -26,6 +26,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FriendlyCompetitions;
 use App\Service\Conflicts\DayHoldings;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,7 +45,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * - the league envelope is resolved per team by LeagueEnvelopeResolver
  *   (tolerant join — unmapped team = no league HARD + an INFO diagnostic).
  *
- * Match kinds (a FRIENDLY = competitionId null is handled apart, below):
+ * Match kinds (a FRIENDLY = a match of a FRIENDLY competition is handled apart, below):
  * - competition HOME UNPLACED → TO_PLACE ;
  * - competition HOME PLACED by the SOLVER → TO_PLACE carrying its current
  *   placement (stability bonus + hint) ;
@@ -96,6 +97,7 @@ final class MatchPlacementPayloadBuilder
         private readonly MatchConflictDetector $conflictDetector,
         private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly PlanHoldingInputs $planHoldingInputs,
+        private readonly FriendlyCompetitions $friendlyCompetitions,
     ) {}
 
     /**
@@ -203,8 +205,9 @@ final class MatchPlacementPayloadBuilder
         // Matches.
         $toPlaceCount = 0;
         $matchRows = [];
+        $friendlyIds = null !== $seasonId ? $this->friendlyCompetitions->friendlyIdsOf($seasonId) : [];
         foreach ($fixtures as $fixture) {
-            $row = $this->matchRow($fixture, $habitIndex, $window);
+            $row = $this->matchRow($fixture, $habitIndex, $window, $friendlyIds);
             if (null === $row) {
                 continue;
             }
@@ -417,11 +420,12 @@ final class MatchPlacementPayloadBuilder
 
     /**
      * @param array<string, array<int, TeamMatchHabit>> $habitIndex
-     * @param array{from: string, to: string}|null      $window     P4-240 ④ — fenêtre de placement (dates Y-m-d incluses), null = tout le club
+     * @param array{from: string, to: string}|null      $window      P4-240 ④ — fenêtre de placement (dates Y-m-d incluses), null = tout le club
+     * @param array<string, true>                       $friendlyIds les compétitions amicales de la saison
      *
      * @return array<string, mixed>|null null = skipped (unanchorable submitted match, or dropped out-of-window)
      */
-    private function matchRow(Fixture $fixture, array $habitIndex, ?array $window): ?array
+    private function matchRow(Fixture $fixture, array $habitIndex, ?array $window, array $friendlyIds): ?array
     {
         $base = [
             'id' => $fixture->getId(),
@@ -459,11 +463,11 @@ final class MatchPlacementPayloadBuilder
             ];
         }
 
-        // A FRIENDLY (competitionId null) is NEVER handed to the solver (P4-193):
-        // it is never TO_PLACE. It falls straight through to the anchor branch —
-        // placed+anchored → FIXED (its gym stays protected), UNPLACED/unanchored
-        // → null (absent). The PLACED+SOLVER legacy case is caught here too.
-        $isFriendly = null === $fixture->getCompetitionId();
+        // A FRIENDLY (a match of a FRIENDLY competition, lot 7 PR 4a) is NEVER handed
+        // to the solver (P4-193): it is never TO_PLACE. It falls straight through to
+        // the anchor branch — placed+anchored → FIXED (its gym stays protected),
+        // UNPLACED/unanchored → null (absent). The PLACED+SOLVER case is caught here too.
+        $isFriendly = isset($friendlyIds[(string) $fixture->getCompetitionId()]);
 
         $isSolverPlaced = FixtureStatus::PLACED === $fixture->getStatus()
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();

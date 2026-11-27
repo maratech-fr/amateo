@@ -94,7 +94,7 @@ le layout — la nav des onglets reste inchangée.
   `PlacementPanel` l'utilise seulement pour AVERTIR (`EnvelopeHint`, `isInEnvelope`), `canPlace` n'y
   regarde plus — ligue, club et équipe se comportent désormais pareil, seul un gymnase indisponible
   reste un refus dur côté client. Divergent PAR CONCEPTION : l'exemption amical (front `!isFriendly`
-  vs backend saut des `competitionId` null) et la résolution équipe↔fenêtre (déjà serveur, servie
+  vs backend saut des compétitions `FRIENDLY`) et la résolution équipe↔fenêtre (déjà serveur, servie
   depuis la COPIE club — §1).
 - **Grille week-end** (`WeekendGrid`) : un match placé démarre au coup d'envoi et dure le match
   (`matchMinutes` résolu) ; il **s'enchaîne** avec un match suivant même gymnase/jour dont le coup

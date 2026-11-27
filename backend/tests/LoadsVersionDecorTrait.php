@@ -44,6 +44,7 @@ use PHPUnit\Framework\Assert;
 trait LoadsVersionDecorTrait
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -184,12 +185,13 @@ trait LoadsVersionDecorTrait
         return static::getContainer()->get(SchedulePlanProvisioner::class)->lockSourceScheduleIdOfPlan($planId);
     }
 
-    /** Une équipe engagée en compétition : un match placé. */
+    /** Une équipe engagée en compétition : un match placé d'un championnat (un amical n'engage plus, lot 7 PR 4a). */
     private function engageTeam(Team $team): void
     {
         $this->scopeGucToClub($this->clubId);
+        $competitionId = $this->competitionFor($team->getId(), 'Championnat ' . $team->getName())->getId();
         $this->em->persist((new Fixture)->setClubId($this->clubId)->setSeasonId($this->seasonId)->setTeamId($team->getId())
-            ->setMatchDate(new DateTimeImmutable('2026-12-05'))->setHomeAway(FixtureHomeAway::HOME)
+            ->setCompetitionId($competitionId)->setMatchDate(new DateTimeImmutable('2026-12-05'))->setHomeAway(FixtureHomeAway::HOME)
             ->setOpponentLabel('AS Voisins')->setStatus(FixtureStatus::PLACED, new DateTimeImmutable));
         $this->em->flush();
     }

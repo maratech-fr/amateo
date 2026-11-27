@@ -305,8 +305,9 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
     /**
      * {@see LeagueValidationOutlook::startedCompetitionIds} rend les championnats COMMENCÉS de la
      * saison avec la même définition que « validé ligue » : échéance passée ou du jour, OU premier
-     * match strictement passé ; un amical jamais ; un championnat sans l'un ni l'autre, absent.
-     * Horloge épinglée au 16/09/2026.
+     * match strictement passé ; un match d'une compétition AMICALE jamais ; un championnat sans l'un ni
+     * l'autre, absent. La NATURE dit l'amical, plus le libellé (lot 7, PR 4a) : un championnat que son
+     * libellé dit « Amical RM3 » commence comme tout championnat. Horloge épinglée au 16/09/2026.
      */
     public function testStartedCompetitionIdsFollowTheValidatedLeagueDefinition(): void
     {
@@ -321,7 +322,11 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $friendly = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), '2026-09-01', '15:30', $venue->getId(), '2026-09-01');
         $friendlyCompetition = $this->em->find(Competition::class, (string) $friendly->getCompetitionId());
         self::assertInstanceOf(Competition::class, $friendlyCompetition);
-        $friendlyCompetition->setName('Amical PNF');
+        $friendlyCompetition->setName('Amical PNF')->setCompetitionType(CompetitionType::FRIENDLY); // décor : née amicale
+        $labelled = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), '2026-09-02', '15:30', $venue->getId(), '2026-09-01');
+        $labelledCompetition = $this->em->find(Competition::class, (string) $labelled->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $labelledCompetition);
+        $labelledCompetition->setName('Amical RM3');
         $this->em->flush();
 
         $outlook = self::getContainer()->get(LeagueValidationOutlook::class);
@@ -332,6 +337,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         self::assertArrayHasKey((string) $byFirstMatch->getCompetitionId(), $started, 'premier match la veille : commencé');
         self::assertArrayNotHasKey((string) $notYet->getCompetitionId(), $started, 'premier match aujourd\'hui, échéance demain : pas encore');
         self::assertArrayNotHasKey((string) $friendly->getCompetitionId(), $started, 'un amical n\'est jamais un championnat commencé');
+        self::assertArrayHasKey((string) $labelled->getCompetitionId(), $started, 'un championnat libellé « Amical … » commence comme tout championnat');
     }
 
     /**

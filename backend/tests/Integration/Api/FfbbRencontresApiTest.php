@@ -154,7 +154,14 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertNull($fixture->getReviewedAt());
         self::assertSame(FixtureHomeAway::HOME, $fixture->getHomeAway());
         self::assertSame(FfbbHttpClientStub::AMICAL_OPPONENT, $fixture->getOpponentLabel());
-        self::assertNull($fixture->getCompetitionId(), 'the « AMICAL PNM » label makes it a friendly (null competitionId), even though it carries a competitionFfbbId (P4-194 R1)');
+        // Lot 7, PR 4a : le libellé « AMICAL PNM » en fait un amical (P4-194 R1, même s'il porte un competitionFfbbId) ;
+        // l'amical de la fédération entre dans la compétition amicale de SON libellé, jamais dans « Amicaux ».
+        $friendly = $this->em->getRepository(Competition::class)->find((string) $fixture->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $friendly);
+        self::assertSame(CompetitionType::FRIENDLY, $friendly->getCompetitionType(), 'un amical de la fédération est rangé dans une compétition AMICALE');
+        self::assertSame('AMICAL PNM', $friendly->getName(), 'celle de son libellé');
+        self::assertFalse($friendly->isDefaultFriendly(), 'jamais dans « Amicaux »');
+        self::assertNull($friendly->getFfbbCompetitionId(), 'un amical n\'est jamais apparié');
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $fixture->getKickoffTime()?->format('H:i'));
         self::assertSame('GYMNASE STUB', $fixture->getFbiVenueLabel());
 
@@ -248,11 +255,15 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertCount(2, $this->em->getRepository(Fixture::class)->findBy(['teamId' => $team->getId()]), 'no duplicate fixture on re-apply');
     }
 
-    public function testAnExistingFixtureWithoutCompetitionIsRetroactivelyAttachedToTheCup(): void
+    /**
+     * P4-194 R3 — un domicile déjà en base (matché tier-0 par ffbbRencontreId) rangé dans « Amicaux » d'office
+     * (l'ancien « sans compétition », que la conversion du lot 7 PR 4a y a versé) reçoit la coupe résolue-ou-créée
+     * que l'API lui donne, et RIEN d'autre : date / statut / reviewState intouchés (fixture UNPLACED = hors
+     * périmètre). ⚠ ROUGE à l'écriture (passe tank PR 4a) : `FfbbRencontreReconciler.php:190` ne rattache plus
+     * qu'un match SANS compétition, cas devenu impossible — décision ouverte, voir le rapport.
+     */
+    public function testAnExistingFixtureInTheDefaultFriendliesIsRetroactivelyAttachedToTheCup(): void
     {
-        // P4-194 R3 — un domicile déjà en base (matché tier-0 par ffbbRencontreId)
-        // SANS compétition reçoit la coupe résolue-ou-créée, et RIEN d'autre :
-        // date / statut / reviewState intouchés (fixture UNPLACED = hors périmètre).
         [$token, , $clubId] = $this->register('FRCUP3');
         $this->useStubClubCode($clubId);
         $team = $this->createTeam($clubId);
@@ -266,6 +277,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->flush();
         $existingId = $existing->getId();
         $dateBefore = $existing->getMatchDate()->format('Y-m-d');
+        self::assertTrue($this->em->getRepository(Competition::class)->find((string) $existing->getCompetitionId())?->isDefaultFriendly(), 'décor : le match est dans « Amicaux »');
 
         $this->apply($token, [], []);
 
@@ -273,9 +285,8 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
         self::assertInstanceOf(Fixture::class, $reloaded);
-        self::assertNotNull($reloaded->getCompetitionId(), 'the cup is retroactively attached to the matched fixture');
-        $competition = $this->em->getRepository(Competition::class)->find($reloaded->getCompetitionId());
-        self::assertSame(CompetitionType::CUP, $competition?->getCompetitionType());
+        $competition = $this->em->getRepository(Competition::class)->find((string) $reloaded->getCompetitionId());
+        self::assertSame(CompetitionType::CUP, $competition?->getCompetitionType(), 'the cup is retroactively attached to the matched fixture');
         self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'the status is untouched');
         self::assertSame($dateBefore, $reloaded->getMatchDate()->format('Y-m-d'), 'the date is untouched');
         self::assertSame(FixtureReviewState::NEW, $reloaded->getReviewState(), 'no treatment induced');
@@ -359,8 +370,9 @@ final class FfbbRencontresApiTest extends WebTestCase
 
     /**
      * Promesse (étape 2 du canal API, son refus gardé) : la compétition de même nom normalisé qui porte DÉJÀ une autre
-     * référence fédérale n'est jamais ré-adoptée — sa référence n'est pas écrasée, aucune compétition n'est créée, la
-     * rencontre reste sans compétition.
+     * référence fédérale n'est jamais ré-adoptée — sa référence n'est pas écrasée, aucune coupe n'est créée. Depuis le
+     * lot 7 (PR 4a) un match a toujours une compétition : ce cas pathologique range la rencontre dans « Amicaux », la
+     * compétition d'office de la saison, l'équipe y engagée (avant : la rencontre restait sans compétition).
      */
     public function testACupCompetitionOfTheSameNameCarryingAnotherFederalRefIsNeverOverwritten(): void
     {
@@ -374,8 +386,10 @@ final class FfbbRencontresApiTest extends WebTestCase
 
         $connection = $this->scoped($clubId);
         self::assertSame('autre-coupe', $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$other->getId()]), 'la référence de l\'autre coupe n\'est pas écrasée');
-        self::assertSame([$other->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune compétition n\'est créée');
-        self::assertNull($connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]) ?: null, 'la rencontre reste sans compétition');
+        $amicaux = $connection->fetchOne('SELECT id FROM competition WHERE club_id = ? AND default_friendly', [$clubId]);
+        self::assertIsString($amicaux, 'la saison a sa compétition « Amicaux »');
+        self::assertEqualsCanonicalizing([$other->getId(), $amicaux], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune coupe n\'est créée : l\'équipe n\'est engagée que dans l\'autre coupe et dans « Amicaux »');
+        self::assertSame($amicaux, $connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]), 'la rencontre est rangée dans « Amicaux »');
     }
 
     public function testApplyReFetchesServerAndIgnoresForgedOrForeignCreations(): void
@@ -991,6 +1005,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate($date->setTime(0, 0));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);

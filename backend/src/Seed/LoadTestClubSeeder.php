@@ -45,6 +45,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Service\Basketball\CategoryCatalog;
@@ -152,6 +153,8 @@ final class LoadTestClubSeeder
         $season = $this->seedSeason($manager, $clubId);
         $seasonId = $season->getId();
         $this->schedulePlanProvisioner->ensureSeasonPlan($season);
+        // « Amicaux », la compétition d'office de la saison (lot 7, PR 4a), par la connexion du seeder.
+        new FriendlyCompetitions($manager)->ensureDefault($clubId, $seasonId);
         // Copie club de l'enveloppe ligue (no-op si le catalogue global n'est pas semé
         // dans l'env — le harnais exécute `app:league-windows:seed` en préalable).
         $this->clubLeagueWindowSeeder->seedForSeason($clubId, $seasonId, $club->getLeague());

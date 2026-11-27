@@ -115,6 +115,9 @@ final class EntryDeadlineOutlook
         // deadline are distinct windows; two competitions sharing a date+source merge.
         $groups = [];
         foreach ($competitions as $competition) {
+            if ($competition->getCompetitionType()->isFriendly()) {
+                continue; // un amical ne doit rien à une échéance (lot 7, PR 4a)
+            }
             [$effective, $source] = $this->effectiveDeadline($competition, $sharedByFfbbId);
             if (!$effective instanceof DateTimeImmutable) {
                 continue; // no deadline for this competition
@@ -222,7 +225,7 @@ final class EntryDeadlineOutlook
             }
             $competitionId = $fixture->getCompetitionId();
             if (null === $competitionId) {
-                continue; // a friendly carries no competition → no deadline
+                continue; // défensif : un match a toujours une compétition
             }
             $status = $fixture->getStatus();
             if (FixtureStatus::UNPLACED === $status) {

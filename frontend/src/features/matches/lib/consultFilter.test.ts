@@ -3,12 +3,22 @@ import { describe, expect, it } from "vitest";
 import type { Competition, Conflict, ConflictType, Fixture } from "../api";
 import { applyFamilyFilter, applyKindFilter, competitionKind, countByFamily, dateOf, DEFAULT_KINDS, familiesPresent, familyOf, hasHomeSide, hiddenBreakdownParts, hiddenWeekBreakdown, KINDS, normalizeKinds, revealPlan, scopeConflictsToWeek } from "./consultFilter";
 
+/** Le serveur sert la nature de chaque match (`competitionType`, PR 4a du lot 7) : le mock la sert aussi. */
+const TYPE_BY_COMPETITION: Record<string, Fixture["competitionType"]> = {
+  "comp-amicaux": "FRIENDLY",
+  "comp-champ": "CHAMPIONSHIP",
+  "comp-coupe": "CUP",
+  "comp-brassage": "BRASSAGE",
+};
+
 function fixture(over: Partial<Fixture> = {}): Fixture {
+  const competitionId = over.competitionId ?? "comp-amicaux";
   return {
     id: "fx",
     teamId: "team-1",
     seasonId: "s",
-    competitionId: null,
+    competitionId,
+    competitionType: TYPE_BY_COMPETITION[competitionId] ?? "CHAMPIONSHIP",
     matchDate: "2026-10-03",
     homeAway: "HOME",
     opponentLabel: "Voisins",
@@ -47,8 +57,19 @@ function conflictRefFixture(fixtureId: string): Conflict {
 }
 
 describe("competitionKind", () => {
-  it("competitionId null ⇒ amical", () => {
-    expect(competitionKind(fixture({ competitionId: null }), competitionsById)).toBe("amical");
+  // Lot 7 PR 4a — un amical est un match d'une compétition amicale : le filtre lit la nature du
+  // match (`competitionType`), jamais un `competitionId` nul (il n'existe plus), ni la liste des
+  // compétitions (un amical de la fédération n'y figure pas forcément).
+  it("un amical de la fédération (compétition non nulle, hors de la liste) ⇒ amical", () => {
+    expect(competitionKind(fixture({ competitionId: "comp-amical-pnm", competitionType: "FRIENDLY" }), competitionsById)).toBe("amical");
+  });
+
+  it("un match de « Amicaux » d'office ⇒ amical", () => {
+    expect(competitionKind(fixture({ competitionId: "comp-amicaux" }), competitionsById)).toBe("amical");
+  });
+
+  it("la nature servie sur le match décide, même quand la compétition manque à la liste", () => {
+    expect(competitionKind(fixture({ competitionId: "comp-absente", competitionType: "CUP" }), competitionsById)).toBe("coupe");
   });
 
   it("mappe CHAMPIONSHIP/CUP/BRASSAGE ⇒ championnat/coupe/brassage", () => {
@@ -63,7 +84,7 @@ describe("competitionKind", () => {
 });
 
 describe("applyKindFilter", () => {
-  const fxAmical = fixture({ id: "fx-amical", competitionId: null });
+  const fxAmical = fixture({ id: "fx-amical", competitionId: "comp-amicaux" });
   const fxCoupe = fixture({ id: "fx-coupe", competitionId: "comp-coupe" });
   const fixtures = [fxAmical, fxCoupe];
 
@@ -263,7 +284,7 @@ describe("revealPlan (A8)", () => {
   });
 
   it("un amical à domicile hors défauts ⇒ ajoute « amical », away false", () => {
-    const amicalHome = fixture({ id: "b", competitionId: null, homeAway: "HOME" });
+    const amicalHome = fixture({ id: "b", competitionId: "comp-amicaux", homeAway: "HOME" });
     const plan = revealPlan([amicalHome], DEFAULT_KINDS, competitionsById);
     expect(plan.away).toBe(false);
     expect(plan.kinds).toEqual(["amical"]);
@@ -272,7 +293,7 @@ describe("revealPlan (A8)", () => {
 
 describe("hiddenWeekBreakdown / hiddenBreakdownParts (A5)", () => {
   const champHome = fixture({ id: "h", competitionId: "comp-champ", homeAway: "HOME" });
-  const amicalHome = fixture({ id: "a", competitionId: null, homeAway: "HOME" });
+  const amicalHome = fixture({ id: "a", competitionId: "comp-amicaux", homeAway: "HOME" });
   const awayChamp = fixture({ id: "w", competitionId: "comp-champ", homeAway: "AWAY" });
 
   it("masque par TYPE (amical décoché) et par EXTÉRIEUR (interrupteur), le type primant", () => {
@@ -292,7 +313,7 @@ describe("hiddenWeekBreakdown / hiddenBreakdownParts (A5)", () => {
   });
 
   it("un extérieur d'un type décoché compte UNE fois côté type (pas dans away)", () => {
-    const awayAmical = fixture({ id: "x", competitionId: null, homeAway: "AWAY" });
+    const awayAmical = fixture({ id: "x", competitionId: "comp-amicaux", homeAway: "AWAY" });
     const b = hiddenWeekBreakdown([awayAmical], DEFAULT_KINDS, false, competitionsById);
     expect(b.away).toBe(0);
     expect(b.byKind.get("amical")).toBe(1);
@@ -301,7 +322,7 @@ describe("hiddenWeekBreakdown / hiddenBreakdownParts (A5)", () => {
 
   it("pluriels : 2 extérieurs, 2 amicaux", () => {
     const b = hiddenWeekBreakdown(
-      [amicalHome, fixture({ id: "a2", competitionId: null, homeAway: "HOME" }), awayChamp, fixture({ id: "w2", competitionId: "comp-champ", homeAway: "AWAY" })],
+      [amicalHome, fixture({ id: "a2", competitionId: "comp-amicaux", homeAway: "HOME" }), awayChamp, fixture({ id: "w2", competitionId: "comp-champ", homeAway: "AWAY" })],
       DEFAULT_KINDS,
       false,
       competitionsById,

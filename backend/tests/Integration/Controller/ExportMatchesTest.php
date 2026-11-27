@@ -18,6 +18,7 @@ use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
 use App\Service\ProductIdentity;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -43,6 +44,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 #[Group('integration')]
 final class ExportMatchesTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use SubscribesClub;
     use TenantGucTrait;
 
@@ -507,6 +509,7 @@ final class ExportMatchesTest extends WebTestCase
         $fixture->setClubId($ctx['club']->getId());
         $fixture->setSeasonId($ctx['season']->getId());
         $fixture->setTeamId(($team ?? $ctx['team'])->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor(($team ?? $ctx['team'])->getId(), $ctx['club']->getId(), $ctx['season']->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($this->year . '-11-14'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);

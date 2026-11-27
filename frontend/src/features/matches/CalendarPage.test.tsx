@@ -830,7 +830,7 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
   const champComp = { id: "comp-champ", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: 10 }], name: "Nat3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "f" };
   const mix = [
     fx({ id: "fx-champ", teamId: "team-1", competitionId: "comp-champ", matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "ChampHome", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00" }),
-    fx({ id: "fx-amical", teamId: "team-2", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "AmicalHome", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00" }),
+    fx({ id: "fx-amical", teamId: "team-2", competitionId: null, competitionType: "FRIENDLY", matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "AmicalHome", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00" }),
     fx({ id: "fx-away", teamId: "team-1", competitionId: "comp-champ", matchDate: "2026-10-04", homeAway: "AWAY", opponentLabel: "GrenobleChamp", status: "UNPLACED", venueId: null, kickoffTime: null, fbiVenueLabel: "Halle X" }),
   ];
   function seedMix() {

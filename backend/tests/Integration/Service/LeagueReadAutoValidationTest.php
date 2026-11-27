@@ -434,7 +434,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId(null);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate($this->today->modify('-10 days')->setTime(0, 0));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Amical passé');

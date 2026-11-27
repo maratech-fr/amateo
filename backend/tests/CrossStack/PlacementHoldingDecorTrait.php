@@ -30,6 +30,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\ClubPublicHolidays;
 use App\Service\MatchPlacementPayloadBuilder;
@@ -200,12 +201,15 @@ trait PlacementHoldingDecorTrait
         $this->em->flush();
     }
 
-    private function baseFixture(string $teamId, ?DateTimeImmutable $date, FixtureHomeAway $side, ?string $kickoff): Fixture
+    /** Le match, dans `$competitionId` ; sans compétition nommée, dans « Amicaux » (un amical, l'ancien `competitionId` nul). */
+    private function baseFixture(string $teamId, ?DateTimeImmutable $date, FixtureHomeAway $side, ?string $kickoff, ?string $competitionId = null): Fixture
     {
+        $competitionId ??= static::getContainer()->get(FriendlyCompetitions::class)->engageInDefault($this->club->getId(), $this->season->getId(), $teamId)->getId();
         $fixture = new Fixture;
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($competitionId);
         $fixture->setMatchDate($date ?? $this->friday);
         $fixture->setHomeAway($side);
         $fixture->setOpponentLabel('Adversaire');
@@ -230,8 +234,7 @@ trait PlacementHoldingDecorTrait
     /** Un domicile de championnat que le solveur doit poser. */
     private function homeToPlace(string $teamId, ?DateTimeImmutable $date = null): string
     {
-        $fixture = $this->baseFixture($teamId, $date, FixtureHomeAway::HOME, null);
-        $fixture->setCompetitionId($this->competition($teamId));
+        $fixture = $this->baseFixture($teamId, $date, FixtureHomeAway::HOME, null, $this->competition($teamId));
         $this->em->flush();
 
         return $fixture->getId();
@@ -240,8 +243,7 @@ trait PlacementHoldingDecorTrait
     /** Un domicile déjà posé par le solveur : au prochain « Placer », il repart à placer. */
     private function homePlacedBySolver(string $teamId, string $kickoff): string
     {
-        $fixture = $this->baseFixture($teamId, null, FixtureHomeAway::HOME, $kickoff);
-        $fixture->setCompetitionId($this->competition($teamId));
+        $fixture = $this->baseFixture($teamId, null, FixtureHomeAway::HOME, $kickoff, $this->competition($teamId));
         $fixture->setVenueId($this->venueId);
         $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
@@ -253,8 +255,7 @@ trait PlacementHoldingDecorTrait
     /** Un domicile posé à la main : figé pour le solveur. */
     private function homeFixed(string $teamId, string $kickoff, ?DateTimeImmutable $date = null): string
     {
-        $fixture = $this->baseFixture($teamId, $date, FixtureHomeAway::HOME, $kickoff);
-        $fixture->setCompetitionId($this->competition($teamId));
+        $fixture = $this->baseFixture($teamId, $date, FixtureHomeAway::HOME, $kickoff, $this->competition($teamId));
         $fixture->setVenueId($this->venueId);
         $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
@@ -273,8 +274,7 @@ trait PlacementHoldingDecorTrait
 
     private function neutralGround(string $teamId, string $kickoff): void
     {
-        $fixture = $this->baseFixture($teamId, null, FixtureHomeAway::HOME, $kickoff);
-        $fixture->setCompetitionId($this->competition($teamId));
+        $fixture = $this->baseFixture($teamId, null, FixtureHomeAway::HOME, $kickoff, $this->competition($teamId));
         $fixture->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
         $this->em->flush();
     }

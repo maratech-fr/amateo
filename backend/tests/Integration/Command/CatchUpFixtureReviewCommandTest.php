@@ -15,6 +15,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +34,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class CatchUpFixtureReviewCommandTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -132,7 +134,9 @@ final class CatchUpFixtureReviewCommandTest extends KernelTestCase
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
-        $fixture->setTeamId(Uuid::v4()->toRfc4122());
+        $teamId = Uuid::v4()->toRfc4122();
+        $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($ymd));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire');

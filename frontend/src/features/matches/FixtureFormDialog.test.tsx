@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ import { renderWithProviders } from "@/test/utils";
 
 import type { Competition, PriorityTier, Team } from "./api";
 import { FixtureFormDialog } from "./FixtureFormDialog";
+import { MATCHES_TEXTS } from "./texts";
 
 const { mutate, updateMutate } = vi.hoisted(() => ({ mutate: vi.fn(), updateMutate: vi.fn() }));
 
@@ -23,7 +24,9 @@ const tiers: PriorityTier[] = [
   { id: 1, label: "S", name: "Fanion", color: null },
   { id: 3, label: "B", name: "Moyenne", color: null },
 ];
-const competitions: Competition[] = [{ id: "comp-1", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "Championnat U13", competitionType: "CHAMPIONSHIP" }];
+const competitions: Competition[] = [{ id: "comp-1", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "Championnat U13", competitionType: "CHAMPIONSHIP", defaultFriendly: false }];
+/** Lot 7 PR 4a — la compétition « Amicaux » d'office de la saison, servie par GET /api/competitions ; team-1 y est déjà engagée. */
+const amicaux: Competition = { id: "comp-amicaux", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "Amicaux", competitionType: "FRIENDLY", defaultFriendly: true };
 
 beforeEach(() => {
   mutate.mockClear();
@@ -31,7 +34,9 @@ beforeEach(() => {
 });
 
 describe("FixtureFormDialog", () => {
-  it("creates a friendly (no competition → competitionId null)", async () => {
+  // Lot 7 PR 4a — poser un amical, c'est le ranger dans « Amicaux » : l'option envoie l'identifiant
+  // de la compétition d'office quand la saison l'a, sinon "" (le serveur la crée) — jamais null.
+  it("poser un amical sans « Amicaux » servie envoie competitionId \"\", jamais null", async () => {
     const user = userEvent.setup();
     renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={[]} onClose={vi.fn()} />);
 
@@ -40,7 +45,34 @@ describe("FixtureFormDialog", () => {
     await user.click(screen.getByRole("button", { name: "Créer" }));
 
     expect(mutate).toHaveBeenCalledOnce();
-    expect(mutate.mock.calls[0][0]).toEqual({ teamId: "team-1", matchDate: "2026-11-01", homeAway: "HOME", opponentLabel: "Amis", competitionId: null });
+    expect(mutate.mock.calls[0][0]).toEqual({ teamId: "team-1", matchDate: "2026-11-01", homeAway: "HOME", opponentLabel: "Amis", competitionId: "" });
+  });
+
+  it("poser un amical quand « Amicaux » existe envoie son identifiant", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={[amicaux, ...competitions]} onClose={vi.fn()} />);
+
+    await user.type(screen.getByLabelText("Date"), "2026-11-01");
+    await user.type(screen.getByLabelText("Adversaire"), "Amis");
+    await user.click(screen.getByRole("button", { name: "Créer" }));
+
+    expect(mutate.mock.calls[0][0]).toEqual({ teamId: "team-1", matchDate: "2026-11-01", homeAway: "HOME", opponentLabel: "Amis", competitionId: "comp-amicaux" });
+  });
+
+  it("« Amicaux » est la première option, une seule fois, puis les compétitions de l'équipe", () => {
+    renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={[...competitions, amicaux]} onClose={vi.fn()} />);
+
+    const options = within(screen.getByRole("combobox", { name: "Compétition" })).getAllByRole("option");
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(["comp-amicaux", "comp-1"]);
+  });
+
+  it("sans « Amicaux » servie, la première option porte le libellé d'office et la valeur \"\"", () => {
+    renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={competitions} onClose={vi.fn()} />);
+
+    expect(MATCHES_TEXTS.friendlyCompetitionOption).toEqual(expect.any(String));
+    const first = within(screen.getByRole("combobox", { name: "Compétition" })).getAllByRole("option")[0] as HTMLOptionElement;
+    expect(first.value).toBe("");
+    expect(first).toHaveAccessibleName(MATCHES_TEXTS.friendlyCompetitionOption);
   });
 
   it("keeps Créer disabled until the required fields are filled", async () => {
@@ -64,8 +96,8 @@ describe("FixtureFormDialog", () => {
     await user.type(screen.getByLabelText("Adversaire"), "Amis");
     await user.click(screen.getByRole("button", { name: "Créer" }));
 
-    // team-2 has no competition → the stale comp-1 must not be carried over.
-    expect(mutate.mock.calls[0][0]).toEqual({ teamId: "team-2", matchDate: "2026-11-01", homeAway: "HOME", opponentLabel: "Amis", competitionId: null });
+    // team-2 has no competition → the stale comp-1 must not be carried over: back to « Amicaux » ("" when the season has none served).
+    expect(mutate.mock.calls[0][0]).toEqual({ teamId: "team-2", matchDate: "2026-11-01", homeAway: "HOME", opponentLabel: "Amis", competitionId: "" });
   });
 
   // ── Edit mode (P1-4 PR E1) ───────────────────────────────────────────────
@@ -75,6 +107,7 @@ describe("FixtureFormDialog", () => {
     teamId: "team-1",
     seasonId: "s",
     competitionId: "comp-1",
+    competitionType: "CHAMPIONSHIP" as const,
     matchDate: "2026-11-08",
     homeAway: "HOME" as const,
     opponentLabel: "Rivaux",
@@ -111,6 +144,27 @@ describe("FixtureFormDialog", () => {
       fixture: existing,
       input: { matchDate: "2026-11-08", homeAway: "HOME", opponentLabel: "Rivaux BC", competitionId: "comp-1" },
     });
+  });
+
+  it("edit mode: choisir « Amicaux » sur un match de championnat envoie l'identifiant d'« Amicaux »", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={[amicaux, ...competitions]} fixture={existing} onClose={vi.fn()} />);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Compétition" }), "comp-amicaux");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(updateMutate.mock.calls[0][0].input.competitionId).toBe("comp-amicaux");
+  });
+
+  it("edit mode: un amical de « Amicaux » se modifie sans quitter « Amicaux »", async () => {
+    const user = userEvent.setup();
+    const friendly = { ...existing, competitionId: "comp-amicaux", competitionType: "FRIENDLY" as const };
+    renderWithProviders(<FixtureFormDialog teams={teams} tiers={tiers} competitions={[amicaux, ...competitions]} fixture={friendly} onClose={vi.fn()} />);
+
+    expect(screen.getByRole("combobox", { name: "Compétition" })).toHaveValue("comp-amicaux");
+    await user.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(updateMutate.mock.calls[0][0].input.competitionId).toBe("comp-amicaux");
   });
 
   it("edit mode: switching to Extérieur warns that the slot will be freed", async () => {

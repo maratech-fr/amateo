@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -34,6 +35,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FbiCorrectionApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     /** Horloge figée : les fenêtres de réouverture (< 24 h) se mesurent contre elle. */
@@ -199,6 +201,7 @@ final class FbiCorrectionApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');

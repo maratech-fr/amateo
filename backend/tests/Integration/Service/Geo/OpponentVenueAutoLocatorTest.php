@@ -20,6 +20,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -42,6 +43,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 #[Group('integration')]
 final class OpponentVenueAutoLocatorTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private const string CODE = 'ARA0069555';
@@ -313,6 +315,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
             $fixture->setHomeAway(FixtureHomeAway::AWAY);
             $fixture->setOpponentLabel('Adverse cap ' . $i);
@@ -490,6 +493,7 @@ final class OpponentVenueAutoLocatorTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponentLabel);

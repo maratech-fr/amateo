@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
-use App\Service\Basketball\FbiDivisionSignature;
+use App\Matches\FriendlyCompetitions;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
@@ -22,9 +21,8 @@ use Symfony\Component\Clock\ClockInterface;
  * sans confirmation chiffrée (le « validé ligue » en lot ne concerne QUE les championnats,
  * {@see LeagueValidationOutlook}).
  *
- * Un amical se reconnaît de deux façons : un domicile SANS compétition (competitionId null),
- * ou une compétition dont le LIBELLÉ est un amical (« Amical PNF » typé CHAMPIONSHIP côté
- * import) — maison unique {@see FbiDivisionSignature::isFriendlyCode}. Domicile ET extérieur
+ * Un amical est un match d'une compétition AMICALE (lot 7, PR 4a), « Amicaux » ou celle de la
+ * fédération (« Amical PNF ») — porte unique {@see FriendlyCompetitions}. Domicile ET extérieur
  * sont balayés ; seul un HOME reçoit l'ancre `MANUAL` (même invariant que le balayage des
  * championnats — la grille et le solveur l'exigent), un AWAY garde sa source intacte.
  *
@@ -41,7 +39,7 @@ final class FriendlyAutoValidator
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly FbiDivisionSignature $divisionSignature,
+        private readonly FriendlyCompetitions $friendlyCompetitions,
         private readonly ClockInterface $clock,
         private readonly TenantDoctrineScope $tenantDoctrineScope,
         private readonly LoggerInterface $logger,
@@ -57,15 +55,13 @@ final class FriendlyAutoValidator
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy($criteria);
 
-        $friendlyCompetitionIds = $this->friendlyCompetitionIds($seasonId);
+        $friendlyCompetitionIds = $this->friendlyCompetitions->friendlyIdsOf($seasonId);
         $today = DateTimeImmutable::createFromInterface($this->clock->now())->setTime(0, 0);
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
 
         $swept = 0;
         foreach ($fixtures as $fixture) {
-            $competitionId = $fixture->getCompetitionId();
-            $isFriendly = null === $competitionId || isset($friendlyCompetitionIds[$competitionId]);
-            if (!$isFriendly) {
+            if (!isset($friendlyCompetitionIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             if ($fixture->getMatchDate()->setTime(0, 0) >= $today) {
@@ -102,25 +98,5 @@ final class FriendlyAutoValidator
         }
 
         return $swept;
-    }
-
-    /**
-     * Les ids des compétitions de la saison dont le LIBELLÉ est un amical.
-     *
-     * @return array<string, true>
-     */
-    private function friendlyCompetitionIds(string $seasonId): array
-    {
-        /** @var list<Competition> $competitions */
-        $competitions = $this->entityManager->getRepository(Competition::class)->findBy(['seasonId' => $seasonId]);
-
-        $ids = [];
-        foreach ($competitions as $competition) {
-            if ($this->divisionSignature->isFriendlyCode($competition->getName())) {
-                $ids[$competition->getId()] = true;
-            }
-        }
-
-        return $ids;
     }
 }

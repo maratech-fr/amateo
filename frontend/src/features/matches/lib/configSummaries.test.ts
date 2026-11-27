@@ -53,6 +53,19 @@ describe("deadlinesSummary", () => {
   it("aucune compétition ⇒ « 0 sur 0 »", () => {
     expect(deadlinesSummary([])).toBe("0 renseignée sur 0 compétition");
   });
+
+  // « Amicaux » (defaultFriendly) n'a pas de ligne d'échéance : il ne compte ni au total ni aux renseignées,
+  // même s'il portait une échéance effective.
+  it.each([
+    { ordinaryDeadline: null, expected: "0 renseignée sur 1 compétition" },
+    { ordinaryDeadline: "2026-10-01", expected: "1 renseignée sur 1 compétition" },
+  ])("« Amicaux » hors du compte (ordinaire : $ordinaryDeadline) ⇒ « $expected »", ({ ordinaryDeadline, expected }) => {
+    const competitions = [
+      competition({ id: "c1", effectiveEntryDeadline: ordinaryDeadline }),
+      competition({ id: "amicaux", name: "Amicaux", defaultFriendly: true, effectiveEntryDeadline: "2026-09-01" }),
+    ];
+    expect(deadlinesSummary(competitions)).toBe(expected);
+  });
 });
 
 describe("durationsSummary", () => {

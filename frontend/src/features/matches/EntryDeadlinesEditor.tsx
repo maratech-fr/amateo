@@ -52,7 +52,8 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
   }, [teams]);
 
   const rows = useMemo(
-    () => [...competitions].sort((a, b) => teamName(a).localeCompare(teamName(b)) || a.name.localeCompare(b.name)),
+    // « Amicaux », la compétition d'office des amicaux, ne doit rien à une échéance : elle n'a pas de ligne.
+    () => competitions.filter((c) => true !== c.defaultFriendly).sort((a, b) => teamName(a).localeCompare(teamName(b)) || a.name.localeCompare(b.name)),
     [competitions, teamName],
   );
 

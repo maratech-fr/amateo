@@ -86,10 +86,11 @@ final class VenueConflicts
      *
      * @param list<Fixture>               $fixtures
      * @param array<string, list<string>> $forbiddenVenuesByTeam teamId → forbidden venue ids
+     * @param array<string, true>         $friendlyIds           les compétitions amicales
      *
      * @return list<array<string, mixed>>
      */
-    public function teamVenueForbiddenConflicts(array $fixtures, array $forbiddenVenuesByTeam): array
+    public function teamVenueForbiddenConflicts(array $fixtures, array $forbiddenVenuesByTeam, array $friendlyIds = []): array
     {
         if ([] === $forbiddenVenuesByTeam) {
             return [];
@@ -101,9 +102,9 @@ final class VenueConflicts
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || null === $venueId) {
                 continue;
             }
-            // Amical (competitionId null) : exempté (comme LEAGUE_WINDOW_VIOLATION et
+            // Amical (compétition amicale) : exempté (comme LEAGUE_WINDOW_VIOLATION et
             // CLUB_RULE_VIOLATION) — il se joue où le club veut.
-            if (null === $fixture->getCompetitionId()) {
+            if (isset($friendlyIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             $forbidden = $forbiddenVenuesByTeam[$fixture->getTeamId()] ?? [];

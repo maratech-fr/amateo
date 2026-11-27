@@ -289,32 +289,43 @@ final class ConflictTruthContext extends BaseContext
         $this->poserEnchainementMemePersonne($this->creerSecondGymnase(), '19:30');
     }
 
-    #[Given('une rencontre de championnat le samedi et un amical placé le dimanche du même week-end')]
-    public function unChampionnatEtUnAmicalLeMemeWeekend(): void
+    /**
+     * Lot 7, PR 4a : le week-end fixe du décor de ligue (`prepareCupTeamAndCategory`, samedi 16 janv. 2027, dimanche
+     * 17), hors des vacances scolaires seedées. Le championnat du samedi, à domicile à 18h00, sort de la fenêtre de
+     * ligue 10h00-10h30 et fait du week-end un « week-end de match ». L'amical est posé le dimanche à 15h00, jour sans
+     * fenêtre de ligue : jugé comme un championnat, il en sortirait. Deux arrivées d'un amical, une même nature :
+     * créé sans compétition (rangé dans « Amicaux »), ou rangé dans une compétition amicale créée par l'API.
+     */
+    #[Given('/^une rencontre de championnat à domicile le samedi, coup d\'envoi le soir hors de la fenêtre, et un amical (?P<friendly>posé à la main dans « Amicaux »|de la compétition amicale « AMICAL PNM ») placé le dimanche du même week-end$/u')]
+    public function unChampionnatHorsFenetreEtUnAmicalLeMemeWeekend(string $friendly): void
     {
-        // Week-end fixe et clair : 16 janv. 2027 (samedi) / 17 janv. (dimanche), hors
-        // des vacances scolaires seedées et des fenêtres des autres scénarios.
-        $saturday = '2027-01-16';
-        $sunday = '2027-01-17';
+        $saturday = $this->cupSaturday;
+        $sunday = new DateTimeImmutable($saturday)->modify('+1 day')->format('Y-m-d');
 
-        // Une compétition jetable → la rencontre du samedi n'est PAS un amical, elle fait
-        // du week-end un « week-end de match ».
         $this->competitionId = $this->idOf(
             $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Championnat jetable (vérité conflits)', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
             'compétition jetable',
         );
         $this->championshipFixtureId = $this->idOf(
-            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $saturday, 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire championnat', 'competitionId' => $this->competitionId], $this->token),
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire championnat', 'competitionId' => $this->competitionId, 'kickoffTime' => '18:00'], $this->token),
             'rencontre de championnat',
         );
 
-        // Amical à DOMICILE le dimanche du même week-end, puis posé (gymnase + heure).
+        $friendlyCompetitionId = null;
+        if (str_contains($friendly, 'AMICAL PNM')) {
+            $friendlyCompetitionId = $this->idOf(
+                $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'AMICAL PNM', 'competitionType' => 'FRIENDLY'], $this->token),
+                'compétition amicale « AMICAL PNM »',
+            );
+        }
         $this->friendlyId = $this->idOf(
-            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical de gala'], $this->token),
+            $this->apiPost('fixtures', array_filter(['teamId' => $this->teamId, 'matchDate' => $sunday, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical de gala', 'competitionId' => $friendlyCompetitionId], static fn (mixed $value): bool => null !== $value), $this->token),
             'amical',
         );
+        $current = $this->apiGet(\sprintf('fixtures/%s', $this->friendlyId), $this->token)['json'];
         $placed = $this->apiPut(\sprintf('fixtures/%s', $this->friendlyId), [
             'teamId' => $this->teamId,
+            'competitionId' => $current['competitionId'] ?? null,
             'matchDate' => $sunday,
             'homeAway' => 'HOME',
             'opponentLabel' => 'Amical de gala',
@@ -323,7 +334,27 @@ final class ConflictTruthContext extends BaseContext
             'status' => 'PLACED',
         ], $this->token);
         if (200 !== $placed['status']) {
-            throw new RuntimeException(\sprintf('placement manuel de l\'amical en échec (HTTP %d)', $placed['status']));
+            throw new RuntimeException(\sprintf('placement manuel de l\'amical en échec (HTTP %d) : %s', $placed['status'], json_encode($placed['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        if ('FRIENDLY' !== ($placed['json']['competitionType'] ?? null)) {
+            throw new RuntimeException(\sprintf('décor : l\'amical %s est servi avec la nature « %s » au lieu de FRIENDLY', $friendly, \is_string($placed['json']['competitionType'] ?? null) ? $placed['json']['competitionType'] : 'absente'));
+        }
+    }
+
+    #[Then('le radar signale le championnat hors fenêtre de ligue')]
+    public function leRadarSignaleLeChampionnatHorsFenetre(): void
+    {
+        if ([] === $this->conflictTypesOf($this->championshipFixtureId, ['LEAGUE_WINDOW_VIOLATION'])) {
+            throw new RuntimeException('aucune violation de fenêtre de ligue ne porte le championnat du samedi à 18h00 : la fenêtre de ligue ne borne plus le championnat (témoin du décor)');
+        }
+    }
+
+    #[Then('le radar ne juge jamais l\'amical contre la fenêtre de ligue ni les règles du club')]
+    public function leRadarNeJugeJamaisLAmicalContreLaLigue(): void
+    {
+        $found = $this->conflictTypesOf($this->friendlyId, ['LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION']);
+        if ([] !== $found) {
+            throw new RuntimeException(\sprintf('l\'amical est jugé comme un championnat : %s', implode(', ', $found)));
         }
     }
 
@@ -930,6 +961,27 @@ final class ConflictTruthContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * @param list<string> $types
+     *
+     * @return list<string> les types parmi `$types` que le radar porte sur ce match
+     */
+    private function conflictTypesOf(string $fixtureId, array $types): array
+    {
+        $found = [];
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || !\in_array($conflict['type'] ?? null, $types, true)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            if (\is_array($fixtureBlock) && ($fixtureBlock['fixtureId'] ?? null) === $fixtureId) {
+                $found[] = (string) $conflict['type'];
+            }
+        }
+
+        return $found;
     }
 
     private function assertCoachUnavailableSeverity(int $expected, string $colour): void

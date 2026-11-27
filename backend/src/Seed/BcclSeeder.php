@@ -57,6 +57,7 @@ use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Repository\ClubSubscriptionRepository;
@@ -339,6 +340,8 @@ final class BcclSeeder
         }
         // ADR-0002 Lot A: seed the season's empty SEASON plan (idempotent).
         $this->schedulePlanProvisioner->ensureSeasonPlan($season);
+        // « Amicaux », la compétition d'office de la saison (lot 7, PR 4a, idempotent), par la connexion du seeder.
+        new FriendlyCompetitions($manager)->ensureDefault($club->getId(), $season->getId());
 
         // P4-272 ① — la copie club de l'enveloppe ligue (recopie de la ligue
         // effective, idempotent : no-op si déjà posée ou si le catalogue global

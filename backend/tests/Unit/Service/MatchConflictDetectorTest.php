@@ -42,6 +42,8 @@ final class MatchConflictDetectorTest extends TestCase
     private const TEAM_1 = 'team-1';
     private const TEAM_2 = 'team-2';
     private const BASELINE = 'sched-baseline';
+    /** « Amicaux » : la compétition amicale des amicaux de ces tests ({@see amicaux}). */
+    private const string AMICAUX = 'comp-amicaux';
     private const OVERLAY = 'sched-overlay';
     private const string U15 = 'team-u15';
     private const string U18 = 'team-u18';
@@ -705,28 +707,27 @@ final class MatchConflictDetectorTest extends TestCase
 
     public function testAFriendlyIsNeverALeagueWindowViolation(): void
     {
-        // P4-190 (fondateur, 2026-09-08): a friendly (competitionId null) answers
-        // to no FFBB league envelope. The real case: SM1 (paired PNM, Sat/Sun
-        // windows) with a HOME amical placed outside every window must NOT scream
-        // « Hors fenêtre autorisée par la ligue ».
-        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday, competitionId null → amical
+        // P4-190 (fondateur, 2026-09-08): a friendly (a match of a FRIENDLY competition, lot 7 PR 4a)
+        // answers to no FFBB league envelope. The real case: SM1 (paired PNM, Sat/Sun windows) with a
+        // HOME amical placed outside every window must NOT scream « Hors fenêtre autorisée par la ligue ».
+        $friendly = $this->friendly('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday, « Amicaux »
         $friendly->setVenueId('venue-mateo');
         $envelope = [self::TEAM_1 => [$this->leagueWindow(6, '14:00', '20:00')]]; // Saturday only
 
-        self::assertSame([], $this->detect([$friendly], [], null, [], [], [], [], [], [], $envelope));
+        self::assertSame([], $this->detect([$friendly], [], null, [], [], [], [], [], [], $envelope, [$this->amicaux()]));
     }
 
     public function testAFriendlyInAVenueCollisionStillScreamsButNeverForTheLeague(): void
     {
         // The amical is lifted from LEAGUE_WINDOW_VIOLATION only (P4-190) — every
         // other family still applies: a gym clash still screams VENUE_OVERLAP.
-        $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday amical, outside the Saturday window
+        $left = $this->friendly('fx-1', self::TEAM_1, '2026-10-04', '17:30'); // Sunday amical, outside the Saturday window
         $left->setVenueId('venue-mateo');
-        $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-04', '17:30');
+        $right = $this->friendly('fx-2', self::TEAM_2, '2026-10-04', '17:30');
         $right->setVenueId('venue-mateo');
         $envelope = [self::TEAM_1 => [$this->leagueWindow(6, '14:00', '20:00')]]; // Saturday only
 
-        $types = array_column($this->detect([$left, $right], [], null, [], [], [], [], [], [], $envelope), 'type');
+        $types = array_column($this->detect([$left, $right], [], null, [], [], [], [], [], [], $envelope, [$this->amicaux()]), 'type');
         self::assertContains('VENUE_OVERLAP', $types);
         self::assertNotContains('LEAGUE_WINDOW_VIOLATION', $types);
     }
@@ -735,15 +736,15 @@ final class MatchConflictDetectorTest extends TestCase
 
     public function testFriendlyOnAMatchWindowRaisesTheWindowReason(): void
     {
-        // Un amical (competitionId null) placé un samedi 15:00, gymnase mateo, dont
+        // Un amical (« Amicaux ») placé un samedi 15:00, gymnase mateo, dont
         // l'empreinte (13:15–16:45) chevauche la fenêtre d'accès match 14:00–18:00 :
         // FRIENDLY_ON_MATCH_SLOT, severity 5, raison MATCH_SLOT_WINDOW, venueId porté.
-        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00'); // Saturday, amical
+        $friendly = $this->friendly('fx-1', self::TEAM_1, '2026-10-03', '15:00'); // Saturday, amical
         $friendly->setVenueId('venue-mateo');
         $windows = [$this->matchWindow('venue-mateo', 6, '14:00', '18:00')];
 
         $conflicts = array_values(array_filter(
-            $this->detect([$friendly], [], null, [], [], [], [], [], $windows),
+            $this->detect([$friendly], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]),
             static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
         ));
 
@@ -759,13 +760,13 @@ final class MatchConflictDetectorTest extends TestCase
         // Amical placé le DIMANCHE d'un week-end où une équipe joue en compétition
         // à l'EXTÉRIEUR le samedi → raison MATCH_WEEKEND (clé = date du samedi).
         // Aucune fenêtre → pas de raison fenêtre, donc pas de venueId.
-        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-04', '15:00'); // Sunday, amical, placed
+        $friendly = $this->friendly('fx-1', self::TEAM_1, '2026-10-04', '15:00'); // Sunday, amical, placed
         $friendly->setVenueId('venue-mateo');
         $away = $this->awayFixture('fx-2', self::TEAM_2, '2026-10-03', '18:00'); // Saturday, competition
         $away->setCompetitionId('comp-1');
 
         $conflicts = array_values(array_filter(
-            $this->detect([$friendly, $away], []),
+            $this->detect([$friendly, $away], [], competitions: [$this->amicaux()]),
             static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
         ));
 
@@ -779,10 +780,10 @@ final class MatchConflictDetectorTest extends TestCase
     {
         // Amical un JEUDI (hors week-end), aucune fenêtre : ni fenêtre ni week-end
         // → aucune alerte. Le jeudi ne déclenche jamais la raison week-end.
-        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-01', '18:00'); // Thursday, amical, placed
+        $friendly = $this->friendly('fx-1', self::TEAM_1, '2026-10-01', '18:00'); // Thursday, amical, placed
         $friendly->setVenueId('venue-mateo');
 
-        self::assertSame([], $this->detect([$friendly], []));
+        self::assertSame([], $this->detect([$friendly], [], competitions: [$this->amicaux()]));
     }
 
     public function testFriendlyOutsideEveryWindowOnAMatchlessWeekendStaysSilent(): void
@@ -791,24 +792,24 @@ final class MatchConflictDetectorTest extends TestCase
         // la fenêtre du gymnase (08:00–10:00), et aucune rencontre NON amicale ne se
         // joue ce week-end → aucune alerte FRIENDLY_ON_MATCH_SLOT (la branche fenêtre
         // exige un CHEVAUCHEMENT, la branche week-end un match non amical).
-        $friendly = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '18:00'); // Saturday, amical, placed
+        $friendly = $this->friendly('fx-1', self::TEAM_1, '2026-10-03', '18:00'); // Saturday, amical, placed
         $friendly->setVenueId('venue-mateo');
         $windows = [$this->matchWindow('venue-mateo', 6, '08:00', '10:00')];
 
-        $types = array_column($this->detect([$friendly], [], null, [], [], [], [], [], $windows), 'type');
+        $types = array_column($this->detect([$friendly], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]), 'type');
         self::assertNotContains('FRIENDLY_ON_MATCH_SLOT', $types);
     }
 
     public function testAChampionshipFixtureNeverRaisesFriendlyOnMatchSlot(): void
     {
         // Un match de CHAMPIONNAT dans une fenêtre de match n'est PAS un amical sur
-        // un créneau : FRIENDLY_ON_MATCH_SLOT ne vise que les competitionId null.
+        // un créneau : FRIENDLY_ON_MATCH_SLOT ne vise que les matchs d'une compétition amicale.
         $championship = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00'); // Saturday
         $championship->setVenueId('venue-mateo');
         $championship->setCompetitionId('comp-1');
         $windows = [$this->matchWindow('venue-mateo', 6, '14:00', '18:00')];
 
-        $types = array_column($this->detect([$championship], [], null, [], [], [], [], [], $windows), 'type');
+        $types = array_column($this->detect([$championship], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]), 'type');
         self::assertNotContains('FRIENDLY_ON_MATCH_SLOT', $types);
     }
 
@@ -912,12 +913,12 @@ final class MatchConflictDetectorTest extends TestCase
     public function testFriendlyOnAnOpeningRaisesTheWindowReason(): void
     {
         // D9 : un amical sur une ouverture est sur un créneau de match, comme sur une ligne hebdo.
-        $friendly = $this->fixture('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
+        $friendly = $this->friendly('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
         $friendly->setVenueId('venue-mateo');
         $windows = [$this->openingWindow('venue-mateo', self::ORDINARY_WEDNESDAY, '14:00', '20:00')];
 
         $conflicts = array_values(array_filter(
-            $this->detect([$friendly], [], null, [], [], [], [], [], $windows),
+            $this->detect([$friendly], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]),
             static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
         ));
         self::assertCount(1, $conflicts);
@@ -927,11 +928,11 @@ final class MatchConflictDetectorTest extends TestCase
     public function testFriendlyOnAnotherDateOfTheOpeningStaysSilent(): void
     {
         // Le 18 nov. n'est pas sur l'ouverture du 11, malgré le même jour de semaine.
-        $friendly = $this->fixture('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
+        $friendly = $this->friendly('fx-1', self::TEAM_1, self::ORDINARY_WEDNESDAY, '15:00');
         $friendly->setVenueId('venue-mateo');
         $windows = [$this->openingWindow('venue-mateo', self::HOLIDAY, '14:00', '20:00')];
 
-        self::assertNotContains('FRIENDLY_ON_MATCH_SLOT', array_column($this->detect([$friendly], [], null, [], [], [], [], [], $windows), 'type'));
+        self::assertNotContains('FRIENDLY_ON_MATCH_SLOT', array_column($this->detect([$friendly], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]), 'type'));
     }
 
     // ── Entraînement dans le gymnase (D8) : signal seulement ─────────────────────────────────
@@ -949,7 +950,7 @@ final class MatchConflictDetectorTest extends TestCase
     public function testAFriendlyAlsoGetsTheTrainingSignal(): void
     {
         $friendly = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
-        $friendly->setCompetitionId(null);
+        $friendly->setCompetitionId(self::AMICAUX);
 
         self::assertCount(1, $this->overlapConflicts($friendly));
     }
@@ -1601,20 +1602,20 @@ final class MatchConflictDetectorTest extends TestCase
         // → no MATCH_SLOT_WINDOW reason. A 14:00 kickoff (venue window 14:00→15:45)
         // still bites the window → the reason fires. (ACCESS_WINDOW_LOST is a
         // separate, kickoff-point family and is not asserted here.)
-        $clears = $this->fixture('fx-clear', self::TEAM_1, '2026-10-03', '14:30'); // Saturday, amical
+        $clears = $this->friendly('fx-clear', self::TEAM_1, '2026-10-03', '14:30'); // Saturday, amical
         $clears->setVenueId('venue-mateo');
         $windows = [$this->matchWindow('venue-mateo', 6, '12:00', '14:15')];
 
         $clearFriendly = array_values(array_filter(
-            $this->detect([$clears], [], null, [], [], [], [], [], $windows),
+            $this->detect([$clears], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]),
             static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
         ));
         self::assertSame([], $clearFriendly);
 
-        $bites = $this->fixture('fx-bite', self::TEAM_1, '2026-10-03', '14:00');
+        $bites = $this->friendly('fx-bite', self::TEAM_1, '2026-10-03', '14:00');
         $bites->setVenueId('venue-mateo');
         $biteFriendly = array_values(array_filter(
-            $this->detect([$bites], [], null, [], [], [], [], [], $windows),
+            $this->detect([$bites], [], null, [], [], [], [], [], $windows, competitions: [$this->amicaux()]),
             static fn (array $c): bool => 'FRIENDLY_ON_MATCH_SLOT' === $c['type'],
         ));
         self::assertCount(1, $biteFriendly);
@@ -2609,7 +2610,7 @@ final class MatchConflictDetectorTest extends TestCase
         $slots = $withOtherTeam ? [$this->venueSlot('slot-2', self::TEAM_2, 3, '18:00', 90)] : [];
 
         return array_values(array_filter(
-            $this->detect([$fixture], [], self::BASELINE, [], [self::BASELINE => [...$slots, ...$extraSlots]], publicHolidays: $publicHolidays),
+            $this->detect([$fixture], [], self::BASELINE, [], [self::BASELINE => [...$slots, ...$extraSlots]], competitions: [$this->amicaux()], publicHolidays: $publicHolidays),
             static fn (array $c): bool => 'VENUE_TRAINING_OVERLAP' === $c['type'],
         ));
     }
@@ -2779,6 +2780,29 @@ final class MatchConflictDetectorTest extends TestCase
         $window->setEndTime(DateTimeImmutable::createFromFormat('!H:i', $end) ?: new DateTimeImmutable('00:00'));
 
         return $window;
+    }
+
+    /** Un amical : un match de « Amicaux », compétition AMICALE (lot 7, PR 4a — la nature dit l'amical, plus le `competitionId` nul). */
+    private function friendly(string $id, string $teamId, string $date, ?string $kickoff): Fixture
+    {
+        return $this->fixture($id, $teamId, $date, $kickoff)->setCompetitionId(self::AMICAUX);
+    }
+
+    /**
+     * « Amicaux », passée au détecteur dans `$competitions` : c'est elle qui fait d'un match un amical.
+     *
+     * @return array{competition: Competition, engagements: list<EngagementView>}
+     */
+    private function amicaux(): array
+    {
+        $competition = new Competition;
+        $this->setId($competition, self::AMICAUX);
+        $competition->setClubId('club');
+        $competition->setSeasonId('season');
+        $competition->setName('Amicaux');
+        $competition->setCompetitionType(CompetitionType::FRIENDLY);
+
+        return ['competition' => $competition, 'engagements' => [new EngagementView(self::AMICAUX, self::TEAM_1, null, null, null, null, null), new EngagementView(self::AMICAUX, self::TEAM_2, null, null, null, null, null)]];
     }
 
     private function fixture(string $id, string $teamId, string $date, ?string $kickoff): Fixture

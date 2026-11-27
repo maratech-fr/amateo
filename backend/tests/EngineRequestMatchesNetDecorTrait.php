@@ -16,6 +16,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use PHPUnit\Framework\Assert;
@@ -25,9 +26,9 @@ use PHPUnit\Framework\Assert;
  *
  *  16. deux équipes dans la même division : deux compétitions « DF2 » de même nom, une par équipe, un
  *      domicile à placer chacune ; U13 F résout la fenêtre de ligue du samedi, U13 F2 aucune ;
- *  17. les amicaux : un amical sans compétition placé à la main (ancre), un autre non placé (absent),
- *      une compétition « Amical PNF » rangée en championnat avec un domicile non placé, un domicile
- *      posé par le système et un extérieur ;
+ *  17. les amicaux : un amical de « Amicaux » placé à la main (ancre), un autre non placé (absent),
+ *      une compétition « Amical PNF » amicale (PR 4a) avec un domicile non placé (absent), un domicile
+ *      posé par le système (ancre) et un extérieur ;
  *  18. le suivi fédéral : domicile saisi avec gymnase et heure, validé posé par le système, saisi sans
  *      gymnase, validé sans gymnase, extérieur saisi, extérieur validé sans gymnase, domicile importé
  *      avec heure et gymnase ;
@@ -82,13 +83,17 @@ trait EngineRequestMatchesNetDecorTrait
         $em->flush();
     }
 
-    /** Référence 17 : amicaux sans compétition et compétition « Amical PNF ». */
+    /**
+     * Référence 17 : amicaux posés à la main, rangés dans « Amicaux » (la compétition d'office de la saison, par la
+     * porte), et compétition « Amical PNF », amicale depuis la PR 4a du lot 7 (née amicale à l'import, ou convertie).
+     */
     private function seedMatchesNetFriendlies(): void
     {
         $em = $this->erEm();
-        $this->netCompetition(171, self::ER_TEAM_SM1, 'Amical PNF', CompetitionType::CHAMPIONSHIP);
-        $this->netFixture(171, self::ER_TEAM_U15, null, '2026-02-14', FixtureHomeAway::HOME, status: FixtureStatus::PLACED, source: FixturePlacementSource::MANUAL, venueId: self::ER_VENUE_NORD, kickoff: '15:00');
-        $this->netFixture(172, self::ER_TEAM_U15, null, '2026-02-21', FixtureHomeAway::HOME);
+        $this->netCompetition(171, self::ER_TEAM_SM1, 'Amical PNF', CompetitionType::FRIENDLY);
+        $amicaux = static::getContainer()->get(FriendlyCompetitions::class)->engageInDefault(self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U15)->getId();
+        $this->netFixture(171, self::ER_TEAM_U15, null, '2026-02-14', FixtureHomeAway::HOME, status: FixtureStatus::PLACED, source: FixturePlacementSource::MANUAL, venueId: self::ER_VENUE_NORD, kickoff: '15:00', competitionId: $amicaux);
+        $this->netFixture(172, self::ER_TEAM_U15, null, '2026-02-21', FixtureHomeAway::HOME, competitionId: $amicaux);
         $this->netFixture(173, self::ER_TEAM_SM1, 171, '2026-02-14', FixtureHomeAway::HOME, externalRef: 'APNF-0001');
         $this->netFixture(174, self::ER_TEAM_SM1, 171, '2026-02-21', FixtureHomeAway::HOME, status: FixtureStatus::PLACED, source: FixturePlacementSource::SOLVER, venueId: self::ER_VENUE_NORD, kickoff: '17:00', externalRef: 'APNF-0002');
         $this->netFixture(175, self::ER_TEAM_SM1, 171, '2026-02-28', FixtureHomeAway::AWAY, kickoff: '20:00', externalRef: 'APNF-0003');
@@ -141,18 +146,24 @@ trait EngineRequestMatchesNetDecorTrait
         Assert::assertSame(2, $this->netCount('SELECT COUNT(*) FROM competition WHERE name = :name', ['name' => 'DF2']), 'témoin 16 : deux compétitions de même nom');
     }
 
-    /** Témoins de la référence 17 : un match d'une compétition « Amical … », un amical sans compétition placé et un non placé. */
+    /**
+     * Témoins de la référence 17 : un domicile non placé et un posé par le système d'une compétition « Amical … »
+     * amicale, un amical de « Amicaux » placé et un non placé.
+     */
     private function assertMatchesNetFriendliesWitnesses(): void
     {
-        Assert::assertGreaterThanOrEqual(2, $this->netCount(
-            'SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.name LIKE \'Amical %\' AND f.home_away = \'HOME\'',
-        ), 'témoin 17 : des domiciles d\'une compétition « Amical … »');
         Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE competition_id IS NULL AND venue_id IS NOT NULL AND kickoff_time IS NOT NULL AND status = \'PLACED\'',
-        ), 'témoin 17 : un amical sans compétition placé');
+            'SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.name LIKE \'Amical %\' AND c.competition_type = \'FRIENDLY\' AND f.home_away = \'HOME\' AND f.status = \'UNPLACED\'',
+        ), 'témoin 17 : un domicile non placé d\'une compétition « Amical … » amicale');
         Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE competition_id IS NULL AND status = \'UNPLACED\'',
-        ), 'témoin 17 : un amical sans compétition non placé');
+            'SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.name LIKE \'Amical %\' AND c.competition_type = \'FRIENDLY\' AND f.home_away = \'HOME\' AND f.status = \'PLACED\' AND f.placement_source = \'SOLVER\'',
+        ), 'témoin 17 : un domicile posé par le système d\'une compétition « Amical … » amicale');
+        Assert::assertSame(1, $this->netCount(
+            'SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.default_friendly AND f.venue_id IS NOT NULL AND f.kickoff_time IS NOT NULL AND f.status = \'PLACED\'',
+        ), 'témoin 17 : un amical de « Amicaux » placé');
+        Assert::assertSame(1, $this->netCount(
+            'SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.default_friendly AND f.status = \'UNPLACED\'',
+        ), 'témoin 17 : un amical de « Amicaux » non placé');
     }
 
     /** Témoins de la référence 18 : un domicile validé sans gymnase, un extérieur saisi, un domicile saisi placé. */
@@ -219,7 +230,7 @@ trait EngineRequestMatchesNetDecorTrait
         $this->erEm()->flush();
     }
 
-    /** `$competition` : le numéro de la compétition du décor (`c0e9`), `null` pour un amical sans compétition. */
+    /** `$competition` : le numéro de la compétition du décor (`c0e9`) ; `null` avec `$competitionId`, l'identifiant d'une compétition née hors du décor (« Amicaux »). */
     private function netFixture(
         int $n,
         string $teamId,
@@ -231,12 +242,13 @@ trait EngineRequestMatchesNetDecorTrait
         ?string $venueId = null,
         ?string $kickoff = null,
         ?string $externalRef = null,
+        ?string $competitionId = null,
     ): void {
         $fixture = (new Fixture)->setId(self::erId('f1c7', $n));
         $fixture->setClubId(self::ER_CLUB);
         $fixture->setSeasonId(self::ER_SEASON);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId(null === $competition ? null : self::erId('c0e9', $competition));
+        $fixture->setCompetitionId(null === $competition ? $competitionId : self::erId('c0e9', $competition));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire ' . $n);

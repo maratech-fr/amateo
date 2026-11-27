@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -60,6 +61,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class TeamCtcFieldTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -397,6 +399,7 @@ final class TeamCtcFieldTest extends WebTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('AS Voisins');

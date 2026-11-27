@@ -241,37 +241,42 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
     }
 
     /**
-     * NR (D3) — une compétition dont le LIBELLÉ est un amical (« Amical PNF ») typée
-     * CHAMPIONSHIP côté import n'est JAMAIS candidate : ni comptée, ni nommée à traiter, ni
-     * signalée sans échéance, et la lecture du gestionnaire ne la bascule pas. « Déjà dans FBI »
-     * par championnat n'a pas de sens pour un amical.
+     * NR (D3) — un match d'une compétition AMICALE (« Amical PNF » de la fédération) n'est JAMAIS candidat :
+     * ni compté, ni nommé à traiter, ni signalé sans échéance, et la lecture du gestionnaire ne le bascule pas.
+     * « Déjà dans FBI » par championnat n'a pas de sens pour un amical. Depuis le lot 7 (PR 4a) la NATURE décide,
+     * plus le libellé : le témoin, un championnat que son libellé dit « Amical RM3 », est balayé comme tout
+     * championnat (avant, le libellé l'aurait exclu).
      */
-    public function testAFriendlyLabelledChampionshipIsNeverCandidate(): void
+    public function testAFriendlyCompetitionIsNeverCandidateWhateverTheLabelSays(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenue($clubId, $seasonId);
 
-        // Un domicile PARFAITEMENT prêt (heure + gymnase, échéance passée) MAIS dont la
-        // compétition s'appelle « Amical PNF ». Date FUTURE : le balayage des amicaux ne le
-        // touche pas non plus (il reste UNPLACED, on prouve qu'il n'est jamais candidat au lot).
-        $friendly = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-14', '2020-09-10', 'Amical PNF');
+        // Un domicile PARFAITEMENT prêt (heure + gymnase, échéance passée) MAIS d'une compétition
+        // amicale. Date FUTURE : le balayage des amicaux ne le touche pas non plus (il reste
+        // UNPLACED, on prouve qu'il n'est jamais candidat au lot).
+        $friendly = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-14', '2020-09-10', 'Amical PNF', CompetitionType::FRIENDLY);
         $friendly->setVenueId($venue->getId());
         $friendly->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->flush();
         $friendlyId = $friendly->getId();
+        $labelled = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-21', '2020-09-10', 'Amical RM3');
+        $labelled->setVenueId($venue->getId());
+        $labelled->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->em->flush();
+        $labelledId = $labelled->getId();
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(0, $data['totalValidatable']);
-        self::assertSame([], $data['matured']);
         self::assertSame([], $data['missingDeadline']);
         self::assertNotContains($friendlyId, array_column($data['toTreat'], 'fixtureId'));
 
-        // Et la lecture ne le bascule pas : il reste UNPLACED (jamais « Déjà dans FBI »).
-        self::assertSame(0, $data['swept'] ?? -1);
+        // La lecture ne bascule que le championnat : l'amical reste UNPLACED (jamais « Déjà dans FBI »).
+        self::assertSame(1, $data['swept'] ?? -1, 'seul le championnat libellé « Amical RM3 » est balayé');
+        $this->assertLeagueValidated($labelledId);
         $this->em->clear();
         $fresh = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $fresh);
@@ -280,7 +285,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
 
     /**
      * NR (D4) — les AMICAUX passés se valident tout seuls quand un GESTIONNAIRE ouvre la vue :
-     * un amical HOME passé (ici via un libellé « Amical ») bascule VALIDATED + source MANUAL
+     * un amical HOME passé (ici d'une compétition amicale de la fédération) bascule VALIDATED + source MANUAL
      * (même invariant que le lot championnat), un amical AWAY passé (sans compétition) bascule
      * VALIDATED mais garde sa source intacte. Ils ne sont JAMAIS proposés au lot.
      */
@@ -290,11 +295,11 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
 
-        // HOME amical passé, reconnu au LIBELLÉ de sa compétition (« Amical »).
-        $home = $this->createFixture($clubId, $seasonId, $team->getId(), '2020-09-19', null, 'Amical M');
+        // HOME amical passé, d'une compétition AMICALE de la fédération (« Amical M » ; la nature décide, lot 7 PR 4a).
+        $home = $this->createFixture($clubId, $seasonId, $team->getId(), '2020-09-19', null, 'Amical M', CompetitionType::FRIENDLY);
         $homeId = $home->getId();
-        // AWAY amical passé, SANS compétition.
-        $awayId = $this->friendlyNoCompetition($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::AWAY)->getId();
+        // AWAY amical passé, dans « Amicaux ».
+        $awayId = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::AWAY)->getId();
 
         // Une simple LECTURE par un gestionnaire déclenche le balayage.
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
@@ -326,8 +331,8 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
 
-        $futureId = $this->friendlyNoCompetition($clubId, $seasonId, $team->getId(), '2099-03-14', FixtureHomeAway::HOME)->getId();
-        $deviated = $this->friendlyNoCompetition($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::HOME);
+        $futureId = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2099-03-14', FixtureHomeAway::HOME)->getId();
+        $deviated = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::HOME);
         $deviated->putPendingDeviation(['field' => 'date', 'appValue' => '2020-09-19', 'sourceValue' => '2020-09-26', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-10-01T00:00:00+00:00', 'autoApplied' => false]);
         $this->em->flush();
         $deviatedId = $deviated->getId();
@@ -720,14 +725,14 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null): Fixture
+    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null, CompetitionType $type = CompetitionType::CHAMPIONSHIP): Fixture
     {
         // Match de COMPÉTITION : un domicile sans compétition sortirait du payload de
         // placement (les amicaux ne sont plus confiés au solveur, P4-193). Chaque
         // rencontre porte SA compétition (jetable) — dont l'échéance de saisie pilote
-        // désormais la validation ligue. Un `competitionName` explicite permet le cas
-        // « Amical X » typé CHAMPIONSHIP (jamais candidat, reconnu au libellé).
-        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
+        // désormais la validation ligue. `competitionName` et `type` posent le cas d'une
+        // compétition amicale, ou d'un championnat libellé « Amical X ».
+        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), $type, static fn ($c) => $c->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
@@ -743,14 +748,14 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         return $fixture;
     }
 
-    /** Un amical SANS compétition (competitionId null), domicile ou extérieur, à une date donnée. */
-    private function friendlyNoCompetition(string $clubId, string $seasonId, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
+    /** Un amical de « Amicaux » (l'ancien « sans compétition »), domicile ou extérieur, à une date donnée. */
+    private function friendlyInAmicaux(string $clubId, string $seasonId, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
     {
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId(null);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Amical Adv');

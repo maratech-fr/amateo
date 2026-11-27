@@ -9,6 +9,7 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import type { Competition, Fixture, HomeAway, PriorityTier, Team } from "./api";
 import { engagementsOf } from "./api/competitions";
 import { useCreateFixture, useUpdateFixture } from "./queries";
+import { MATCHES_TEXTS } from "./texts";
 
 interface FixtureFormDialogProps {
   teams: Team[];
@@ -22,26 +23,31 @@ interface FixtureFormDialogProps {
   onClose: () => void;
 }
 
-/** Manual entry / edition of a fixture. Friendly = no competition. */
+/**
+ * Manual entry / edition of a fixture. A friendly lives in « Amicaux », the season's default
+ * competition: its option sends that competition's id when the season serves it, else "" (the
+ * server creates it) — never null.
+ */
 export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, onClose }: FixtureFormDialogProps) {
   const createFixture = useCreateFixture();
   const updateFixture = useUpdateFixture();
   const editing = null !== fixture;
+  const friendlyValue = competitions.find((c) => true === c.defaultFriendly)?.id ?? "";
   const [teamId, setTeamId] = useState(fixture?.teamId ?? teams[0]?.id ?? "");
   const [matchDate, setMatchDate] = useState(fixture?.matchDate ?? "");
   const [homeAway, setHomeAway] = useState<HomeAway>(fixture?.homeAway ?? "HOME");
   const [opponentLabel, setOpponentLabel] = useState(fixture?.opponentLabel ?? "");
-  const [competitionId, setCompetitionId] = useState(fixture?.competitionId ?? "");
+  const [competitionId, setCompetitionId] = useState(fixture?.competitionId ?? friendlyValue);
 
   const valid = "" !== teamId && "" !== matchDate && "" !== opponentLabel.trim();
   const busy = createFixture.isPending || updateFixture.isPending;
-  const teamCompetitions = competitions.filter((c) => engagementsOf(c).some((engagement) => engagement.teamId === teamId));
+  const teamCompetitions = competitions.filter((c) => true !== c.defaultFriendly && engagementsOf(c).some((engagement) => engagement.teamId === teamId));
 
   const submit = (): void => {
     if (!valid) {
       return;
     }
-    const fields = { matchDate, homeAway, opponentLabel: opponentLabel.trim(), competitionId: "" === competitionId ? null : competitionId };
+    const fields = { matchDate, homeAway, opponentLabel: opponentLabel.trim(), competitionId };
     if (editing) {
       updateFixture.mutate({ fixture, input: fields }, { onSuccess: onClose });
     } else {
@@ -77,7 +83,7 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
             disabled={editing}
             onValueChange={(v) => {
               setTeamId(v);
-              setCompetitionId(""); // the old team's competition no longer applies
+              setCompetitionId(friendlyValue); // the old team's competition no longer applies: back to « Amicaux »
             }}
           />
         </label>
@@ -101,9 +107,9 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">Compétition (vide = amical)</span>
-          <Select aria-label="Compétition" value={competitionId ?? ""} onChange={(e) => setCompetitionId(e.target.value)}>
-            <option value="">Amical</option>
+          <span className="text-muted-foreground">{MATCHES_TEXTS.fixtureCompetitionLabel}</span>
+          <Select aria-label={MATCHES_TEXTS.fixtureCompetitionLabel} value={competitionId} onChange={(e) => setCompetitionId(e.target.value)}>
+            <option value={friendlyValue}>{MATCHES_TEXTS.friendlyCompetitionOption}</option>
             {teamCompetitions.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}

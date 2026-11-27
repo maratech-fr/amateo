@@ -24,6 +24,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Structure\PersonDirectory;
@@ -62,6 +63,7 @@ final class SeasonTransitionService
         private readonly PlanEntitlements $planEntitlements,
         private readonly SoclePlan $soclePlan,
         private readonly PlanComposition $planComposition,
+        private readonly FriendlyCompetitions $friendlyCompetitions,
     ) {}
 
     /**
@@ -202,6 +204,8 @@ final class SeasonTransitionService
         // structure partagée reprise (grille, occupations, règles de bien-être), comme celui de la source.
         $targetPlanId = $this->schedulePlanProvisioner->ensureSeasonPlan($target)->getId();
         $sourcePlanId = $this->soclePlan->idOf($sourceId);
+        // Lot 7, PR 4a — « Amicaux », la compétition d'office, naît avec la saison suivante.
+        $this->friendlyCompetitions->ensureDefault($clubId, $target->getId());
 
         $venueMap = [];
         foreach ($this->rows(Venue::class, $clubId, $sourceId) as $venue) {

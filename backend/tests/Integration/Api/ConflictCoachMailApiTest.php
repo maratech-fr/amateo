@@ -27,6 +27,7 @@ use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\Service\ConflictCoachMailBuilderTest;
@@ -68,6 +69,7 @@ use Symfony\Component\Uid\Uuid;
 final class ConflictCoachMailApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -1136,6 +1138,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel($opponent);

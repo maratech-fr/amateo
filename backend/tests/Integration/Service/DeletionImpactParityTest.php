@@ -54,6 +54,7 @@ use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ComposesPlanVenuesTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\SeasonPlanOf;
@@ -94,6 +95,7 @@ final class DeletionImpactParityTest extends KernelTestCase
     use ChoosesPlanVersionTrait;
     use ComposesPlanTeamsTrait;
     use ComposesPlanVenuesTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
     use TenantGucTrait;
@@ -105,7 +107,7 @@ final class DeletionImpactParityTest extends KernelTestCase
      * son sujet, et l'annoncer n'aiderait personne à décider — c'est du bruit dans une modale
      * qui doit se lire en trois secondes. Toute autre étape muette est un OUBLI.
      */
-    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId', 'CoachWishStaffLineStep.?', 'CoachWishCampaignTeamStep.?'];
+    private const SILENT_STEPS = ['ScheduleDiagnostic.teamId', 'ScheduleDiagnostic.venueId', 'ScheduleDiagnostic.coachId', 'CoachWishStaffLineStep.?', 'CoachWishCampaignTeamStep.?', 'TeamFixtureCorrectionStep.?'];
 
     private EntityManagerInterface $em;
 
@@ -856,12 +858,12 @@ final class DeletionImpactParityTest extends KernelTestCase
         // Le pointeur pendouillant : un gymnase qui n'existe pas (aucune ligne venue ne le porte).
         $ghostVenueId = '22222222-2222-4222-8222-222222222222';
 
-        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
             ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($ghostVenueId)->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($orphan);
         // Témoin : un match posé sur un VRAI gymnase — le prédicat ne doit pas le voir.
-        $sound = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        $sound = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
             ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)->setVenueId($realVenue->getId())->setKickoffTime(new DateTimeImmutable('16:00'));
         $this->em->persist($sound);
@@ -902,7 +904,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         [$club, $season] = $this->seed();
         $team = $this->team($club, $season, forcedVenueId: '11111111-1111-4111-8111-111111111111');
         $venue = $this->venue($club, $season, 'Coubertin');
-        $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
             ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
         $this->em->persist($fixture);
@@ -944,7 +946,7 @@ final class DeletionImpactParityTest extends KernelTestCase
 
         // (A) un gymnase qui porte un match : sa suppression est refusée, avec une raison lisible.
         $venue = $this->venue($club, $season, 'Matéo');
-        $this->em->persist((new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        $this->em->persist((new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
             ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30')));
         $this->em->flush();
@@ -961,7 +963,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertArrayNotHasKey('venue_fixture', $announced, 'plus de dépointage annoncé : le pas a quitté le plan du gymnase');
 
         // (B) la VALIDATION reste la seule gâchette qui dépointe réellement un match en venue_lost.
-        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
             ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('16:00'));
         $this->em->persist($orphan);

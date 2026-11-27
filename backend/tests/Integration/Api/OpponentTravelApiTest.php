@@ -25,6 +25,7 @@ use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -44,6 +45,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
 #[Group('integration')]
 final class OpponentTravelApiTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     /** Siège du club, pour que les trajets se résolvent depuis une origine connue. */
@@ -738,6 +740,7 @@ final class OpponentTravelApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponentLabel);
