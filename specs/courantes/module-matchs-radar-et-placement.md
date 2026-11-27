@@ -244,7 +244,9 @@ raccourci est donc arrondie au quart d'heure supérieur de la fin du match. L'é
 la garde de pose (`FixtureStateProcessor`) ne tourne qu'à une VRAIE pose (UNPLACED → autre statut,
 ou changement de gymnase, date, heure, compétition, domicile/extérieur) : « Marquer saisi »,
 « Corriger », « Verrouiller », « Rendre au système » renvoient le match à l'identique et ne sont plus
-refusés ; indisponibilité et fermeture, elles, restent jugées à chaque PUT. **Signal
+refusés ; indisponibilité et fermeture, elles, restent jugées à chaque PUT. Un match NON suivi par la
+fédération (compétition de source MANUAL) s'arrête à « Placé » : `PlacementPanel` n'y offre pas
+« Marquer saisi dans FBI » (`fbiTracked`), et le PUT `SUBMITTED`/`VALIDATED` y est refusé 422. **Signal
 `VENUE_TRAINING_OVERLAP`** (gravité 5, information) : un domicile placé (compétition ou amical) dont la
 plage SALLE chevauche une séance d'une AUTRE équipe au même gymnase dans le planning effectif ce
 jour-là ; jamais un déplacement, muet un jour férié.
@@ -521,8 +523,8 @@ coïncident physiquement (même gymnase+jour+heure) protègent la MÊME fenêtre
 membre — dédupliquée par `(gymnase, date)` pour qu'un troisième candidat chevauchant ne soit jamais
 pénalisé deux fois (`_place_matches`, `match_placement/__init__.py`).
 
-**Ancres — `Fixture.placementSource`** : geste manuel API → `MANUAL` ; `MANUAL` + `SUBMITTED`/
-`VALIDATED` = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical et une coupe ne sont **jamais**
+**Ancres — `Fixture.placementSource`** : geste manuel API → `MANUAL` ; `MANUAL` + saisi ou
+validé = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical et une coupe ne sont **jamais**
 proposés au solveur (`App\Matches\HandPlaced`, lu par `MatchPlacementPayloadBuilder` et
 `MatchPlacementResultApplier` ; le solveur ne sait pas choisir le samedi ou le dimanche d'une coupe) :
 placé+ancré, ou posé par le système → FIXED (gymnase protégé), sinon simplement absent du payload ;
@@ -578,7 +580,7 @@ toujours, l'effacement de sa propre valeur ne touche jamais le partagé. `Compet
 recalculée au front. `GET /api/matches/deadline-outlook` (ouvert au Membre, `REMINDER_WINDOW_DAYS =
 7`) sert les échéances dues sous J-7 (par compétition, fenêtre glissante) **et** `fbiTodo {toEnter,
 toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confondues (à saisir =
-domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
+domiciles PLACED d'une compétition SUIVIE par la fédération (source FBI), à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
 barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
 `MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Il sert aussi
 `toConfirmCount` — le compte GLOBAL de domiciles « Déjà dans FBI » validables restant APRÈS la

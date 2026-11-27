@@ -49,18 +49,21 @@ vigueur, il n'a rien à comparer.
   et FBI réutilise ses numéros, sans la division dans la clé le n°X du 2ᵉ tour réécrivait le n°X de
   la 1ʳᵉ phase (bug M15, détail et procédure de réparation :
   [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) §7),
-  `status` (`FixtureStatus` : `UNPLACED → PLACED → SUBMITTED → VALIDATED`), `venueId`/`kickoffTime`
-  nullables, `fbiVenueLabel` (salle brute source, HOME et AWAY), `placementSource`
+  `placement` (`PlacementStatus`, seule valeur stockée sur le match : `UNPLACED`/`PLACED`, fermée par un
+  CHECK ; `Fixture::getPlacement`), `venueId`/`kickoffTime` nullables. Le STADE servi (`status`, `FixtureStatus` :
+  `UNPLACED → PLACED → SUBMITTED → VALIDATED`) se calcule (`FederalFollowUp::stageOf`) : validé si le suivi
+  fédéral du match est « validé », saisi s'il est « saisi », sinon le placement. `fbiTracked` (lecture seule,
+  `FixtureResource`) dit si le match est suivi. Le suivi fédéral vit dans `fixture_federal_tracking` (§ « Suivi
+  fédéral » ci-dessous), `fbiVenueLabel` (salle brute source, HOME et AWAY), `placementSource`
   (`MANUAL`/`SOLVER`/null legacy), `unplacedReason` (raison persistante : `venue_lost` — le gymnase
   n'est plus affilié au club — ou `NEUTRAL_GROUND` — domicile joué sur terrain neutre, § « Terrain
-  neutre » ci-dessous), `keptVenueLabel` (idempotence d'arbitrage salle),
-  `reviewState`/`reviewedAt`/`pendingDeviations` (workflow de traitement, §5). L'import FBI crée
+  neutre » ci-dessous), `reviewState`/`reviewedAt` (workflow de traitement, §5). L'import FBI crée
   **tout** en `UNPLACED` à la CRÉATION, domicile et extérieur — mais le MÊME dépôt enchaîne, après le
   flush, une passe séparée qui bascule « Déjà dans FBI » (`VALIDATED`, « validé ligue » en code) les
   domiciles validables des championnats déjà COMMENCÉS — passe rejouée à chaque lecture d'un
   gestionnaire (chantier A, décisions fondateur 2026-10-22 et 2026-11-10,
   [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) § « Déjà dans FBI ») ;
-  hors ce cas, seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock).
+  hors ce cas, seul un geste du gestionnaire pose un autre stade (`FixtureStatus` docblock).
   `neutralGround` (champ additif en LECTURE seulement, `FixtureResource`, dérivé de
   `unplacedReason === NEUTRAL_GROUND`) : le front l'affiche, jamais une seconde copie de la règle.
   `awayTravel`
@@ -426,7 +429,7 @@ Un domicile `UNPLACED` déjà rattaché à un gymnase (alias confirmé) dont un 
 AUTRE salle n'est **jamais** réécrit en silence — décision fermée (`etat-des-lieux.md` §2) : l'appli
 peut avoir raison, seul un arbitrage tranche. `FbiFixtureImporter::detectUnplacedVenueDeviation`
 détecte (scope `['venue']` du moteur partagé `processPerimeterFields`, jamais « FBI fait foi » sur
-ce champ) ; `Fixture.keptVenueLabel` mémorise le libellé « gardé » (idempotence — tant que la
+ce champ) ; le suivi fédéral du match (`keptVenueLabel`) mémorise le libellé « gardé » (idempotence — tant que la
 source répète ce libellé, la question ne revient pas) ; « Prendre le fichier » ne vide plus jamais
 `venueId` (chantier A PR 4, § ci-dessous « Arbitrage d'un écart de salle »). Le geste vit dans la
 file de traitement de l'onglet Importer (§4), pas dans le rapport de dépôt.
@@ -524,9 +527,28 @@ se verraient pas l'un l'autre via `findOpen` (requête base) et violeraient l'in
 Tenu par la dédup EN AMONT des deux canaux (import xlsx : garde `$seenInFile` par `team|ref` ;
 canal API : garde `$consumed` par fixtureId), jamais par le ledger lui-même.
 
-`Fixture.fbiEcho` (colonne JSON nullable) : mémo `{field, value, at}` posé quand un « prendre le
-fichier » sur l'HEURE rétrograde un domicile `SUBMITTED`/`VALIDATED` à `PLACED` (la coche FBI
+`fbiEcho` (colonne JSON nullable du suivi fédéral) : mémo `{field, value, at}` posé quand un « prendre le
+fichier » sur l'HEURE ramène un domicile saisi ou validé à « à saisir » (la coche FBI
 portait une mauvaise heure) — dit ce que FBI affiche encore sur la ligne « à saisir » de la liste
-(§5). Effacé dès que le statut repasse `SUBMITTED`/`VALIDATED` (`Fixture::setStatus`, maison
-unique).
+(§5). Effacé dès que le match repasse saisi ou validé (`FederalFollowUp`, maison unique).
+
+### Suivi fédéral et source d'une compétition
+
+`fixture_federal_tracking` (`App\Entity\FederalTracking`, `#[Family(Level::SEASON)]`, RLS comme toute table de
+saison) : au plus une ligne par match, clé `(fixture_id, club_id)` → `fixture (id, club_id)` `ON DELETE CASCADE`.
+Colonnes : `state` (`FederalState` : `TO_ENTER`/`SUBMITTED`/`VALIDATED`), `pendingDeviations` (écarts ouverts
+source⇄app), `fbiEcho`, `keptVenueLabel`. Le seul lecteur et écrivain est `App\Matches\FederalFollowUp` ; un match
+suivi sans ligne est « à saisir ». `KeptVenueLabelListener` (onFlush) éteint le libellé gardé dès qu'une salle non
+nulle est posée sur le match, quel que soit l'écrivain.
+
+`Competition.source` (`CompetitionSource` : `FBI`/`MANUAL`, obligatoire) décide si ses matchs sont suivis : une
+compétition est FBI si elle porte un identifiant fédéral, OU un match venu de la fédération, OU un match saisi ou
+validé ; « Amicaux » est `MANUAL` d'office. Un match d'une compétition `MANUAL` s'arrête à « Placé » : jamais
+« à saisir dans FBI », jamais validé par le balayage, « saisi » et « validé » refusés en 422 (sa ligne de suivi, s'il
+en a une, ne porte que ses écarts). Une compétition `MANUAL` passe `FBI` quand l'import, l'appariement ou le canal API
+y rangent un match ; ces trois portes ne rangent jamais un match de la fédération dans « Amicaux »
+(`CompetitionRegistry::create` prend la source en 5ᵉ paramètre, `MANUAL` par défaut). Un match saisi ou validé ne
+quitte plus une compétition FBI pour une compétition hors FBI. Limites assumées : le repli `engageInDefault` de
+`FfbbRencontreReconciler::newFixture` (deux libellés tronqués au même nom) range encore un match fédéral dans
+« Amicaux » ; `FfbbEngagementsController::findOrCreateCompetition` ne protège pas « Amicaux ».
 

@@ -24,7 +24,7 @@ un niveau fourni par le client). La garde générique reste souveraine partout a
 
 **La salle d'un match est désormais protégée À LA SOURCE** (chantier A « fermetures à la source »,
 décision fondateur 2026-10-22 — INVERSE ce qui suivait jusque-là) : un gymnase qui porte au moins
-un match à domicile `PLACED`/`SUBMITTED`/`VALIDATED` ne peut plus être supprimé — refus 422 nommé
+un match à domicile placé, saisi ou validé ne peut plus être supprimé — refus 422 nommé
 (`VenueStateProcessor::cascadeBeforeDelete`), AVANT toute cascade, zéro écriture ;
 `DeletionImpactCounter::forVenue` annonce `blocked`+`reason` pour que l'écran grise la
 confirmation plutôt que d'offrir un geste qui finirait en 422. Un `PUT /api/fixtures/{id}` qui

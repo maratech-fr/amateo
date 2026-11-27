@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27), PR 4b (la coupe a sa règle, livrée le 2026-11-27) PR 5 (le repli de ligue est dit, livrée le 2026-11-27) et PR 6a (une seule porte pour lire où en est un match, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27), PR 4b (la coupe a sa règle, livrée le 2026-11-27) PR 5 (le repli de ligue est dit, livrée le 2026-11-27), PR 6a (une seule porte pour lire où en est un match, livrée le 2026-11-27) et PR 6b (le suivi fédéral quitte le match, livrée le 2026-11-27 : le lot 7 est livré) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
@@ -9,8 +9,8 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b, 4a, 4b, 5 et 6a livrées (§4, « Écarts au plan, tels que livrés »), la 6b reste à faire.
-- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b, 4a, 4b, 5 et 6a sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b, 4a, 4b, 5, 6a et 6b livrées (§4, « Écarts au plan, tels que livrés ») : le lot 7 est livré.
+- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, toutes livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
 | PR du lot 7 | Fichiers partagés avec | Contrainte |
@@ -450,6 +450,22 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - (4) **Lecteurs DQL de la colonne laissés pour la PR 6b** : `FixtureVenueLossMarker.php:49` (`UPDATE … status = UNPLACED`), `DeletionImpactCounter.php:205-227` (`status IN …`), le filtre de recherche `status` de `FixtureResource`.
 - (5) `FixtureStateProcessor::assertMayBecomeFriendly` reçoit `bool $enteredBefore` au lieu de `FixtureStatus $statusBefore`.
 - (6) `FixtureStateProcessor` reçoit la porte par un setter `#[Required]`.
+
+**PR 6b livrée le 2026-11-27** sur `lot/conception`, non déployée. Dernière PR du lot 7 : le lot 7 est livré.
+
+**Écarts au plan, tels que livrés (PR 6b)**
+- (1) **La règle de source de la conversion (§9) est élargie, par décision de l'orchestrateur** : une compétition est FBI si elle porte un identifiant fédéral, OU un match venu de la fédération, OU un match saisi ou validé ; « Amicaux » est `MANUAL` d'office. Sans cela la référence 18 aurait changé (des matchs saisis ou validés d'une compétition sans trace fédérale auraient perdu leur suivi).
+- (2) `stateOf` rend `?FederalState` (l'écart (1) de la PR 6a est levé : un match non suivi existe).
+- (3) Les quatre instanciations directes de `FederalFollowUp` (écart (3) de la PR 6a) passent par l'injection. `FederalFollowUp` n'est plus `readonly` : il garde un cache des lignes absentes, vidé à `kernel.reset` et à `onClear`.
+- (4) `CompetitionRegistry::create` gagne un 5ᵉ paramètre `CompetitionSource` (`MANUAL` par défaut). `MatchConflictDetector` gagne une porte optionnelle (`?FederalFollowUp`).
+- (5) `KeptVenueLabelListener` (onFlush) porte l'effacement du libellé gardé, qui vivait dans `Fixture::setVenueId`.
+- (6) Le filtre `status` quitte `FixtureResource` et son provider (aucun appelant). `fbiTracked` est optionnel côté TypeScript. Le compteur « FBI à faire » du Calendrier est aligné sur la liste « à saisir ».
+- (7) Une compétition `MANUAL` passe `FBI` quand l'import, l'appariement ou le canal API y rangent un match (« Amicaux » jamais). La migration crée une ligne de suivi « à saisir » pour un match hors FBI qui garde un écart, un mémo ou un libellé gardé. `LeagueValidationOutlook` et `FriendlyAutoValidator` ne valident jamais un match non suivi.
+- (8) **Trou fermé** : l'import, l'appariement (`FfbbEngagementsController::resolveCompetition`) et le canal API (`FfbbRencontreReconciler::friendlyCompetitionOf`) ne rangent jamais un match de la fédération dans « Amicaux » d'office (`resolveDivision` l'écarte).
+- (9) **Limites écrites** : le repli `engageInDefault` de `FfbbRencontreReconciler::newFixture` (deux libellés tronqués au même nom) range encore un match fédéral dans « Amicaux » (cas pathologique assumé) ; `FfbbEngagementsController::findOrCreateCompetition` ne protège pas « Amicaux » (nom normalisé « amicaux », improbable). Décision fermée : `etat-des-lieux.md` §2.
+- (10) Le bouton « Marquer saisi dans FBI » est masqué pour un match non suivi (`PlacementPanel`, `fbiTracked`). L'e2e `matches.spec.ts` est refait : un amical posé à la main n'est jamais « à saisir » ; la compétition « E2E Championnat FBI suivi » reste dans le club seedé.
+- (11) **Pièges de la stack d'épreuve** : `make epreuve-dev` recrée `php-fpm` sans redémarrer nginx, d'où un 502 (`docker restart` du conteneur nginx) ; une interruption de Behat laisse une « GYM BEHAT » en base (`epreuve-down` puis `epreuve-up`) ; `make epreuve-up` démonte le socle nu du worktree. Consigné dans `backend/docs/commands.md`.
+- (12) Contrôle visuel : captures dans `captures/lot7-pr6b/` (ignoré par git).
 
 ### PR 5 · « Le repli de ligue est dit » (`neo`, backend et un bandeau)
 

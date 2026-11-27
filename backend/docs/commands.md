@@ -82,8 +82,8 @@ Une stack pointe **une base à la fois**. Le défaut committé est le **bac à s
 | `make sandbox` | Retire `backend/.env.local` → retour à `amateo_dev` (bac à sable) + même redémarrage |
 | `make db-empty` | Vide (drop+create+migrate) la base **actuellement visée** — `amateo_local` en mode play, `amateo_dev` en bac à sable — aucun seed |
 | `make reset` | Composition littérale : `db-empty` puis `play` — repart de zéro et retrouve une base de jeu complète |
-| `make epreuve-up WT=<worktree> [RESEED=1]` | Monte la stack d'épreuve sur ce worktree (infra, install, JWT, base vidée, seed BCCL + vacances + ligue, vérification d'isolation). Refus nommé si le WT est le principal, si la stack est occupée par un autre, ou si le montage précédent a été interrompu (`RESEED=1` ou `epreuve-destroy`). Rien à faire (sortie propre) si déjà montée sur ce WT |
-| `make epreuve-status` / `epreuve-check` / `epreuve-dev` | Occupant et état des conteneurs · preuve d'isolation d'avec la stack du fondateur · Vite sur `:5273` |
+| `make epreuve-up WT=<worktree> [RESEED=1]` | Monte la stack d'épreuve sur ce worktree (infra, install, JWT, base vidée, seed BCCL + vacances + ligue, vérification d'isolation). Refus nommé si le WT est le principal, si la stack est occupée par un autre, ou si le montage précédent a été interrompu (`RESEED=1` ou `epreuve-destroy`). Rien à faire (sortie propre) si déjà montée sur ce WT. Démonte le socle nu du worktree. Une interruption de Behat laisse un gymnase « GYM BEHAT » en base : `epreuve-down` puis `epreuve-up` avant de rejouer |
+| `make epreuve-status` / `epreuve-check` / `epreuve-dev` | Occupant et état des conteneurs · preuve d'isolation d'avec la stack du fondateur · Vite sur `:5273` — ⚠ `epreuve-dev` recrée `php-fpm` sans redémarrer nginx : 502 jusqu'à `docker restart` du conteneur nginx de la stack |
 | `make epreuve-down` / `epreuve-destroy` | Libère la stack (volumes gardés) · la détruit, volumes compris |
 
 ## Worktrees — quelle stack Docker, quelles cibles

@@ -168,6 +168,16 @@ vers `team`** : la suppression d'une équipe passe par sa cascade applicative (`
 `TeamEngagementStep`). Aucune donnée libre. Gardé par `tests/Security/MatchTenantIsolationTest.php`
 (`testTheBaseRefusesAnEngagementOrAMatchOnAnotherClubsCompetition`), `RlsIsolationTest` et `PurgeCompletenessTest`.
 
+## `fixture_federal_tracking` — le suivi fédéral d'un match, une clé composée avec le club
+
+`fixture_federal_tracking` (une ligne au plus par match : état saisi/validé, écarts source⇄app, mémo, libellé de salle
+gardé ; `Version20261205120000`) suit le motif normal : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`,
+`admin_all` (`amateo_owner`) et `readonly_tenant` (`amateo_read`). Sa clé est COMPOSÉE avec le club, posée à la main
+(invisible de Doctrine : ne jamais committer le DROP que propose `migration-diff`) : `(fixture_id, club_id)` →
+`fixture (id, club_id)` `ON DELETE CASCADE` — le suivi ne désigne jamais le match d'un autre club et part avec son
+match. Aucune donnée libre. Gardé par `tests/Security/MatchTenantIsolationTest.php`
+(`testTheFederalTrackingOfAMatchNeverCrossesClubs`), `RlsIsolationTest` et `PurgeCompletenessTest`.
+
 ## `schedule_state` — la copie du froid d'une version, une clé vers la version
 
 `schedule_state` (une ligne par version terminée : les valeurs froides de son plan, en JSON ; `Version20261201120000`)
