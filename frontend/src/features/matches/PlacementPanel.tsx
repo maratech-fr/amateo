@@ -90,16 +90,16 @@ function CupHint({ matchDate, kickoff }: { matchDate: string; kickoff: string })
   const max = formatMinutes(timeToMinutes(CUP_KICKOFF_MAX));
   if ("" !== kickoff && !cupKickoffInside(kickoff)) {
     return (
-      <p className="flex items-center gap-1 text-xs text-warning">
-        <AlertTriangle className="size-3.5" />
+      <p className="flex items-start gap-1 text-xs text-warning">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
         {MATCHES_TEXTS.panelCupOut(min, max)}
       </p>
     );
   }
   const day = isoWeekday(matchDate);
   return (
-    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Info className="size-3.5" />
+    <p className="flex items-start gap-1 text-xs text-muted-foreground">
+      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
       {6 === day || 7 === day ? MATCHES_TEXTS.panelCupWeekend(dayLabelLong(6), dayLabelLong(7), min, max) : MATCHES_TEXTS.panelCupWeekday(min, max)}
     </p>
   );
