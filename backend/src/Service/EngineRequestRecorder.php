@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Exception\EngineRequestNotComposable;
+use App\Plans\InForce;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -66,6 +67,7 @@ final readonly class EngineRequestRecorder
         private TenantConnectionContext $tenantConnectionContext,
         #[Autowire(service: 'cache.schedule')]
         private TagAwareCacheInterface $scheduleCache,
+        private InForce $inForce,
     ) {}
 
     /**
@@ -147,7 +149,7 @@ final readonly class EngineRequestRecorder
             'SELECT id, type FROM schedule_plan WHERE club_id = :club AND season_id = :season ORDER BY id',
             ['club' => $clubId, 'season' => $seasonId],
         );
-        $socleInForce = null !== $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
+        $socleInForce = null !== $this->inForce->socleVersionId($seasonId);
 
         foreach ($plans as $plan) {
             $planId = (string) $plan['id'];

@@ -10,6 +10,7 @@ use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Team;
+use App\Entity\Venue;
 use App\Enum\ConstraintScope;
 use App\Enum\PlanTeamDefault;
 use App\Enum\SchedulePlanType;
@@ -52,6 +53,7 @@ final class PlanComposition
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -83,8 +85,11 @@ final class PlanComposition
         }
         $wrote = $this->ensureVenueLines($seasonId, $plans);
         $wrote = $this->ensureRuleLines($seasonId, $plans) || $wrote;
-        /** @var list<array{id: string, club_id: string, priority_tier_id: int|string}> $teams */
-        $teams = $connection->fetchAllAssociative('SELECT id, club_id, priority_tier_id FROM team WHERE season_id = :s ORDER BY id', ['s' => $seasonId]);
+        // Les équipes de la saison, lues par la porte de l'en vigueur (triées par id).
+        $teams = array_map(
+            static fn (Team $team): array => ['id' => $team->getId(), 'club_id' => $team->getClubId(), 'priority_tier_id' => $team->getPriorityTierId()],
+            $this->inForce->rows($seasonId, Team::class),
+        );
         if ([] === $teams) {
             if ($wrote) {
                 $this->entityManager->flush();
@@ -391,7 +396,8 @@ final class PlanComposition
     private function ensureVenueLines(string $seasonId, array $plans): bool
     {
         $connection = $this->entityManager->getConnection();
-        $venues = $connection->fetchFirstColumn('SELECT id FROM venue WHERE season_id = :s ORDER BY id', ['s' => $seasonId]);
+        // Les gymnases de la saison, lus par la porte de l'en vigueur (triés par id).
+        $venues = array_map(static fn (Venue $venue): string => $venue->getId(), $this->inForce->rows($seasonId, Venue::class));
         if ([] === $venues) {
             return false;
         }
@@ -464,16 +470,18 @@ final class PlanComposition
     }
 
     /**
-     * Les contraintes permanentes (sans entrée de calendrier) d'une saison, avec leur portée, lues hors du
-     * `season_filter`.
+     * Les contraintes permanentes (sans entrée de calendrier) d'une saison, avec leur portée, lues par la porte de
+     * l'en vigueur (hors du `season_filter`, triées par id).
      *
      * @return array<string, ConstraintScope>
      */
     private function permanentConstraintsOfSeason(string $seasonId): array
     {
         $constraints = [];
-        foreach ($this->entityManager->getConnection()->fetchAllAssociative('SELECT id, scope FROM "constraint" WHERE season_id = :s AND calendar_entry_id IS NULL ORDER BY id', ['s' => $seasonId]) as $row) {
-            $constraints[(string) $row['id']] = ConstraintScope::from((string) $row['scope']);
+        foreach ($this->inForce->rows($seasonId, Constraint::class) as $constraint) {
+            if (null === $constraint->getCalendarEntryId()) {
+                $constraints[$constraint->getId()] = $constraint->getScope();
+            }
         }
 
         return $constraints;

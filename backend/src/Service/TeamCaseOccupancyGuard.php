@@ -10,7 +10,10 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
+use App\Plans\InForce;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
+use App\Structure\FamilyCatalog;
 use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -49,7 +52,7 @@ final class TeamCaseOccupancyGuard
         private readonly EntityManagerInterface $entityManager,
         ?PlanComposition $planComposition = null,
     ) {
-        $this->planComposition = $planComposition ?? new PlanComposition($entityManager);
+        $this->planComposition = $planComposition ?? new PlanComposition($entityManager, new InForce($entityManager, new SoclePlan($entityManager), new FamilyCatalog($entityManager)));
     }
 
     /**

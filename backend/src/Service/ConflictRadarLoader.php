@@ -19,14 +19,16 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Matches\CompetitionRegistry;
+use App\Plans\InForce;
 use App\Repository\ClubRepository;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * BCK-23 — la MAISON UNIQUE du radar de conflits d'un club. Charge tout via les
- * repositories mappés (les filtres Doctrine club+saison s'appliquent), résout
+ * BCK-23 — la MAISON UNIQUE du radar de conflits d'un club. Charge via les
+ * repositories mappés (les filtres Doctrine club+saison s'appliquent) et, pour les familles
+ * froides du socle, par la porte de l'en vigueur ({@see InForce}, saison explicite), résout
  * l'enveloppe ligue, les profils de durée par équipe et le trajet aller-retour par
  * rencontre, puis détecte. Rien n'est persisté (feed d'affichage recalculé à chaque
  * appel).
@@ -58,6 +60,7 @@ final class ConflictRadarLoader
         private readonly ClubPublicHolidays $clubPublicHolidays,
         private readonly PlanHoldingInputs $planHoldingInputs,
         private readonly CompetitionRegistry $competitionRegistry,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -76,14 +79,13 @@ final class ConflictRadarLoader
     {
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
-        // L'ordre de lien départage qui tient une séance ou un match : il reste le même d'un appel à l'autre.
-        /** @var list<TeamCoach> $teamCoachRows */
-        $teamCoachRows = $this->entityManager->getRepository(TeamCoach::class)->findBy([], ['createdAt' => 'ASC', 'id' => 'ASC']);
+        // Les familles froides du socle se lisent par la porte de l'en vigueur ; sans saison, le club n'en a aucune.
+        // L'ordre de lien départage qui tient une séance ou un match (date de création, puis id) : la porte le rend.
+        $teamCoachRows = null === $seasonId ? [] : $this->inForce->rows($seasonId, TeamCoach::class);
         // Lot « une personne = ses équipes coachées + ses équipes où elle joue » —
         // les liens JOUEUR (CoachPlayerMembership) rejoignent les coachs dans la
-        // carte personne→équipes du détecteur. Chargés sous les mêmes filtres tenant.
-        /** @var list<CoachPlayerMembership> $playerMemberships */
-        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
+        // carte personne→équipes du détecteur.
+        $playerMemberships = null === $seasonId ? [] : $this->inForce->rows($seasonId, CoachPlayerMembership::class);
         // P4-300 — le radar signale un match posé dans un gymnase FERMÉ à sa date : une fermeture
         // `venue_closed` du calendrier (décision fondateur D3 : type VENUE_UNAVAILABLE, sévérité 4,
         // label = titre de la fermeture ; jamais de dé-placement automatique). Depuis le chantier
@@ -111,8 +113,7 @@ final class ConflictRadarLoader
         $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
         // P1-4 PR E2 — the graded diagnostic needs the league envelope, resolved
         // by the SAME tolerant join as the solver (one implementation, PR D).
-        /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
+        $teams = null === $seasonId ? [] : $this->inForce->rows($seasonId, Team::class);
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
         $club = $this->clubRepository->find($clubId);

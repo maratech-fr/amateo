@@ -17,8 +17,7 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Enum\TeamCoachRole;
-use App\Plans\SoclePlan;
-use App\Repository\ConstraintRepository;
+use App\Plans\InForce;
 use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -59,19 +58,19 @@ use Doctrine\ORM\EntityManagerInterface;
  * n'est disponible à son début. Elle lit les règles de CETTE version : permanentes pour le socle, celles
  * de la période pour un plan de période.
  *
- * Tenant : tout est chargé via les repositories mappés — les filtres Doctrine
- * club+saison s'appliquent (+ RLS) ; un club ne voit jamais que ses propres conflits.
+ * Tenant : les familles froides du socle et le pointeur se lisent par la porte de l'en vigueur
+ * ({@see InForce}, saison explicite, RLS), le reste via les repositories mappés (filtres Doctrine
+ * club+saison, + RLS) ; un club ne voit jamais que ses propres conflits.
  */
 final class PlacedSessionPersonConflictDetector
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly ConstraintRepository $constraintRepository,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
         private readonly CoachDoubleBookingDetector $coachDoubleBookingDetector,
         private readonly PersonDirectory $personDirectory,
-        private readonly SoclePlan $soclePlan,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -98,7 +97,7 @@ final class PlacedSessionPersonConflictDetector
      */
     public function detect(string $clubId, ?string $seasonId, ?Schedule $displayed = null): array
     {
-        $seasonScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
+        $seasonScheduleId = $this->inForce->socleVersionId($seasonId);
         $version = $displayed ?? (null !== $seasonScheduleId ? $this->entityManager->getRepository(Schedule::class)->find($seasonScheduleId) : null);
         $absences = $version instanceof Schedule ? $this->absencesOn($version, $clubId) : [];
         if (null === $seasonScheduleId || null === $seasonId) {
@@ -113,13 +112,13 @@ final class PlacedSessionPersonConflictDetector
 
         // teamId → coachs principaux et joueurs (memberships ACTIFS).
         // Deux cartes distinctes : le repli « coach de séance » n'utilise que la première
-        // (slot.coachId ?? coachs de l'équipe), les joueurs s'ajoutent toujours. Club+saison
-        // explicites (comme {@see CoachDoubleBookingDetector::mainCoachByTeam}) : la scope ne
+        // (slot.coachId ?? coachs de l'équipe), les joueurs s'ajoutent toujours. Les familles
+        // froides du socle se lisent par la porte de l'en vigueur, saison explicite : la scope ne
         // dépend pas de l'état des filtres Doctrine, seulement de la frontière tenant.
         $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];
         $sessionCoachesByTeam = [];
         $assistantsByTeam = [];
-        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
+        foreach ($this->inForce->rows($seasonId, TeamCoach::class) as $link) {
             if (TeamCoachRole::MAIN === $link->getRole()) {
                 $sessionCoachesByTeam[$link->getTeamId()][] = $link->getCoachId();
             } elseif (TeamCoachRole::ASSISTANT === $link->getRole()) {
@@ -127,7 +126,7 @@ final class PlacedSessionPersonConflictDetector
             }
         }
         $playersByTeam = [];
-        foreach ($this->entityManager->getRepository(CoachPlayerMembership::class)->findBy($scope) as $membership) {
+        foreach ($this->inForce->rows($seasonId, CoachPlayerMembership::class) as $membership) {
             if ($membership->getIsActive()) {
                 $playersByTeam[$membership->getTeamId()][] = $membership->getCoachId();
             }
@@ -143,17 +142,17 @@ final class PlacedSessionPersonConflictDetector
         $matrix = $this->travelMatrix($scope);
         [$coachNames, $coachVehicled] = $this->coachIndex($scope);
         $blockedByCoach = CoachDoubleBookingDetector::blockedIntervalsByCoach(
-            $this->entityManager->getRepository(Constraint::class)->findBy($scope),
+            $this->inForce->rows($seasonId, Constraint::class),
         );
         $coachBookings = $this->coachBookings($slots, $sessionCoachesByTeam, $assistantsByTeam);
         // Les groupes déclarés du socle : seul le plan SEASON est scanné ici.
         $groups = [];
-        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy($scope + ['schedulePlanId' => $this->soclePlan->idOf($seasonId)]) as $member) {
+        foreach ($this->inForce->rows($seasonId, SharedTrainingBlockTeam::class) as $member) {
             $groups[$member->getBlockId()][] = $member->getTeamId();
         }
         $unheld = $this->unheldSlots($slots, $sessionCoachesByTeam, $assistantsByTeam, $playersByTeam, $blockedByCoach, array_values($groups));
 
-        $names = $this->displayNames($pairs, $slots);
+        $names = $this->displayNames($pairs, $slots, $seasonId);
         $conflicts = [];
         $relays = [];
         foreach ($pairs as $pair) {
@@ -204,7 +203,10 @@ final class PlacedSessionPersonConflictDetector
         }
 
         if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
-            $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
+            $constraints = array_values(array_filter(
+                $this->inForce->rows($seasonId, Constraint::class),
+                static fn (Constraint $constraint): bool => null === $constraint->getCalendarEntryId(),
+            ));
             $planId = $schedule->getSchedulePlanId();
         } else {
             $planId = (string) $schedule->getSchedulePlanId();
@@ -218,7 +220,7 @@ final class PlacedSessionPersonConflictDetector
 
         $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];
         $mainCoaches = [];
-        foreach ($this->entityManager->getRepository(TeamCoach::class)->findBy($scope) as $link) {
+        foreach ($this->inForce->rows($seasonId, TeamCoach::class) as $link) {
             if (TeamCoachRole::MAIN === $link->getRole()) {
                 $mainCoaches[$link->getTeamId()][] = $link->getCoachId();
             }
@@ -236,11 +238,11 @@ final class PlacedSessionPersonConflictDetector
 
         [$coachNames] = $this->coachIndex($scope);
         $teamNames = [];
-        foreach ($this->entityManager->getRepository(Team::class)->findBy($scope) as $team) {
+        foreach ($this->inForce->rows($seasonId, Team::class) as $team) {
             $teamNames[$team->getId()] = $team->getName();
         }
         $venueNames = [];
-        foreach ($this->entityManager->getRepository(Venue::class)->findBy($scope) as $venue) {
+        foreach ($this->inForce->rows($seasonId, Venue::class) as $venue) {
             $venueNames[$venue->getId()] = $venue->getName();
         }
 
@@ -552,7 +554,7 @@ final class PlacedSessionPersonConflictDetector
      *
      * @return array{coach: array<string, string>, team: array<string, string>, venue: array<string, string>}
      */
-    private function displayNames(array $pairs, array $slots): array
+    private function displayNames(array $pairs, array $slots, string $seasonId): array
     {
         $personIds = [];
         $teamIds = [];
@@ -573,13 +575,18 @@ final class PlacedSessionPersonConflictDetector
         foreach ([] === $personIds ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => $personIds]) as $entity) {
             $coach[$entity->getId()] = $this->personDirectory->of($entity)->fullName();
         }
+        // Les séances viennent du socle de la saison : leurs équipes et gymnases sont ceux de la saison, lus par la porte.
         $team = [];
-        foreach ([] === $teamIds ? [] : $this->entityManager->getRepository(Team::class)->findBy(['id' => $teamIds]) as $entity) {
-            $team[$entity->getId()] = $entity->getName();
+        foreach ([] === $teamIds ? [] : $this->inForce->rows($seasonId, Team::class) as $entity) {
+            if (\in_array($entity->getId(), $teamIds, true)) {
+                $team[$entity->getId()] = $entity->getName();
+            }
         }
         $venue = [];
-        foreach ([] === $venueIds ? [] : $this->entityManager->getRepository(Venue::class)->findBy(['id' => $venueIds]) as $entity) {
-            $venue[$entity->getId()] = $entity->getName();
+        foreach ([] === $venueIds ? [] : $this->inForce->rows($seasonId, Venue::class) as $entity) {
+            if (\in_array($entity->getId(), $venueIds, true)) {
+                $venue[$entity->getId()] = $entity->getName();
+            }
         }
 
         return ['coach' => $coach, 'team' => $team, 'venue' => $venue];

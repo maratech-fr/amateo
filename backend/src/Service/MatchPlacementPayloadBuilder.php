@@ -28,6 +28,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Matches\FederalFollowUp;
 use App\Matches\HandPlaced;
+use App\Plans\InForce;
 use App\Service\Conflicts\DayHoldings;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -102,6 +103,7 @@ final class MatchPlacementPayloadBuilder
         private readonly PlanHoldingInputs $planHoldingInputs,
         private readonly HandPlaced $handPlaced,
         private readonly FederalFollowUp $followUp,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -126,23 +128,20 @@ final class MatchPlacementPayloadBuilder
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([], ['id' => 'ASC']);
         $this->followUp->prime($fixtures);
-        /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy([], ['id' => 'ASC']);
+        // Les familles froides du socle se lisent par la porte de l'en vigueur, triées par id (les liens équipe-coach
+        // par date de création puis id) ; sans saison, le club n'en a aucune.
+        $teams = null === $seasonId ? [] : $this->inForce->rows($seasonId, Team::class);
         /** @var list<SportCategory> $categories */
         $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([], ['id' => 'ASC']);
-        /** @var list<Venue> $venues */
-        $venues = $this->entityManager->getRepository(Venue::class)->findBy([], ['id' => 'ASC']);
+        $venues = null === $seasonId ? [] : $this->inForce->rows($seasonId, Venue::class);
         /** @var list<VenueMatchWindow> $matchWindows */
         $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([], ['id' => 'ASC']);
         /** @var list<TeamMatchHabit> $habits */
         $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([], ['id' => 'ASC']);
-        /** @var list<TeamLink> $teamLinks */
-        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([], ['id' => 'ASC']);
+        $teamLinks = null === $seasonId ? [] : $this->inForce->rows($seasonId, TeamLink::class);
         // L'ordre de lien départage qui tient une séance ou un match, ici et côté moteur.
-        /** @var list<TeamCoach> $teamCoaches */
-        $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([], ['createdAt' => 'ASC', 'id' => 'ASC']);
-        /** @var list<CoachPlayerMembership> $playerMemberships */
-        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([], ['id' => 'ASC']);
+        $teamCoaches = null === $seasonId ? [] : $this->inForce->rows($seasonId, TeamCoach::class);
+        $playerMemberships = null === $seasonId ? [] : $this->inForce->rows($seasonId, CoachPlayerMembership::class);
         // P4-272 ① — la COPIE club de l'enveloppe ligue (scopée club+saison par les
         // filtres Doctrine). C'est la MAISON UNIQUE de lecture au placement : le
         // catalogue global ne sert plus qu'à semer cette copie. Copie VIDE = zéro

@@ -14,6 +14,7 @@ use App\Entity\Season;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\ConstraintFamily;
+use App\Plans\InForce;
 use App\Service\PlanVenueClosures;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueClosureDays;
@@ -47,6 +48,7 @@ final class CalendarEntryConflictsController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PlanVenueClosures $planVenueClosures,
+        private readonly InForce $inForce,
     ) {}
 
     #[Route('/api/calendar-entries/{id}/conflicts', name: 'api_calendar_entry_conflicts', methods: ['GET'])]
@@ -71,7 +73,7 @@ final class CalendarEntryConflictsController extends AbstractController
         // sorties courtes, il affirmait un fait non vérifié — et le radar, qui masque
         // désormais les fermetures sans impact, faisait disparaître une période sur ce
         // mensonge.
-        $seasonScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($entry->getSeasonId());
+        $seasonScheduleId = $this->inForce->socleVersionId($entry->getSeasonId());
         $planChosen = null !== $seasonScheduleId;
 
         // An IGNORED entry was explicitly dismissed by the manager: it must not

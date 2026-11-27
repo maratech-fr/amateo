@@ -151,14 +151,14 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
         self::assertIsString($source, 'PlanBirth est illisible.');
 
         // Un seul motif, ancré sur l'INSERT INTO venue_training_slot, pour apparier la liste de
-        // colonnes et les expressions du SELECT de CE bloc — la copie contient d'autres
-        // SELECT (sur schedule_plan, calendar_entry) qu'il ne faut pas confondre avec celui-ci.
+        // colonnes et les expressions des VALUES de CE bloc — la copie contient d'autres
+        // requêtes (sur schedule_plan, venue_occupancy) qu'il ne faut pas confondre avec celle-ci.
         $found = preg_match(
-            '/INSERT INTO venue_training_slot \(([^)]+)\)\s*\'\s*\.\s*\'SELECT (.+?)\s*\'\s*\.\s*\'FROM venue_training_slot/s',
+            '/INSERT INTO venue_training_slot \(([^)]+)\)\s*\'\s*\.\s*\'VALUES \((.+?)\)\'/s',
             $source,
             $match,
         );
-        self::assertSame(1, $found, 'L\'INSERT … SELECT de copie a disparu ou changé de forme — ce test doit suivre, pas se taire.');
+        self::assertSame(1, $found, 'L\'INSERT … VALUES de copie a disparu ou changé de forme — ce test doit suivre, pas se taire.');
 
         $columns = array_map(trim(...), explode(',', $match[1]));
         $expressions = array_map(trim(...), explode(',', trim($match[2])));

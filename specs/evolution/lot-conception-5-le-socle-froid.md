@@ -263,6 +263,14 @@ Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1
 - `App\Plans\InForce` existe et rend les lignes de travail. Passent par elle : `ConflictRadarLoader`, `MatchPlacementPayloadBuilder`, `PlacedSessionPersonConflictDetector`, la demande d'une période, `PeriodConstraintSelector`, `PlanBirth`, `PlanComposition::ensureLines`, les sept lectures du pointeur.
 - Tests : lignes 22 et 23. `/security-review` : non.
 
+**Livrée le 2026-11-27 (PR 4), sur `lot/conception`, non déployée.** Écarts au plan, tels que livrés :
+- (a) `App\Plans\InForce` : `socleVersionId(?string)` (null sans saison, null sans version validée) et `rows(seasonId, familyClass)` (SQL natif hydraté en entités gérées, saison en clause explicite, la RLS borne le club ; niveau saison ou plan, tout autre niveau lève ; tri par identifiant, sauf `TeamCoach` en `created_at, id`). Les entités rendues sont **gérées, pas détachées** : le « détaché, jamais persisté » du contrat arrive en PR 5.
+- (b) **Écart au « rien ne change »** : le placement des matchs (worker et `EngineRequestRecorder`) lisait toutes les saisons du club, il ne lit plus que la saison demandée. Effet correctif, prouvé par `tests/Integration/Plans/InForceTest.php` ; les références 1 à 21 restent identiques à l'octet.
+- (c) Les lecteurs qui n'avaient pas d'`ORDER BY` lisent dans l'ordre des identifiants, plus dans l'ordre physique.
+- (d) Naissance d'un plan : les règles de bien-être s'écrivent par `ON CONFLICT … DO NOTHING` règle par règle, au lieu d'un `NOT EXISTS` sur le plan entier (identique pour un plan neuf, seul cas atteignable) ; la copie de grille s'écrit en `INSERT … VALUES` après lecture par la porte (`PeriodSlotCopyKeepsEveryColumnTest` adapté mécaniquement).
+- (e) La requête du pointeur existe deux fois (`InForce::socleVersionId` et `SchedulePlanProvisioner::chosenOfSeasonPlan`) : la porte ne peut dépendre du provisionneur (boucle via `PlanBirth`).
+- (f) Garde : `Architecture/InForceDoorTest` (step `Blocking suite` de `ci.yml` et `blocking-tests.md`). **Limites** : le départage « le premier lien équipe-coach créé tient la séance » n'est tenu par aucun test (le décor des références ne distingue pas `created_at` de `id`), trou antérieur à la PR ; les cas du socle des références ne passent pas par la porte (`buildForPlan` n'est pas un lecteur nommé).
+
 ### PR 5 · « Retravailler ne détruit rien, la porte lit la copie »
 - La porte lit la copie. Route `rework`. La branche socle de « Rouvrir » est retirée (`ReopenScheduleController.php:88-121`) : 409 pour un plan de saison, inchangée pour une période. `assertSeasonPlanNotChosen` supprimé (cinq sites) ; route `pending-changes` ; refus de `TeamStateProcessor.php:185` retiré ; lignes de règle des périodes propagées à la validation.
 - Écran : barre et page du planning, `WizardLayout.tsx`, `TeamsStep.tsx`, `VenuesStep.tsx`, `SeasonPlanBanner.tsx`, textes.

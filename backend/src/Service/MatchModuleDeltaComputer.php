@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Fixture;
+use App\Plans\InForce;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -37,6 +38,7 @@ final class MatchModuleDeltaComputer
         private readonly ConflictFingerprinter $fingerprinter,
         private readonly ConflictRadarLoader $radarLoader,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -49,7 +51,7 @@ final class MatchModuleDeltaComputer
     {
         return [
             'fingerprints' => $this->currentFingerprints($clubId, $seasonId),
-            'chosenScheduleId' => $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId),
+            'chosenScheduleId' => $this->inForce->socleVersionId($seasonId),
             'latestCompletedSeasonScheduleId' => $this->schedulePlanProvisioner->latestCompletedScheduleIdOfSeasonPlan($seasonId),
         ];
     }

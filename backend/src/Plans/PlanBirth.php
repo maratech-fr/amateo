@@ -13,9 +13,12 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\SchedulePlanType;
-use App\Repository\ImplicitRuleSettingRepository;
 use App\Structure\FamilyCatalog;
+use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 
@@ -38,32 +41,50 @@ use LogicException;
  * Une famille du catalogue sans routine de copie ici lève : l'ajouter au catalogue sans dire comment elle se
  * copie ne passe pas en silence.
  *
- * SQL brut pour la grille et les occupations : `season_filter` épingle les lectures ORM à la saison ACTIVE de
- * la requête, or un plan peut naître pour une autre saison (transition). RLS scope le club. L'appelant flush.
+ * À la naissance, la grille, les groupes et les règles de bien-être du plan de saison se lisent par la porte de
+ * l'en vigueur ({@see InForce}). SQL brut pour écrire la grille et les règles, et pour les occupations : `season_filter`
+ * épingle les lectures ORM à la saison ACTIVE de la requête, or un plan peut naître pour une autre saison
+ * (transition). RLS scope le club. L'appelant flush.
  */
 final readonly class PlanBirth
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
         private FamilyCatalog $familyCatalog,
-        private ImplicitRuleSettingRepository $implicitRuleSettingRepository,
+        private InForce $inForce,
     ) {}
 
-    /** @param string|null $venueId null = tout le plan ; sinon « Reprendre la grille » de ce gymnase */
+    /**
+     * La source est le plan de saison de la saison du plan cible (les deux appelants le passent) : la grille, les
+     * groupes et les règles de bien-être s'en lisent par la porte de l'en vigueur ({@see InForce::rows}).
+     *
+     * @param string|null $venueId null = tout le plan ; sinon « Reprendre la grille » de ce gymnase
+     */
     public function copy(string $sourcePlanId, string $targetPlanId, ?string $venueId = null): void
     {
         $target = $this->planRow($targetPlanId);
         foreach ($this->familyCatalog->copiedAtPlanBirth() as $family) {
             switch ($family) {
                 case VenueTrainingSlot::class:
-                    $this->copyGrid($sourcePlanId, $target, $venueId);
+                    $this->copyGrid($target, $venueId);
                     break;
                 case VenueOccupancy::class:
                     $this->copyOccupancies($sourcePlanId, $target, $venueId);
                     break;
                 case SharedTrainingBlock::class:
                     if (null === $venueId && $target['type']->copiesSharedBlocksAtBirth()) {
-                        $this->copySharedBlocks($sourcePlanId, $target, copyLabel: false);
+                        $this->copySharedBlocks(
+                            $target,
+                            array_map(
+                                static fn (SharedTrainingBlock $block): array => ['id' => $block->getId(), 'commonSessions' => $block->getCommonSessions(), 'label' => null],
+                                $this->inForce->rows($target['seasonId'], SharedTrainingBlock::class),
+                            ),
+                            array_map(
+                                static fn (SharedTrainingBlockTeam $member): array => ['blockId' => $member->getBlockId(), 'teamId' => $member->getTeamId()],
+                                $this->inForce->rows($target['seasonId'], SharedTrainingBlockTeam::class),
+                            ),
+                            copyLabel: false,
+                        );
                     }
                     break;
                 case SharedTrainingBlockTeam::class:
@@ -72,7 +93,7 @@ final readonly class PlanBirth
                     if (null === $venueId) {
                         // Copie TOTALE des règles de bien-être du plan de saison (valeur, sinon défaut ; opt-in à OFF) :
                         // un plan « tout au défaut » garde ses lignes, donc reste distinguable d'un plan sans copie.
-                        $this->implicitRuleSettingRepository->materializeForPlan($target['clubId'], $target['seasonId'], $targetPlanId);
+                        $this->copyWellbeingRules($target, $this->inForce->rows($target['seasonId'], ImplicitRuleSetting::class));
                     }
                     break;
                 default:
@@ -133,7 +154,18 @@ final readonly class PlanBirth
                     }
                     break;
                 case SharedTrainingBlock::class:
-                    $this->copySharedBlocks($sourcePlanId, $target, copyLabel: true);
+                    $this->copySharedBlocks(
+                        $target,
+                        array_map(
+                            static fn (SharedTrainingBlock $block): array => ['id' => $block->getId(), 'commonSessions' => $block->getCommonSessions(), 'label' => $block->getLabel()],
+                            $this->entityManager->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $sourcePlanId]),
+                        ),
+                        array_map(
+                            static fn (SharedTrainingBlockTeam $member): array => ['blockId' => $member->getBlockId(), 'teamId' => $member->getTeamId()],
+                            $this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['schedulePlanId' => $sourcePlanId]),
+                        ),
+                        copyLabel: true,
+                    );
                     break;
                 case SharedTrainingBlockTeam::class:
                     break; // copiés avec leur groupe
@@ -161,23 +193,70 @@ final readonly class PlanBirth
     }
 
     /**
-     * La grille du plan source. Le libellé de groupe appartient au planning de saison : une période naît SANS
-     * libellé. La colonne `group_label` reste dans l'INSERT (sa place dans la copie est surveillée par
-     * PeriodSlotCopyKeepsEveryColumnTest), mais le SELECT émet NULL plutôt que la valeur du modèle.
+     * La grille du plan de saison, lue par la porte de l'en vigueur, écrite ligne à ligne. Le libellé de groupe
+     * appartient au planning de saison : une période naît SANS libellé. La colonne `group_label` reste dans l'INSERT
+     * (sa place dans la copie est surveillée par PeriodSlotCopyKeepsEveryColumnTest), mais les VALUES émettent NULL
+     * plutôt que la valeur du modèle.
      *
      * @param array{id: string, clubId: string, seasonId: string, type: SchedulePlanType} $target
      */
-    private function copyGrid(string $sourcePlanId, array $target, ?string $venueId): void
+    private function copyGrid(array $target, ?string $venueId): void
     {
-        $sql = 'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, schedule_plan_id) '
-            . 'SELECT gen_random_uuid(), 1, now(), now(), club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, NULL, :planId '
-            . 'FROM venue_training_slot WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :sourcePlanId';
-        $params = ['planId' => $target['id'], 'clubId' => $target['clubId'], 'seasonId' => $target['seasonId'], 'sourcePlanId' => $sourcePlanId];
-        if (null !== $venueId) {
-            $sql .= ' AND venue_id = :venueId';
-            $params['venueId'] = $venueId;
+        $connection = $this->entityManager->getConnection();
+        foreach ($this->inForce->rows($target['seasonId'], VenueTrainingSlot::class) as $slot) {
+            if (null !== $venueId && $slot->getVenueId() !== $venueId) {
+                continue;
+            }
+            $connection->executeStatement(
+                'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, schedule_plan_id) '
+                . 'VALUES (gen_random_uuid(), 1, now(), now(), :clubId, :seasonId, :venueId, :dayOfWeek, :startTime, :durationMinutes, :capacity, NULL, :planId)',
+                [
+                    'clubId' => $slot->getClubId(),
+                    'seasonId' => $slot->getSeasonId(),
+                    'venueId' => $slot->getVenueId(),
+                    'dayOfWeek' => $slot->getDayOfWeek(),
+                    'startTime' => $slot->getStartTime(),
+                    'durationMinutes' => $slot->getDurationMinutes(),
+                    'capacity' => $slot->getCapacity(),
+                    'planId' => $target['id'],
+                ],
+                ['dayOfWeek' => ParameterType::INTEGER, 'startTime' => Types::TIME_IMMUTABLE, 'durationMinutes' => ParameterType::INTEGER, 'capacity' => ParameterType::INTEGER],
+            );
         }
-        $this->entityManager->getConnection()->executeStatement($sql, $params);
+    }
+
+    /**
+     * Les règles de bien-être du plan de saison, une ligne par règle : la valeur de la saison si elle existe, sinon le
+     * défaut du contrat (HARD, opt-in à OFF, seuil au défaut = params NULL). Une ligne que le plan porte déjà n'est pas
+     * réécrite.
+     *
+     * @param array{id: string, clubId: string, seasonId: string, type: SchedulePlanType} $target
+     * @param list<ImplicitRuleSetting>                                                   $seasonRules
+     */
+    private function copyWellbeingRules(array $target, array $seasonRules): void
+    {
+        $byKey = [];
+        foreach ($seasonRules as $rule) {
+            $byKey[$rule->getRuleKey()->value] = $rule;
+        }
+        $connection = $this->entityManager->getConnection();
+        foreach (ImplicitRuleKey::cases() as $key) {
+            $rule = $byKey[$key->value] ?? null;
+            $connection->executeStatement(
+                'INSERT INTO implicit_rule_setting (id, version, created_at, updated_at, club_id, season_id, schedule_plan_id, rule_key, intensity, params) '
+                . 'VALUES (gen_random_uuid(), 1, now(), now(), :clubId, :seasonId, :planId, :ruleKey, :intensity, :params) '
+                . 'ON CONFLICT (club_id, season_id, schedule_plan_id, rule_key) DO NOTHING',
+                [
+                    'clubId' => $target['clubId'],
+                    'seasonId' => $target['seasonId'],
+                    'planId' => $target['id'],
+                    'ruleKey' => $key->value,
+                    'intensity' => ($rule?->getIntensity() ?? ($key->isOptIn() ? ImplicitRuleIntensity::OFF : ImplicitRuleIntensity::HARD))->value,
+                    'params' => $rule?->getParams(),
+                ],
+                ['params' => Types::JSON],
+            );
+        }
     }
 
     /**
@@ -206,42 +285,18 @@ final readonly class PlanBirth
      * par membre). La garde Σ n'est PAS rejouée, aucun filtrage au roster non plus : un membre écarté de la période
      * est géré par la demande au moteur, qui abandonne un groupe tombé sous deux membres actifs.
      *
-     * À la naissance (`$copyLabel` faux), lecture en SQL brut sur le club et la saison du plan cible (`season_filter`)
-     * et le nom du groupe n'est pas copié ; la copie sœur (`$copyLabel` vrai) lit par l'ORM et copie le nom.
+     * Les groupes et membres sont lus par l'appelant : à la naissance (`$copyLabel` faux), ceux du plan de saison par la
+     * porte de l'en vigueur, et le nom du groupe n'est pas copié ; la copie sœur (`$copyLabel` vrai) lit le plan source
+     * par l'ORM et copie le nom.
      *
      * @param array{id: string, clubId: string, seasonId: string, type: SchedulePlanType} $target
+     * @param list<array{id: string, commonSessions: int, label: ?string}>                $blocks
+     * @param list<array{blockId: string, teamId: string}>                                $members
      */
-    private function copySharedBlocks(string $sourcePlanId, array $target, bool $copyLabel): void
+    private function copySharedBlocks(array $target, array $blocks, array $members, bool $copyLabel): void
     {
         $clubId = $target['clubId'];
         $seasonId = $target['seasonId'];
-
-        if ($copyLabel) {
-            $blocks = array_map(
-                static fn (SharedTrainingBlock $block): array => ['id' => $block->getId(), 'commonSessions' => $block->getCommonSessions(), 'label' => $block->getLabel()],
-                $this->entityManager->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $sourcePlanId]),
-            );
-            $members = array_map(
-                static fn (SharedTrainingBlockTeam $member): array => ['blockId' => $member->getBlockId(), 'teamId' => $member->getTeamId()],
-                $this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['schedulePlanId' => $sourcePlanId]),
-            );
-        } else {
-            $connection = $this->entityManager->getConnection();
-            $blocks = array_map(
-                static fn (array $row): array => ['id' => (string) $row['id'], 'commonSessions' => (int) $row['common_sessions'], 'label' => null],
-                $connection->fetchAllAssociative(
-                    'SELECT id, common_sessions FROM shared_training_block WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :sourcePlanId',
-                    ['clubId' => $clubId, 'seasonId' => $seasonId, 'sourcePlanId' => $sourcePlanId],
-                ),
-            );
-            $members = array_map(
-                static fn (array $row): array => ['blockId' => (string) $row['block_id'], 'teamId' => (string) $row['team_id']],
-                $connection->fetchAllAssociative(
-                    'SELECT block_id, team_id FROM shared_training_block_team WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :sourcePlanId',
-                    ['clubId' => $clubId, 'seasonId' => $seasonId, 'sourcePlanId' => $sourcePlanId],
-                ),
-            );
-        }
 
         $copyOf = [];
         foreach ($blocks as $block) {

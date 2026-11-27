@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\ScheduleStatus;
 use App\Exception\EngineRequestNotComposable;
+use App\Plans\InForce;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 
@@ -23,6 +24,7 @@ final readonly class EngineRequestComposer
         private EntityManagerInterface $entityManager,
         private ScheduleConstraintBuilder $constraintBuilder,
         private SchedulePlanProvisioner $schedulePlanProvisioner,
+        private InForce $inForce,
     ) {}
 
     /** @throws EngineRequestNotComposable période disparue ou version de départ introuvable */
@@ -206,7 +208,7 @@ final readonly class EngineRequestComposer
      */
     private function socleReferenceSlots(Schedule $schedule): array
     {
-        $socleScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
+        $socleScheduleId = $this->inForce->socleVersionId($schedule->getSeasonId());
         if (null === $socleScheduleId) {
             throw new LogicException(\sprintf('Comblement du plan %s sans version pointée du socle : SocleGuard aurait dû refuser le fill en amont.', $schedule->getId()));
         }
