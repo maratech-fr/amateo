@@ -18,6 +18,7 @@ use App\Enum\AuditAction;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
+use App\Matches\FederalFollowUp;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
@@ -52,6 +53,7 @@ final class VenueClosureImpact
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ClubPublicHolidays $clubPublicHolidays,
         private readonly ClubDay $clubDay,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -137,7 +139,7 @@ final class VenueClosureImpact
         foreach ($this->entityManager->getRepository(Fixture::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'homeAway' => FixtureHomeAway::HOME]) as $fixture) {
             $matchDate = $fixture->getMatchDate()->format('Y-m-d');
             if (!\in_array($fixture->getVenueId(), $venueIds, true) || $matchDate < $from || $matchDate > $until
-                || $matchDate < $today || FixtureStatus::UNPLACED === $fixture->getStatus()) {
+                || $matchDate < $today || FixtureStatus::UNPLACED === $this->followUp->stageOf($fixture)) {
                 continue;
             }
             $matches[] = [

@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\ClubPublicHolidays;
@@ -51,6 +52,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
     private PlanVenueClosures $planVenueClosures;
 
     private ClubPublicHolidays $clubPublicHolidays;
+
+    private FederalFollowUp $followUp;
 
     #[Required]
     public function setCompetitionRegistry(CompetitionRegistry $competitionRegistry): void
@@ -100,6 +103,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
         $this->clock = $clock;
     }
 
+    #[Required]
+    public function setFederalFollowUp(FederalFollowUp $followUp): void
+    {
+        $this->followUp = $followUp;
+    }
+
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
     {
         // A match can only be created/edited once the season's main plan is
@@ -147,12 +156,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->setOpponentLabel($input->opponentLabel);
         }
         if (null !== $input->status) {
-            $entity->setStatus(FixtureStatus::from($input->status), $now);
+            $this->followUp->moveTo($entity, FixtureStatus::from($input->status), $now);
             // P1-4 PR D — every status write through the API is the MANAGER's
             // gesture: a placement becomes a MANUAL anchor (the solver never
             // moves it again), an un-placement clears the marker.
             $entity->setPlacementSource(
-                FixtureStatus::UNPLACED === $entity->getStatus() ? null : FixturePlacementSource::MANUAL,
+                FixtureStatus::UNPLACED === $this->followUp->stageOf($entity) ? null : FixturePlacementSource::MANUAL,
             );
         }
         $entity->setVenueId('' === $input->venueId ? null : $input->venueId);
@@ -181,7 +190,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->getKickoffTime()?->format('H:i'),
             $entity->getMatchDate()->format('Y-m-d'),
         ];
-        $statusBefore = $entity->getStatus();
+        $statusBefore = $this->followUp->stageOf($entity);
+        $enteredBefore = $this->followUp->isEntered($entity);
         $competitionBefore = $entity->getCompetitionId();
         $homeAwayBefore = $entity->getHomeAway();
         if (null !== $input->teamId) {
@@ -191,11 +201,11 @@ class FixtureStateProcessor extends AbstractStateProcessor
         // Lot 7, PR 4a (C55) — en modification, une compétition absente ou nulle laisse le match où il est ; seule
         // une chaîne vide explicite le range dans « Amicaux ».
         if ('' === $input->competitionId) {
-            $this->assertMayBecomeFriendly($entity, $competitionBefore, $statusBefore, null);
+            $this->assertMayBecomeFriendly($entity, $competitionBefore, $enteredBefore, null);
             $entity->setCompetitionId($this->defaultFriendlyFor($entity));
         } elseif (null !== $input->competitionId) {
             $this->assertCompetitionInScope($input->competitionId);
-            $this->assertMayBecomeFriendly($entity, $competitionBefore, $statusBefore, $input->competitionId);
+            $this->assertMayBecomeFriendly($entity, $competitionBefore, $enteredBefore, $input->competitionId);
             $entity->setCompetitionId($input->competitionId);
         }
         // L'équipe et la compétition RETENUES (renvoyées ou laissées telles quelles) désignent un engagement.
@@ -212,12 +222,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null !== $input->status) {
             // D6 — « placer = traiter » : setStatus pose REVIEWED + horodaté quand
             // le match passe placé sans écart pendant (UNPLACED ne change rien).
-            $entity->setStatus(FixtureStatus::from($input->status), $now);
+            $this->followUp->moveTo($entity, FixtureStatus::from($input->status), $now);
             // P1-4 PR D — every status write through the API is the MANAGER's
             // gesture: a placement becomes a MANUAL anchor (the solver never
             // moves it again), an un-placement clears the marker.
             $entity->setPlacementSource(
-                FixtureStatus::UNPLACED === $entity->getStatus() ? null : FixturePlacementSource::MANUAL,
+                FixtureStatus::UNPLACED === $this->followUp->stageOf($entity) ? null : FixturePlacementSource::MANUAL,
             );
         }
         if (null !== $input->venueId) {
@@ -231,7 +241,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (
             FixtureHomeAway::HOME === $entity->getHomeAway()
             && null === $entity->getVenueId()
-            && \in_array($entity->getStatus(), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+            && \in_array($this->followUp->stageOf($entity), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
         ) {
             $this->refuse('Un match à domicile placé doit avoir un gymnase. Pour retirer sa salle, repassez-le « à placer » dans le même geste.');
         }
@@ -247,7 +257,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         // L'étape « accès match » ne juge qu'une vraie pose : « Marquer saisi », « Corriger »,
         // « Verrouiller », « Rendre au système » renvoient le match à l'identique et ne posent rien.
         // Indisponibilité et fermeture, elles, restent jugées à chaque PUT.
-        $isPlacing = FixtureStatus::UNPLACED === $statusBefore && FixtureStatus::UNPLACED !== $entity->getStatus();
+        $isPlacing = FixtureStatus::UNPLACED === $statusBefore && FixtureStatus::UNPLACED !== $this->followUp->stageOf($entity);
         $moved = $placementBefore !== [
             $entity->getVenueId(),
             $entity->getKickoffTime()?->format('H:i'),
@@ -394,7 +404,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->getKickoffTime()?->format('H:i'),
             $entity->getMatchDate()->format('Y-m-d'),
         ] === $placementBefore;
-        if (!$untouched || FixtureStatus::PLACED !== $entity->getStatus()) {
+        if (!$untouched || FixtureStatus::PLACED !== $this->followUp->stageOf($entity)) {
             throw new UnprocessableEntityHttpException('Rendre au solveur exige un placement inchangé et un match PLACED — modifiez d\'abord (le match restera manuel), ou déverrouillez sans rien changer.');
         }
     }
@@ -462,7 +472,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
      * compétition vers une compétition amicale. On compare la compétition d'avant et celle demandée, jamais la seule
      * valeur reçue : renvoyer la compétition qu'il a déjà n'est jamais refusé. `$target` null = « Amicaux ».
      */
-    private function assertMayBecomeFriendly(Fixture $fixture, ?string $competitionBefore, FixtureStatus $statusBefore, ?string $target): void
+    private function assertMayBecomeFriendly(Fixture $fixture, ?string $competitionBefore, bool $enteredBefore, ?string $target): void
     {
         $before = null === $competitionBefore ? null : $this->entityManager->find(Competition::class, $competitionBefore);
         if (null === $target) {
@@ -477,7 +487,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         }
         $known = null !== $fixture->getExternalRef()
             || null !== $fixture->getFfbbRencontreId()
-            || \in_array($statusBefore, [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true);
+            || $enteredBefore;
         if ($known) {
             $this->refuse('Ce match est connu de la fédération : il reste dans sa compétition.');
         }

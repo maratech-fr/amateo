@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Fixture;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Matches\FederalFollowUp;
 use App\Matches\HandPlaced;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -25,6 +26,7 @@ final class MatchPlacementResultApplier
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
         private readonly HandPlaced $handPlaced,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -45,8 +47,8 @@ final class MatchPlacementResultApplier
             }
             $fixture->setVenueId($placement['venueId']);
             $fixture->setKickoffTime(new DateTimeImmutable($placement['kickoff']));
-            // Placer = traiter (D6) : setStatus pose REVIEWED + horodaté (sauf écart pendant).
-            $fixture->setStatus(FixtureStatus::PLACED, $now);
+            // Placer = traiter (D6) : pose REVIEWED + horodaté (sauf écart pendant).
+            $this->followUp->place($fixture, $now);
             $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
             ++$applied;
         }
@@ -63,11 +65,12 @@ final class MatchPlacementResultApplier
         if ($this->handPlaced->is($fixture)) {
             return false;
         }
-        if (FixtureStatus::UNPLACED === $fixture->getStatus()) {
+        $stage = $this->followUp->stageOf($fixture);
+        if (FixtureStatus::UNPLACED === $stage) {
             return true;
         }
 
-        return FixtureStatus::PLACED === $fixture->getStatus()
+        return FixtureStatus::PLACED === $stage
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();
     }
 }

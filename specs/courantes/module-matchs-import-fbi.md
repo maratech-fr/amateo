@@ -357,7 +357,7 @@ Deux axes distincts sur une `Fixture` : `status` (placement) et `reviewState` (a
 EXAMINÉE). **`FixtureReviewState`** : `NEW` (jamais examinée) · `OUT_OF_SYNC` (déphasée, un écart
 pendant subsiste) · `REVIEWED` (traitée). `pendingDeviations` (JSON) porte les écarts ouverts, un
 par champ (`date`/`kickoff`/`venue`), `autoApplied` marque une valeur imposée hors périmètre. Maison
-unique du statut : `Fixture::setStatus` (passer PLACÉ traite la rencontre, sauf écart pendant).
+unique du statut : `Fixture::setStatus` (passer PLACÉ traite la rencontre, sauf écart pendant), atteint par la seule porte `App\Matches\FederalFollowUp` pour tout lecteur et écrivain du stade, des écarts, du mémo et du libellé gardé.
 
 Règles de naissance : un extérieur, ou une rencontre passée/dans la semaine ISO en cours, naît déjà
 `REVIEWED` — « un extérieur n'est jamais à traiter par le club », « un match imminent ou déjà joué

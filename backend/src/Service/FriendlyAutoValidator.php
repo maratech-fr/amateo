@@ -7,7 +7,7 @@ namespace App\Service;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
-use App\Enum\FixtureStatus;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,6 +43,7 @@ final class FriendlyAutoValidator
         private readonly ClockInterface $clock,
         private readonly TenantDoctrineScope $tenantDoctrineScope,
         private readonly LoggerInterface $logger,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /** @return int combien d'amicaux passés ont basculé VALIDATED (0 si rien n'a changé) */
@@ -67,17 +68,16 @@ final class FriendlyAutoValidator
             if ($fixture->getMatchDate()->setTime(0, 0) >= $today) {
                 continue; // pas encore joué (jour même inclus dans « pas encore »).
             }
-            $status = $fixture->getStatus();
-            if (FixtureStatus::SUBMITTED === $status || FixtureStatus::VALIDATED === $status) {
+            if ($this->followUp->isEntered($fixture)) {
                 continue; // déjà saisi / validé.
             }
-            if ($fixture->hasPendingDeviations()) {
+            if ($this->followUp->deviations($fixture)->any()) {
                 continue; // un écart en attente n'est jamais tranché en balayage.
             }
             if (FixtureHomeAway::HOME === $fixture->getHomeAway()) {
                 $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
             }
-            $fixture->setStatus(FixtureStatus::VALIDATED, $now);
+            $this->followUp->markValidated($fixture, $now);
             ++$swept;
         }
 

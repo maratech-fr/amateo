@@ -34,7 +34,6 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
-use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\LockLevel;
 use App\Enum\MatchWeek;
@@ -45,6 +44,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
@@ -124,6 +124,7 @@ final class LoadTestClubSeeder
         private readonly PlanComposition $planComposition,
         private readonly PlanStates $planStates,
         private readonly CompetitionRegistry $competitionRegistry,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -792,7 +793,7 @@ final class LoadTestClubSeeder
             if ($match['fixed'] && null !== $match['venueId'] && null !== $match['kickoff']) {
                 $fixture->setVenueId($match['venueId']);
                 $fixture->setKickoffTime(new DateTimeImmutable($match['kickoff']));
-                $fixture->setStatus(FixtureStatus::PLACED, $now);
+                $this->followUp->place($fixture, $now);
                 $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
             }
             $manager->persist($fixture);

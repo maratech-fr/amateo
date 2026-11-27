@@ -22,6 +22,7 @@ use App\Dto\FixtureInput;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FederalFollowUp;
 use App\State\Processor\FixtureStateProcessor;
 use App\State\Provider\FixtureStateProvider;
 use ArrayObject;
@@ -237,6 +238,7 @@ class FixtureResource
 
     public static function fromEntity(Fixture $entity, ?Competition $competition): self
     {
+        $followUp = new FederalFollowUp;
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
@@ -249,7 +251,7 @@ class FixtureResource
         $dto->matchDate = $entity->getMatchDate()->format('Y-m-d');
         $dto->homeAway = $entity->getHomeAway()->value;
         $dto->opponentLabel = $entity->getOpponentLabel();
-        $dto->status = $entity->getStatus()->value;
+        $dto->status = $followUp->stageOf($entity)->value;
         $dto->venueId = $entity->getVenueId();
         $dto->kickoffTime = $entity->getKickoffTime()?->format('H:i');
         $dto->externalRef = $entity->getExternalRef();
@@ -261,8 +263,8 @@ class FixtureResource
         $dto->neutralGround = FixtureUnplacedReason::NEUTRAL_GROUND === $entity->getUnplacedReason();
         $dto->reviewState = $entity->getReviewState()->value;
         $dto->reviewedAt = $entity->getReviewedAt();
-        $dto->pendingDeviations = $entity->getPendingDeviations();
-        $dto->fbiEcho = $entity->getFbiEcho();
+        $dto->pendingDeviations = $followUp->deviations($entity)->all();
+        $dto->fbiEcho = $followUp->fbiEchoOf($entity);
 
         return $dto;
     }

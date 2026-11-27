@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Matches\FederalFollowUp;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -29,6 +30,7 @@ final readonly class VenueLabelInventory
     public function __construct(
         private EntityManagerInterface $entityManager,
         private VenueLabelNormalizer $labelNormalizer,
+        private FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -70,7 +72,7 @@ final readonly class VenueLabelInventory
             }
             $groups[$key]['displayCounts'][$raw] = ($groups[$key]['displayCounts'][$raw] ?? 0) + 1;
             ++$groups[$key]['homeCount'];
-            if (FixtureStatus::UNPLACED === $home->getStatus()) {
+            if (FixtureStatus::UNPLACED === $this->followUp->stageOf($home)) {
                 ++$groups[$key]['unplacedCount'];
             } else {
                 ++$groups[$key]['placedCount'];

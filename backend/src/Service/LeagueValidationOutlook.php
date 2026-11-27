@@ -12,6 +12,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FederalFollowUp;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use App\State\Processor\FixtureStateProcessor;
 use DateTimeImmutable;
@@ -47,6 +48,7 @@ final class LeagueValidationOutlook
         private readonly ClockInterface $clock,
         private readonly TenantDoctrineScope $tenantDoctrineScope,
         private readonly LoggerInterface $logger,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -213,7 +215,7 @@ final class LeagueValidationOutlook
 
     /**
      * Applique « validé ligue » à un domicile validable : l'ancre MANUAL d'abord,
-     * puis le statut — setStatus(VALIDATED) TRAITE la rencontre (REVIEWED + horodaté,
+     * puis le statut — « validé » TRAITE la rencontre (REVIEWED + horodaté,
      * aucun écart pendant par construction, le prédicat l'exige). Le MANUAL n'est PAS
      * cosmétique : l'ancre FIXED du solveur ({@see MatchPlacementPayloadBuilder::matchRow})
      * et le cadenas de la grille l'exigent.
@@ -225,7 +227,7 @@ final class LeagueValidationOutlook
     public function markLeagueValidated(Fixture $fixture, DateTimeImmutable $now): void
     {
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
-        $fixture->setStatus(FixtureStatus::VALIDATED, $now);
+        $this->followUp->markValidated($fixture, $now);
     }
 
     /**
@@ -355,7 +357,7 @@ final class LeagueValidationOutlook
         if (FixtureHomeAway::HOME !== $fixture->getHomeAway()) {
             return false;
         }
-        if (FixtureStatus::UNPLACED !== $fixture->getStatus()) {
+        if (FixtureStatus::UNPLACED !== $this->followUp->stageOf($fixture)) {
             return false;
         }
         // Un terrain neutre (« pas chez nous ») est un domicile sans gymnase du club PAR
@@ -388,13 +390,13 @@ final class LeagueValidationOutlook
         return $this->isCandidate($fixture, $meta)
             && $fixture->getKickoffTime() instanceof DateTimeImmutable
             && null !== $fixture->getVenueId()
-            && !$fixture->hasPendingDeviations();
+            && !$this->followUp->deviations($fixture)->any();
     }
 
     /** Pourquoi un candidat d'un championnat commencé n'est pas validable — nommé, jamais tu. */
     private function reasonToTreat(Fixture $fixture): string
     {
-        if ($fixture->hasPendingDeviations()) {
+        if ($this->followUp->deviations($fixture)->any()) {
             return 'PENDING_DEVIATION';
         }
         if (!$fixture->getKickoffTime() instanceof DateTimeImmutable) {

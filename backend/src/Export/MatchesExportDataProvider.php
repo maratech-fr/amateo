@@ -13,6 +13,7 @@ use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Repository\FixtureRepository;
 use App\Service\ClubDay;
@@ -42,6 +43,7 @@ final readonly class MatchesExportDataProvider
         private ClubDay $clubDay,
         private LogoStorage $logoStorage,
         private PlaceDirectory $placeDirectory,
+        private FederalFollowUp $followUp,
     ) {}
 
     public function load(string $clubId, Season $season, DateTimeImmutable $from, DateTimeImmutable $to, ?Team $team, bool $homeOnly = false, string $groupBy = 'team'): MatchesExportData
@@ -181,11 +183,11 @@ final readonly class MatchesExportDataProvider
         }
         // Seul un écart à TRANCHER est un doute : une valeur que FBI a imposée et que l'appli a
         // déjà écrite (entrée appliquée d'office, simple bandeau) ne l'est pas.
-        if ($fixture->hasArbitrableDeviations()) {
+        if ($this->followUp->deviations($fixture)->anyArbitrable()) {
             return true;
         }
 
-        return 'home' === $where && !$friendly && FixtureStatus::VALIDATED !== $fixture->getStatus();
+        return 'home' === $where && !$friendly && FixtureStatus::VALIDATED !== $this->followUp->stageOf($fixture);
     }
 
     /** @return 'home'|'away'|'neutral' */

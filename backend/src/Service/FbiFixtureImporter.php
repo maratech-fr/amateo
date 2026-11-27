@@ -22,6 +22,7 @@ use App\Exception\ImportRejectedException;
 use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
 use App\Matches\EngagementView;
+use App\Matches\FederalFollowUp;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueExternalLabelAttacher;
@@ -122,6 +123,7 @@ final class FbiFixtureImporter
         private readonly VenueExternalLabelAttacher $venueLabelAttacher,
         private readonly VenueAliasResolver $venueAliasResolver,
         private readonly CompetitionRegistry $competitionRegistry,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -213,7 +215,7 @@ final class FbiFixtureImporter
                 }
                 $seenFixtures[$existing->getId()] = true;
                 foreach ($fields as $field => $vals) {
-                    if (null !== $existing->getPendingDeviation($field)) {
+                    if (null !== $this->followUp->deviations($existing)->get($field)) {
                         $persistingSet[$existing->getId() . '|' . $field] = true;
                     }
                     $records[] = $this->deviationRecord($existing, $field, $vals, $group['name'], 'none');
@@ -803,11 +805,11 @@ final class FbiFixtureImporter
         $heldBackEcart = false;
         $changed = false;
         // The status the manager SAW — captured before any take_file mutates it.
-        $status = $existing->getStatus()->value;
+        $status = $this->followUp->stageOf($existing)->value;
         foreach ($fields as $field => $vals) {
             // « persisting » = the écart was already open before this deposit —
             // captured BEFORE the entry is rewritten below.
-            if (null !== $existing->getPendingDeviation($field)) {
+            if (null !== $this->followUp->deviations($existing)->get($field)) {
                 $persistingSet[$existing->getId() . '|' . $field] = true;
             }
             $choice = $decisions[$existing->getId() . '|' . $field] ?? null;
@@ -823,14 +825,14 @@ final class FbiFixtureImporter
                 // domicile sans gymnase, on n'applique RIEN et l'écart reste à trancher.
                 if ($this->applyFieldTakeFile($existing, $field, $row, $now, $venueChoice)) {
                     $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
-                    $existing->removePendingDeviation($field);
+                    $this->followUp->deviations($existing)->remove($field);
                     // L'appli s'aligne sur FBI : une entrée « à corriger dans FBI » de ce champ
                     // n'a plus d'objet, elle se ferme (par le dépôt).
                     $this->deviationService->closeOpenCorrection($existing, $field, $now);
                     $changed = true;
                     $effect = 'take_file';
                 } else {
-                    $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
+                    $this->followUp->deviations($existing)->put($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
                     $heldBackEcart = true;
                 }
             } elseif ('keep_app' === $choice) {
@@ -841,7 +843,7 @@ final class FbiFixtureImporter
                     // libellé source pour l'idempotence (E) — le gymnase courant reste.
                     $this->applyVenueKeepApp($existing, (string) $vals['file']);
                 } else {
-                    $existing->removePendingDeviation($field);
+                    $this->followUp->deviations($existing)->remove($field);
                 }
                 // « Garder l'appli » = FBI est en retard → une entrée « à corriger dans
                 // FBI ». Les DEUX canaux (xlsx + API) passent par ce moteur partagé.
@@ -860,7 +862,7 @@ final class FbiFixtureImporter
                 // ouverte) : il tombe dans la branche `else`, la question y est reposée.
                 // Chantier A PR 4 — l'application d'office est SAUTÉE pour une salle inconnue
                 // (applyFieldTakeFile rend faux) : branche `else` ci-dessous, l'écart reste.
-                $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, true));
+                $this->followUp->deviations($existing)->put($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, true));
                 // (d) Fenêtre imminente : l'appli s'aligne d'office sur la source — toute
                 // entrée « à corriger dans FBI » de ce champ n'a plus d'objet, elle se ferme.
                 $this->deviationService->closeOpenCorrection($existing, $field, $now);
@@ -883,7 +885,7 @@ final class FbiFixtureImporter
                     // caduque (fermée par le dépôt) ET un écart normal s'ouvre à arbitrer.
                     $this->ledger->closeBySource($openCorrection, $now);
                 }
-                $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
+                $this->followUp->deviations($existing)->put($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, false));
             }
             $records[] = $this->deviationRecord($existing, $field, $vals, $divisionName, $effect, $status);
         }
@@ -900,8 +902,8 @@ final class FbiFixtureImporter
             // (b) Le champ ne diverge plus : FBI reflète de nouveau l'appli → l'entrée
             // « à corriger dans FBI » est FAITE (fermée par le dépôt).
             $this->deviationService->closeOpenCorrection($existing, $field, $now);
-            if (null !== $existing->getPendingDeviation($field)) {
-                $existing->removePendingDeviation($field);
+            if (null !== $this->followUp->deviations($existing)->get($field)) {
+                $this->followUp->deviations($existing)->remove($field);
             }
         }
 
@@ -932,28 +934,28 @@ final class FbiFixtureImporter
     public function reconcileNoDivergence(Fixture $existing, array $row, array $venueNames, DateTimeImmutable $now): bool
     {
         $changed = false;
-        $hadPending = $existing->hasPendingDeviations();
+        $hadPending = $this->followUp->deviations($existing)->any();
         // Aucun écart : FBI reflète de nouveau l'appli sur TOUS les champs → toute
         // entrée « à corriger dans FBI » de cette rencontre est faite (fermée par dépôt).
         foreach ($this->ledger->findOpenByFixture($existing) as $entry) {
             $this->ledger->closeBySource($entry, $now);
         }
         foreach (self::DEVIATION_FIELDS as $field) {
-            if (null !== $existing->getPendingDeviation($field)) {
-                $existing->removePendingDeviation($field);
+            if (null !== $this->followUp->deviations($existing)->get($field)) {
+                $this->followUp->deviations($existing)->remove($field);
                 $changed = true;
             }
         }
 
-        $status = $existing->getStatus();
+        $status = $this->followUp->stageOf($existing);
         if ((FixtureStatus::PLACED === $status || FixtureStatus::SUBMITTED === $status)
             && $this->sourceAttestsPlacement($existing, $row, $venueNames)) {
             // D9 — the FBI/FFBB source attests the placed match verbatim.
-            $existing->setStatus(FixtureStatus::VALIDATED, $now);
+            $this->followUp->markValidated($existing, $now);
 
             return true;
         }
-        if ($hadPending && !$existing->hasPendingDeviations()) {
+        if ($hadPending && !$this->followUp->deviations($existing)->any()) {
             // The last open écart resolved because the source returned to the app value.
             $existing->markReviewed($now);
             $changed = true;
@@ -1005,7 +1007,7 @@ final class FbiFixtureImporter
         if (!$exportedAt instanceof DateTimeImmutable) {
             return false;
         }
-        $entry = $existing->getPendingDeviation($field);
+        $entry = $this->followUp->deviations($existing)->get($field);
         if (null === $entry || true !== $entry['autoApplied'] || FbiIngestionSource::FFBB_API->value !== $entry['channel']) {
             return false;
         }
@@ -1358,19 +1360,19 @@ final class FbiFixtureImporter
     private function restoreFromRow(Fixture $existing, array $row, Competition $competition, string $divisionName, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues, DateTimeImmutable $now, Club $club): array
     {
         $oldOpponent = $existing->getOpponentLabel();
-        $wasPlaced = FixtureStatus::UNPLACED !== $existing->getStatus();
+        $wasPlaced = FixtureStatus::UNPLACED !== $this->followUp->stageOf($existing);
         $sideChanged = $existing->getHomeAway() !== $row['homeAway'];
 
         foreach ($this->ledger->findOpenByFixture($existing) as $entry) {
             $this->ledger->closeBySource($entry, $now);
         }
-        $existing->setStatus(FixtureStatus::UNPLACED, $now);
+        $this->followUp->unplace($existing, $now);
         $existing->setPlacementSource(null);
         $existing->setVenueId(null);
         $existing->setUnplacedReason(null);
-        $existing->clearPendingDeviations();
-        $existing->setKeptVenueLabel(null);
-        $existing->setFbiEcho(null);
+        $this->followUp->deviations($existing)->clear();
+        $this->followUp->keepVenueLabel($existing, null);
+        $this->followUp->clearFbiEcho($existing);
         $existing->setOpponentOrganismeCode(null);
         $existing->resetReview();
         $this->hydrateFromRow($existing, $row, $competition, $divisionName, $neutralLabels, $neutralDivisions, $venueChoiceVenues, $now, $club);
@@ -1435,7 +1437,7 @@ final class FbiFixtureImporter
             // championnat a commencé, sur un match DÉJÀ DANS FBI (Saisi / Déjà dans FBI). Un match
             // seulement Placé hors semaine garde ses écarts à trancher. Statut lu AVANT le moteur,
             // qui ne reçoit aucune condition de statut ; le canal API reste « semaine » seule.
-            $alreadyInFbi = FixtureStatus::SUBMITTED === $existing->getStatus() || FixtureStatus::VALIDATED === $existing->getStatus();
+            $alreadyInFbi = $this->followUp->isEntered($existing);
             $competitionId = $existing->getCompetitionId();
             $sourceIsAuthoritative = $this->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd)
                 || ($alreadyInFbi && null !== $competitionId && isset($startedCompetitionIds[$competitionId]));
@@ -1462,7 +1464,7 @@ final class FbiFixtureImporter
 
         // ── NOT the deviation perimeter → pre-RMM-4 behaviour, integral ──────
         $changed = false;
-        $wasPlaced = FixtureStatus::UNPLACED !== $existing->getStatus();
+        $wasPlaced = FixtureStatus::UNPLACED !== $this->followUp->stageOf($existing);
         // The three fields the source auto-applies out of the perimeter, captured
         // old→new to leave an « auto-applied » trace when the match was treated.
         /** @var array<string, array{app: string|null, file: string|null}> $autoApplied */
@@ -1510,7 +1512,7 @@ final class FbiFixtureImporter
             $current = $existing->getKickoffTime();
             if (!$current instanceof DateTimeImmutable || $current->format('H:i') !== $row['kickoffTime']->format('H:i')) {
                 $existing->setKickoffTime($row['kickoffTime']);
-                if ($wasPlaced && FixtureStatus::UNPLACED !== $existing->getStatus()) {
+                if ($wasPlaced && FixtureStatus::UNPLACED !== $this->followUp->stageOf($existing)) {
                     $warnings[] = [
                         'type' => 'RESCHEDULED',
                         'division' => $divisionName,
@@ -1555,12 +1557,12 @@ final class FbiFixtureImporter
             if ($this->processPerimeterFields($existing, $row, ['venue' => $venueDeviation], $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, false, ['venue'])) {
                 $changed = true;
             }
-        } elseif (null !== $existing->getPendingDeviation('venue')) {
+        } elseif (null !== $this->followUp->deviations($existing)->get('venue')) {
             // Le libellé est redevenu conforme (le fuzzy/alias matche, ou le gymnase a
             // été rattaché) : l'entrée salle pendante tombe, et si c'était la dernière
             // la rencontre est traitée (miroir du placé).
-            $existing->removePendingDeviation('venue');
-            if (!$existing->hasPendingDeviations()) {
+            $this->followUp->deviations($existing)->remove('venue');
+            if (!$this->followUp->deviations($existing)->any()) {
                 $existing->markReviewed($now);
             }
             $changed = true;
@@ -1572,7 +1574,7 @@ final class FbiFixtureImporter
     /** Still pending ⇒ OUT_OF_SYNC ; all resolved ⇒ REVIEWED + horodaté (D5). */
     private function finalizeReview(Fixture $existing, DateTimeImmutable $now): void
     {
-        if ($existing->hasPendingDeviations()) {
+        if ($this->followUp->deviations($existing)->any()) {
             $existing->setReviewState(FixtureReviewState::OUT_OF_SYNC);
 
             return;

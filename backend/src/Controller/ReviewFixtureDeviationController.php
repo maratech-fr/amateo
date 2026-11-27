@@ -13,6 +13,7 @@ use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
+use App\Matches\FederalFollowUp;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonAccessGuard;
@@ -56,6 +57,7 @@ final class ReviewFixtureDeviationController extends AbstractController
         private readonly FbiFixtureImporter $importer,
         private readonly FbiCorrectionLedger $ledger,
         private readonly ClockInterface $clock,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     // priority > 0: the static path must win over API Platform's /api/fixtures/{id}.
@@ -92,7 +94,8 @@ final class ReviewFixtureDeviationController extends AbstractController
             return $this->json(['error' => 'Rencontre introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        $entry = $fixture->getPendingDeviation($field);
+        $deviations = $this->followUp->deviations($fixture);
+        $entry = $deviations->get($field);
         if (null === $entry) {
             return $this->json(['error' => 'Aucun écart en attente sur ce champ.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
@@ -130,17 +133,17 @@ final class ReviewFixtureDeviationController extends AbstractController
         } else {
             // « Garder l'appli » : l'appli fait foi, FBI est en retard → une entrée
             // « à corriger dans FBI ». (take_source, lui, n'ouvre jamais d'entrée.)
-            if ('venue' === $field && FixtureStatus::UNPLACED === $fixture->getStatus()) {
+            if ('venue' === $field && FixtureStatus::UNPLACED === $this->followUp->stageOf($fixture)) {
                 // Écart salle d'un NON PLACÉ : on mémorise le libellé source (normalisé)
                 // pour l'idempotence (E) — le gymnase reste.
                 $this->importer->applyVenueKeepApp($fixture, (string) ($entry['sourceValue'] ?? ''));
             }
             $this->ledger->open($fixture, FbiCorrectionField::from($field), $entry['appValue'] ?? null, $entry['sourceValue'] ?? null, $now);
         }
-        $fixture->removePendingDeviation($field);
+        $deviations->remove($field);
 
         // Dernier écart retiré → la rencontre est traitée (D5).
-        if (!$fixture->hasPendingDeviations()) {
+        if (!$deviations->any()) {
             $fixture->markReviewed($now);
         }
 
@@ -150,7 +153,7 @@ final class ReviewFixtureDeviationController extends AbstractController
             'fixtureId' => $fixture->getId(),
             'reviewState' => $fixture->getReviewState()->value,
             'reviewedAt' => $fixture->getReviewedAt()?->format(DateTimeImmutable::ATOM),
-            'pendingDeviations' => $fixture->getPendingDeviations(),
+            'pendingDeviations' => $deviations->all(),
         ]);
     }
 
