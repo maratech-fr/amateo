@@ -139,7 +139,7 @@ describe("FbiEntryList — « FBI — à faire »", () => {
 // ── L'échéance de saisie SERVIE, sur la ligne « à saisir » ────────────────────
 const comp = (id: string, over: Partial<Competition>): Competition => ({
   id,
-  teamId: "tA",
+  engagements: [{ teamId: "tA", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }],
   name: "Départemental",
   competitionType: "CHAMPIONSHIP",
   effectiveEntryDeadline: null,

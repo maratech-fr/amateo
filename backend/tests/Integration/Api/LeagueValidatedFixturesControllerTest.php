@@ -28,6 +28,7 @@ use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -54,6 +55,7 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 final class LeagueValidatedFixturesControllerTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -725,17 +727,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         // rencontre porte SA compétition (jetable) — dont l'échéance de saisie pilote
         // désormais la validation ligue. Un `competitionName` explicite permet le cas
         // « Amical X » typé CHAMPIONSHIP (jamais candidat, reconnu au libellé).
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName($competitionName ?? 'D2-' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        if (null !== $competitionDeadline) {
-            $competition->setEntryDeadline(new DateTimeImmutable($competitionDeadline));
-        }
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

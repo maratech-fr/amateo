@@ -7,7 +7,6 @@ namespace App\Deletion;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishMutualization;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\PlanTeam;
@@ -72,7 +71,9 @@ final class CascadePlan
             // ici). On les garde en filet : si la règle d'engagement se relâche un jour,
             // les matchs partiront avec l'équipe au lieu de pendre sur un team_id mort.
             new DeleteByFieldStep(Fixture::class, 'teamId', new ImpactLabel('team_fixture', 'match', 'matchs')),
-            new DeleteByFieldStep(Competition::class, 'teamId', new ImpactLabel('team_competition', 'engagement en compétition', 'engagements en compétition')),
+            // Lot 7, PR 3b — l'engagement de l'équipe part après ses matchs (la clé du match vers l'engagement les
+            // attend), puis la compétition vidée, sans engagement ni match.
+            new TeamEngagementStep(new ImpactLabel('team_competition', 'engagement en compétition', 'engagements en compétition')),
             // Lot 4, PR 3a — les lignes de l'équipe dans chaque plan partent toutes, celle du socle comprise ; la fenêtre
             // n'annonce que ses réglages de période, les lignes qui diffèrent du socle.
             new DeleteByFieldStep(PlanTeam::class, 'teamId', new ImpactLabel('team_period_override', 'réglage de période', 'réglages de période'), countedWhen: PlanComposition::DIFFERS_FROM_SOCLE_DQL),

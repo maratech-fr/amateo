@@ -156,6 +156,18 @@ vers `constraint`** : « Charger » efface puis réinsère les règles permanent
 `tests/Security/PlanCompositionTenantIsolationTest.php` (step bloquant). La table remplace
 `constraint_period_override` (supprimée).
 
+## `engagement` — l'équipe d'une compétition, deux clés composées avec le club
+
+`engagement` (une ligne par (compétition, équipe) : libellé FBI, poule, journées attendues ; `Version20261203120000`)
+suit le motif normal : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et
+`readonly_tenant` (`amateo_read`). Ses clés sont COMPOSÉES avec le club, posées à la main (invisibles de Doctrine :
+ne jamais committer le DROP que propose `migration-diff`) : `(competition_id, club_id)` → `competition (id, club_id)`
+`ON DELETE CASCADE`, et, dans l'autre sens, `fixture (competition_id, team_id, club_id)` → `engagement
+(competition_id, team_id, club_id)` `ON DELETE RESTRICT` (un match sans compétition n'est pas contrôlé). **Aucune clé
+vers `team`** : la suppression d'une équipe passe par sa cascade applicative (`CascadePlan::forTeam`, étape
+`TeamEngagementStep`). Aucune donnée libre. Gardé par `tests/Security/MatchTenantIsolationTest.php`
+(`testTheBaseRefusesAnEngagementOrAMatchOnAnotherClubsCompetition`), `RlsIsolationTest` et `PurgeCompletenessTest`.
+
 ## `schedule_state` — la copie du froid d'une version, une clé vers la version
 
 `schedule_state` (une ligne par version terminée : les valeurs froides de son plan, en JSON ; `Version20261201120000`)

@@ -1471,6 +1471,16 @@ jobs:
           # exactement les migrations du lot qu'elle nomme. Sans ce gate, une migration du lot qui
           # convertirait mal un réglage de période changerait la demande en passant le Lot Gate.
           FILES="$FILES tests/Integration/Migration/Lot4MigrationChainTest.php"
+          # NR d'axe GENERATION PIPELINE (lot conception 7, PR 3b) — le décor des références 16 à 19, écrit en SQL dans
+          # le schéma figé d'avant la séparation « compétition et engagement », donne la même demande de placement une
+          # fois la migration jouée. Sans ce gate, une conversion qui perdrait ou repointerait un match à placer
+          # changerait la demande en passant le Lot Gate.
+          FILES="$FILES tests/Integration/Migration/Lot7MigrationChainTest.php"
+          # NR de migration de données (lot conception 7, PR 3b, axes TENANT ISOLATION et PÉRIMÈTRE ENGAGÉ) — une
+          # ligne d'engagement par ligne de compétition, rien de réuni ni de repointé, clés composées avec le club ;
+          # la conversion s'arrête sans rien écrire plutôt que de fabriquer un engagement. Obligatoire jusqu'à
+          # l'application en production.
+          FILES="$FILES tests/Integration/Migration/CompetitionEngagementMigrationTest.php"
           # NR d'axe PLANNING LIFECYCLE (lot conception 4, PR 2) — la version chargée du socle vit sur son
           # plan de saison, un seul pointeur : elle suit « Charger » et chaque génération terminée, et décide
           # seule de la version modifiable. Sans ce gate, un écrivain resté sur l'ancien pointeur laisserait

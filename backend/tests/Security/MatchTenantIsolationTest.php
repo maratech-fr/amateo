@@ -47,15 +47,20 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Mime\RawMessage;
 
 /**
@@ -69,6 +74,7 @@ use Symfony\Component\Mime\RawMessage;
 final class MatchTenantIsolationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -134,6 +140,96 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $names = array_map(static fn (array $m): string => $m['name'], $this->responseData()['member'] ?? []);
         self::assertSame(['Championnat A'], $names);
+    }
+
+    /**
+     * Lot 7, PR 3b : la base refuse un engagement qui désigne la compétition d'un autre club, et un match qui désigne
+     * un engagement d'un autre club (clés composées avec le club), même sous la RLS du club qui écrit. Témoin : le
+     * même engagement sur la compétition du club passe.
+     */
+    public function testTheBaseRefusesAnEngagementOrAMatchOnAnotherClubsCompetition(): void
+    {
+        [$clubA, , $seasonA] = $this->createClubUser('enga');
+        [$clubB, , $seasonB] = $this->createClubUser('engb');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $this->scopeGucToClub($clubB->getId());
+        $competitionB = $this->competitionFor($teamB->getId(), 'Championnat B');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $secondTeamA = $this->createTeam($clubA, $seasonA, 'U17 A');
+        $this->scopeGucToClub($clubA->getId());
+        $competitionA = $this->competitionFor($teamA->getId(), 'Championnat A');
+        $connection = $this->em->getConnection();
+
+        self::assertSame('23503', $this->sqlStateOf(fn (): int|string => $this->insertEngagement($clubA, $seasonA, $competitionB->getId(), $teamA->getId())), 'un engagement du club A ne désigne jamais la compétition du club B');
+        self::assertNull($this->sqlStateOf(fn (): int|string => $this->insertEngagement($clubA, $seasonA, $competitionA->getId(), $secondTeamA->getId())), 'témoin : un engagement sur la compétition du club passe');
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame('23503', $this->sqlStateOf(static fn (): int|string => $connection->executeStatement(
+            'INSERT INTO fixture (id, version, created_at, updated_at, club_id, season_id, team_id, competition_id, match_date, home_away, opponent_label, status, review_state)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?, \'2026-10-04\', \'AWAY\', \'Adversaire\', \'UNPLACED\', \'NEW\')',
+            [$clubA->getId(), $seasonA->getId(), $teamB->getId(), $competitionB->getId()],
+        )), 'un match du club A ne désigne jamais un engagement du club B');
+    }
+
+    /**
+     * Abus (lot 7, PR 3b) : `POST /api/competitions` avec l'équipe d'un autre club est refusé 422 (« Équipe inconnue
+     * pour ce club et cette saison. »), rien n'est écrit dans aucun des deux clubs ; témoin : la même demande avec une
+     * équipe du club crée la compétition, l'équipe engagée.
+     */
+    public function testCreatingACompetitionForAnotherClubsTeamIsRefused(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('cpa');
+        [$clubB, , $seasonB] = $this->createClubUser('cpb');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+        $body = ['name' => 'Championnat forgé', 'competitionType' => 'CHAMPIONSHIP'];
+
+        $this->client->request('POST', '/api/competitions', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamB->getId()] + $body, \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Équipe inconnue pour ce club et cette saison.', $this->responseData()['violations'][0]['message'] ?? null);
+        foreach ([$clubA, $clubB] as $club) {
+            $this->scopeGucToClub($club->getId());
+            self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE name = ?', ['Championnat forgé']), 'aucune compétition écrite');
+            self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$teamB->getId()]), 'aucun engagement de l\'équipe étrangère');
+        }
+
+        $this->client->request('POST', '/api/competitions', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['teamId' => $teamA->getId()] + $body, \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : une équipe du club engage sa compétition');
+        self::assertSame([$teamA->getId()], array_column($this->responseData()['engagements'] ?? [], 'teamId'), 'la compétition servie porte l\'engagement de l\'équipe');
+    }
+
+    /**
+     * Abus (lot 7, PR 3b) : une correspondance d'import qui propose la compétition (réelle) d'un autre club n'écrit
+     * jamais chez lui — ni renommage, ni engagement, ni match — et l'import range le match dans une compétition du
+     * club qui dépose, engagée pour son équipe.
+     */
+    public function testAnImportMappingOntoAnotherClubsCompetitionNeverWritesThere(): void
+    {
+        [$clubA, $userA, $seasonA] = $this->createClubUser('impa');
+        [$clubB, , $seasonB] = $this->createClubUser('impb');
+        $teamB = $this->createTeam($clubB, $seasonB, 'U15 B');
+        $this->scopeGucToClub($clubB->getId());
+        $competitionB = $this->competitionFor($teamB->getId(), 'Ancien nom B');
+        $teamA = $this->createTeam($clubA, $seasonA, 'U15 A');
+
+        $this->client->request('POST', '/api/fixtures/import', [
+            'mappings' => json_encode([['division' => 'DX', 'teamId' => $teamA->getId(), 'competitionId' => $competitionB->getId()]], \JSON_THROW_ON_ERROR),
+        ], [
+            'file' => new UploadedFile($this->fbiFile([['DX', 'X7', 'AS Ailleurs', strtoupper($clubA->getName()) . ' - 1', '14/11/2026', '15:30', '']]), 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ], $this->authHeaders($userA));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['created'] ?? null, 'le match est importé chez le club qui dépose');
+        $this->scopeGucToClub($clubB->getId());
+        $connection = $this->em->getConnection();
+        self::assertSame('Ancien nom B', $connection->fetchOne('SELECT name FROM competition WHERE id = ?', [$competitionB->getId()]), 'la compétition de B n\'est pas renommée');
+        self::assertSame([$teamB->getId()], $connection->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$competitionB->getId()]), 'elle garde son seul engagement');
+        self::assertSame(0, (int) $connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE competition_id = ?', [$competitionB->getId()]), 'aucun match n\'y entre');
+        $this->scopeGucToClub($clubA->getId());
+        $imported = $connection->fetchAssociative('SELECT f.competition_id, e.team_id FROM fixture f JOIN engagement e ON e.competition_id = f.competition_id AND e.team_id = f.team_id WHERE f.external_ref = ?', ['X7']);
+        self::assertIsArray($imported, 'le match importé désigne un engagement du club qui dépose');
+        self::assertSame($teamA->getId(), $imported['team_id']);
+        self::assertNotSame($competitionB->getId(), $imported['competition_id']);
     }
 
     public function testWriteOnArchivedSeasonIsRefused(): void
@@ -1538,16 +1634,50 @@ final class MatchTenantIsolationTest extends WebTestCase
     private function createCompetition(Club $club, Season $season, string $name): Competition
     {
         $this->scopeGucToClub($club->getId());
-        $competition = new Competition;
-        $competition->setClubId($club->getId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId('11111111-1111-4111-8111-111111111111');
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
 
-        return $competition;
+        return $this->competitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
+    }
+
+    /** Un engagement écrit en SQL brut, sous la RLS du club posé : seule la base peut alors refuser. */
+    private function insertEngagement(Club $club, Season $season, string $competitionId, string $teamId): int|string
+    {
+        $this->scopeGucToClub($club->getId());
+
+        return $this->em->getConnection()->executeStatement(
+            'INSERT INTO engagement (id, version, created_at, updated_at, club_id, season_id, competition_id, team_id) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?)',
+            [$club->getId(), $season->getId(), $competitionId, $teamId],
+        );
+    }
+
+    /** Le SQLSTATE du refus de la base, ou null si l'écriture passe ; rien ne reste (point de sauvegarde annulé). */
+    private function sqlStateOf(callable $write): ?string
+    {
+        $connection = $this->em->getConnection();
+        $connection->beginTransaction();
+        try {
+            $write();
+
+            return null;
+        } catch (DriverException $refusal) {
+            return $refusal->getSQLState();
+        } finally {
+            $connection->rollBack();
+        }
+    }
+
+    /**
+     * Un export FBI au format réel (en-tête du fichier fédéral), écrit dans un fichier temporaire.
+     *
+     * @param list<list<string>> $rows
+     */
+    private function fbiFile(array $rows): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([['Division', 'N° de match ', 'Equipe 1', 'Equipe 2', 'Date de rencontre', 'Heure', 'Salle'], ...$rows], null, 'A1');
+        $path = tempnam(sys_get_temp_dir(), 'fbi') . '.xlsx';
+        new Xlsx($spreadsheet)->save($path);
+
+        return $path;
     }
 
     /** An AWAY fixture with no kickoff → exactly one AWAY_NO_FOOTPRINT conflict. */

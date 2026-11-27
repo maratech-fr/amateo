@@ -26,6 +26,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
 use App\Tests\TenantGucTrait;
@@ -63,6 +64,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class LeagueReadAutoValidationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -401,14 +403,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     private function seedStartedChampionship(string $clubId, string $seasonId, string $teamId, string $venueId, int $count = 12): array
     {
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName('U15 SEED ' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, 'U15 SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
 
         $offsets = [-3, ...self::FUTURE_OFFSETS];
         $ids = [];
@@ -452,17 +447,8 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, DateTimeImmutable $entryDeadline): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline($entryDeadline);
-        $this->em->persist($competition);
-        $this->em->flush();
 
-        return $competition;
+        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline($entryDeadline));
     }
 
     /** Un domicile de championnat ; avec gymnase, il porte une heure (16:00) et l'ancre MANUAL. */

@@ -21,6 +21,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonTransitionService;
@@ -141,8 +142,10 @@ trait EngineRequestSocleNetDecorTrait
         static::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
         $em->persist((new TeamCoach)->setId(self::erId('7c0a', 210))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setTeamId(self::ER_TEAM_U17_AFTER_VALIDATION)->setCoachId(self::ER_COACH_B)->setRole(TeamCoachRole::MAIN));
-        $em->persist((new Competition)->setId(self::erId('c0e9', 210))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setTeamId(self::ER_TEAM_U17_AFTER_VALIDATION)->setName('Championnat U17')->setCompetitionType(CompetitionType::CHAMPIONSHIP));
+        $competition = (new Competition)->setId(self::erId('c0e9', 210))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+            ->setName('Championnat U17')->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $em->persist($competition);
+        static::getContainer()->get(CompetitionRegistry::class)->engage($competition, self::ER_TEAM_U17_AFTER_VALIDATION);
         $em->flush();
         foreach ([[211, '2026-01-24', FixtureHomeAway::HOME, null], [212, '2026-01-31', FixtureHomeAway::AWAY, '15:00']] as [$n, $date, $homeAway, $kickoff]) {
             $fixture = (new Fixture)->setId(self::erId('f1c7', $n));

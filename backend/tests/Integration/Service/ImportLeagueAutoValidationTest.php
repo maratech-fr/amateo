@@ -30,6 +30,7 @@ use App\Service\LeagueValidationOutlook;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
 use App\Tests\TenantGucTrait;
@@ -69,6 +70,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ImportLeagueAutoValidationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -463,17 +465,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      */
     private function seedHomeFixture(string $clubId, string $seasonId, string $teamId, string $date, string $kickoff, string $venueId, ?string $deadline): Fixture
     {
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName('D SEED ' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        if (null !== $deadline) {
-            $competition->setEntryDeadline(new DateTimeImmutable($deadline));
-        }
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, 'D SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $deadline ? null : new DateTimeImmutable($deadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

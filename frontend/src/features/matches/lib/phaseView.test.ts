@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { Competition, Conflict, Fixture, Team } from "../api";
 import { listPhases, phaseCompleteness, phaseFixtures, scopeConflictsToPhase } from "./phaseView";
 
-function comp(partial: Partial<Competition> & Pick<Competition, "id" | "teamId" | "name">): Competition {
-  return { competitionType: "CHAMPIONSHIP", ...partial };
+function comp(partial: Partial<Omit<Competition, "engagements">> & Pick<Competition, "id" | "name"> & { teamId: string; expectedMatchdays?: number | null }): Competition {
+  const { teamId, expectedMatchdays = null, ...rest } = partial;
+  return { competitionType: "CHAMPIONSHIP", ...rest, engagements: [{ teamId: teamId, fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: expectedMatchdays }] };
 }
 function team(id: string, name: string): Team {
   return { id, name, sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 };

@@ -24,14 +24,17 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -57,6 +60,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class FfbbRencontresApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -206,11 +210,11 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(CompetitionType::CUP, $competition->getCompetitionType());
         self::assertSame(FfbbHttpClientStub::COUPE_NAME, $competition->getName());
         self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $competition->getFfbbCompetitionId());
-        self::assertNull($competition->getExpectedMatchdays(), 'a cup carries no 2×(N−1) completeness');
+        self::assertNull(self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->expectedMatchdays, 'a cup carries no 2×(N−1) completeness');
         // Assertion tenant : club / saison / équipe corrects.
         self::assertSame($clubId, $competition->getClubId());
         self::assertSame($season->getId(), $competition->getSeasonId());
-        self::assertSame($team->getId(), $competition->getTeamId());
+        self::assertSame($team->getId(), self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->teamId);
     }
 
     public function testTwoRencontresOfTheSameCupShareOneCompetitionAndReApplyIsIdempotent(): void
@@ -318,15 +322,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $season = $this->seasonOf($clubId);
 
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId($team->getId());
-        $competition->setName(FfbbHttpClientStub::COUPE_NAME);
-        $competition->setCompetitionType(CompetitionType::CUP);
-        $competition->setFfbbCompetitionId(FfbbHttpClientStub::COUPE_FFBB_ID);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($team->getId(), FfbbHttpClientStub::COUPE_NAME, CompetitionType::CUP, static fn ($c) => $c->setFfbbCompetitionId(FfbbHttpClientStub::COUPE_FFBB_ID));
         $competitionId = $competition->getId();
 
         self::assertSame(1, $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]])['created']);
@@ -336,6 +332,50 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'the already-paired competition is reused, never duplicated');
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
         self::assertSame($competitionId, $fixture?->getCompetitionId());
+    }
+
+    /**
+     * Promesse (lot 7, PR 3b, étape 2 du canal API) : une compétition de l'équipe sans référence fédérale (effacée par
+     * un réappariement), dont le nom ne diffère de celui de la coupe que par la casse et les accents, est ré-adoptée —
+     * sa référence reposée, le match y entre — jamais une seconde compétition de ce nom pour l'équipe. La comparaison
+     * est celle de la porte, normalisée ; son jumeau pour `POST /api/competitions` est
+     * `CompetitionUniquenessTest::testASecondCompetitionOfTheSameNameForATeamIsRefusedAtTheDoor`.
+     */
+    public function testACupCompetitionNamedDifferentlyOnlyByCaseAndAccentsIsReAdopted(): void
+    {
+        [$token, , $clubId] = $this->register('FRCUP5');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $this->scopeGucToClub($clubId);
+        $twin = $this->competitionFor($team->getId(), 'u18 Masculin Coupe du Rhône', CompetitionType::CUP);
+
+        self::assertSame(1, $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]])['created']);
+
+        $connection = $this->scoped($clubId);
+        self::assertSame([$twin->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune seconde compétition de ce nom pour l\'équipe');
+        self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$twin->getId()]), 'sa référence fédérale est reposée');
+        self::assertSame($twin->getId(), $connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]), 'le match entre dans la compétition ré-adoptée');
+    }
+
+    /**
+     * Promesse (étape 2 du canal API, son refus gardé) : la compétition de même nom normalisé qui porte DÉJÀ une autre
+     * référence fédérale n'est jamais ré-adoptée — sa référence n'est pas écrasée, aucune compétition n'est créée, la
+     * rencontre reste sans compétition.
+     */
+    public function testACupCompetitionOfTheSameNameCarryingAnotherFederalRefIsNeverOverwritten(): void
+    {
+        [$token, , $clubId] = $this->register('FRCUP6');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $this->scopeGucToClub($clubId);
+        $other = $this->competitionFor($team->getId(), 'u18 Masculin Coupe du Rhône', CompetitionType::CUP, static fn ($c) => $c->setFfbbCompetitionId('autre-coupe'));
+
+        $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]]);
+
+        $connection = $this->scoped($clubId);
+        self::assertSame('autre-coupe', $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$other->getId()]), 'la référence de l\'autre coupe n\'est pas écrasée');
+        self::assertSame([$other->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune compétition n\'est créée');
+        self::assertNull($connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]) ?: null, 'la rencontre reste sans compétition');
     }
 
     public function testApplyReFetchesServerAndIgnoresForgedOrForeignCreations(): void
@@ -829,6 +869,13 @@ final class FfbbRencontresApiTest extends WebTestCase
         parent::tearDown();
     }
 
+    private function scoped(string $clubId): Connection
+    {
+        $this->scopeGucToClub($clubId);
+
+        return $this->em->getConnection();
+    }
+
     /** @return array<string, string> */
     private function auth(string $token): array
     {
@@ -908,15 +955,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     private function pairTeamToStubCompetition(string $clubId, string $seasonId, string $teamId): void
     {
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName('Pré test masculine');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $competition->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $this->competitionFor($teamId, 'Pré test masculine', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID));
     }
 
     private function replaceTeamFixtures(string $clubId, string $teamId): void
@@ -994,7 +1033,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     private function pairedCompetitionId(string $clubId, string $seasonId, string $teamId): string
     {
         $this->pairTeamToStubCompetition($clubId, $seasonId, $teamId);
-        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamId, 'ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID]);
+        $competition = self::getContainer()->get(CompetitionRegistry::class)->findForTeamByFederalId($teamId, FfbbHttpClientStub::COMPETITION_ID);
         self::assertInstanceOf(Competition::class, $competition);
 
         return $competition->getId();

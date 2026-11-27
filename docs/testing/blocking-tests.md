@@ -463,6 +463,17 @@ gymnase repris champ par champ [hors service, grille ressaisie devenue fermeture
 d'exception supprimée, et annulation si le compte diffère ; PR 4 : une ligne `plan_constraint` par (plan de
 période, contrainte permanente), aucune au plan de saison ni pour une datée ni pour une coche orpheline, chaque
 coche reprise, sinon le défaut de la nature, table d'exception supprimée, et annulation si le compte diffère) ·
+`Integration/Migration/Lot7MigrationChainTest` (axe *generation pipeline*, lot conception 7 PR 3b — le décor des
+références 16 à 19, écrit en SQL dans le schéma figé d'avant la séparation « compétition et engagement »
+[`tests/Fixtures/lot-7/`], donne la même demande de placement une fois la migration jouée ; chaque compétition
+garde identifiant et nom, reçoit l'engagement de son ancienne équipe, aucun match n'est repointé. Chute attendue
+si la conversion perd, déplace ou réunit une ligne lue par la demande) ·
+`Integration/Migration/CompetitionEngagementMigrationTest` (NR de migration de données, axes *tenant isolation*
+et *périmètre engagé*, lot conception 7 PR 3b — une ligne d'engagement par ligne de compétition, deux lignes de
+même nom restent deux compétitions, poule, journées, libellé et échéance conservés ; clé (compétition, club) en
+cascade, clé (compétition, équipe, club) du match vers l'engagement, aucune unicité sur le nom, RLS forcée ; la
+conversion s'arrête sans rien écrire sur un match hors de l'équipe de sa compétition ou sur deux noms d'une même
+équipe égaux à la casse et aux accents près. Obligatoire jusqu'à l'application en production) ·
 `Integration/Service/LoadedVersionPointerTest` (axe *planning lifecycle*, lot conception 4 PR 2 — la version
 chargée du socle est rangée sur son plan de saison, un seul pointeur pour tous les plans : « Charger » et une
 génération terminée la déplacent, et seule la version que le plan pointe se modifie [409

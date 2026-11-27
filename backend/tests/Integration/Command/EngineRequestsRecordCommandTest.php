@@ -26,6 +26,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\EngineRequestFingerprint;
@@ -1082,8 +1083,10 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $em->flush();
         $em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [self::B_SOCLE, $seasonB->getId()]);
 
-        $em->persist((new Competition)->setId(self::erId('c0e9', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
-            ->setTeamId(self::B_TEAM)->setName('Championnat B')->setCompetitionType(CompetitionType::CHAMPIONSHIP));
+        $competitionB = (new Competition)->setId(self::erId('c0e9', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
+            ->setName('Championnat B')->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $em->persist($competitionB);
+        self::getContainer()->get(CompetitionRegistry::class)->engage($competitionB, self::B_TEAM);
         $em->persist((new VenueMatchWindow)->setId(self::erId('a10d', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setVenueId(self::B_VENUE)->setDayOfWeek(6)->setStartTime(new DateTimeImmutable('13:00'))->setEndTime(new DateTimeImmutable('21:00')));
         $em->flush();

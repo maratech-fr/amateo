@@ -1,0 +1,108 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Integration\Migration;
+
+use App\Tests\EngineRequestDecorTrait;
+use App\Tests\EngineRequestRunnerTrait;
+use App\Tests\FrozenSchemaDatabaseTrait;
+use App\Tests\Integration\EngineRequestReferenceTest;
+use DAMA\DoctrineTestBundle\PHPUnit\SkipDatabaseRollback;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+
+/**
+ * Promesse : les matchs d'un club écrits avant la séparation « compétition et engagement » (lot 7, PR 3b),
+ * une fois la migration jouée, donnent au moteur la même demande de placement, à l'octet (axe *chaîne de
+ * génération*, décision de l'orchestrateur sur la limite (f) du plan du lot 7).
+ *
+ * Pour chaque référence 16 à 19 de {@see EngineRequestReferenceTest} : une base neuve, copiée d'un modèle chargé
+ * depuis le schéma figé d'avant la PR 3b (`tests/Fixtures/lot-7/schema-avant.sql`, table des versions comprise),
+ * reçoit le décor de cette référence écrit dans ce schéma (`tests/Fixtures/lot-7/decor-avant.sql`, capturé par
+ * `LOT7_DECOR_CAPTURE=1` sur le code d'avant la PR 3b) ; `doctrine:migrations:migrate` y joue ce qui manque ; puis
+ * le code de la tête compose la demande de placement par le rail réel et la compare au même fichier de référence.
+ *
+ * La demande ne transporte aucun identifiant de compétition (`MatchPlacementPayloadBuilder`) : cette preuve dit que
+ * la conversion ne perd ni ne déplace aucun match à placer. Elle ne voit pas le risque de l'import et du radar
+ * (plan §8) : `CompetitionEngagementMigrationTest` garde la conversion ligne à ligne.
+ *
+ * Jumeau : `Lot4MigrationChainTest` (références 1 à 15, schéma d'avant le lot 4) joue aussi cette migration.
+ *
+ * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le groupe `phase1` est requis.
+ */
+#[Group('phase1')]
+#[Group('integration')]
+#[SkipDatabaseRollback]
+final class Lot7MigrationChainTest extends KernelTestCase
+{
+    use EngineRequestDecorTrait;
+    use EngineRequestRunnerTrait;
+    use FrozenSchemaDatabaseTrait;
+
+    private const string FROZEN_SCHEMA_FILE = __DIR__ . '/../../Fixtures/lot-7/schema-avant.sql';
+
+    private const string FROZEN_DECOR_FILE = __DIR__ . '/../../Fixtures/lot-7/decor-avant.sql';
+
+    private const string FROZEN_DATABASE_SUFFIX = 'lot7';
+
+    /**
+     * Les références du filet des matchs, et ce que la conversion doit avoir fait de leurs compétitions : par
+     * compétition du décor, l'équipe qui y est engagée (une seule, Q8).
+     *
+     * @return iterable<string, array{0: string, 1: array<string, string>}>
+     */
+    public static function references(): iterable
+    {
+        $u13 = '7ea00000-0000-4000-8000-000000000001';
+        $u15 = '7ea00000-0000-4000-8000-000000000002';
+        $sm1 = '7ea00000-0000-4000-8000-000000000003';
+        $u13f2 = '7ea00000-0000-4000-8000-000000000016';
+        $base = ['c0e90000-0000-4000-8000-000000000001' => $u13, 'c0e90000-0000-4000-8000-000000000002' => $u15, 'c0e90000-0000-4000-8000-000000000003' => $sm1];
+
+        yield 'placement-16-deux-equipes-une-division' => ['placement-16-deux-equipes-une-division', $base + ['c0e90000-0000-4000-8000-000000000161' => $u13, 'c0e90000-0000-4000-8000-000000000162' => $u13f2]];
+        yield 'placement-17-amicaux' => ['placement-17-amicaux', $base + ['c0e90000-0000-4000-8000-000000000171' => $sm1]];
+        yield 'placement-18-suivi-federal' => ['placement-18-suivi-federal', $base];
+        yield 'placement-19-coupes' => ['placement-19-coupes', $base + ['c0e90000-0000-4000-8000-000000000191' => $u13, 'c0e90000-0000-4000-8000-000000000192' => $u15, 'c0e90000-0000-4000-8000-000000000193' => $u13]];
+    }
+
+    /** @param array<string, string> $engagedTeamByCompetition */
+    #[DataProvider('references')]
+    public function testTheMigratedDecorGivesTheReferencePlacementRequest(string $reference, array $engagedTeamByCompetition): void
+    {
+        $admin = self::frozenCaseConnection();
+        $fixturesBefore = $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id');
+        $competitionsBefore = $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id');
+        self::assertSame(array_keys($engagedTeamByCompetition), array_map(strval(...), array_keys($competitionsBefore)), 'témoin : les compétitions du décor figé sont celles attendues');
+
+        [$code, $output, $played] = $this->runFrozenMigrations();
+        self::assertSame(0, $code, 'la migration se joue sur le décor d\'avant la PR 3b : ' . $output);
+        self::assertNotSame([], $played, 'la chaîne joue la migration de la PR 3b');
+        self::assertNotNull($admin->fetchOne('SELECT to_regclass(\'public.engagement\')'), 'la table des engagements existe après la chaîne');
+
+        self::assertSame($competitionsBefore, $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id'), 'aucune compétition ne change d\'identifiant ni de nom, aucune ne s\'ajoute ni ne part');
+        self::assertSame($engagedTeamByCompetition, array_map(strval(...), $admin->fetchAllKeyValue('SELECT competition_id, team_id FROM engagement ORDER BY competition_id')), 'un engagement par compétition, celui de son ancienne équipe');
+        self::assertSame($fixturesBefore, $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id'), 'aucun match n\'est repointé : même équipe, même compétition');
+
+        $this->scopeGucToClub(self::ER_CLUB);
+        $this->assertReference($reference, $this->runPlacement(null));
+    }
+
+    protected function setUp(): void
+    {
+        $reference = $this->providedData()[0] ?? null;
+        self::assertIsString($reference);
+        $this->setUpFrozenCase($reference);
+        $this->pinEngineRequestClock();
+    }
+
+    protected function tearDown(): void
+    {
+        if (self::$booted) {
+            $this->unpinEngineRequestClock();
+        }
+        $this->tearDownFrozenCase();
+        parent::tearDown();
+    }
+}

@@ -6,7 +6,6 @@ namespace App\Tests\CrossStack;
 
 use App\Entity\Club;
 use App\Entity\CoachPlayerMembership;
-use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\Place;
@@ -30,6 +29,7 @@ use App\Enum\FixtureUnplacedReason;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\ClubPublicHolidays;
 use App\Service\MatchPlacementPayloadBuilder;
@@ -219,13 +219,9 @@ trait PlacementHoldingDecorTrait
 
     private function competition(string $teamId): string
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->season->getId());
-        $competition->setTeamId($teamId);
-        $competition->setName('Championnat ' . $this->newUuid());
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
+        $registry = static::getContainer()->get(CompetitionRegistry::class);
+        $competition = $registry->create($this->club->getId(), $this->season->getId(), 'Championnat ' . $this->newUuid(), CompetitionType::CHAMPIONSHIP);
+        $registry->engage($competition, $teamId);
         $this->em->flush();
 
         return $competition->getId();

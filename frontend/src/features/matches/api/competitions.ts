@@ -1,19 +1,25 @@
 import { api } from "@/shared/api/client";
 import { collectionAll } from "@/shared/api/collection";
 
+/** L'engagement d'une équipe dans une compétition : son libellé FBI, sa poule, ses journées attendues. */
+export interface CompetitionEngagement {
+  teamId: string;
+  /** FBI club-team label — set when two club teams share one division. */
+  fbiTeamLabel: string | null;
+  ffbbPouleId: string | null;
+  ffbbPouleName: string | null;
+  expectedMatchdays: number | null;
+}
+
 export interface Competition {
   id: string;
-  teamId: string;
   name: string;
   competitionType: string;
-  /** FBI club-team label — set when two club teams share one division. */
-  fbiTeamLabel?: string | null;
+  /** Les équipes engagées — une pour une compétition de division. */
+  engagements: CompetitionEngagement[];
   /** FFBB pairing refs (P1-4 PR F) — read-only, written by the pairing confirm. */
   ffbbCompetitionId?: string | null;
-  ffbbPouleId?: string | null;
-  ffbbPouleName?: string | null;
   ffbbCompetitionName?: string | null;
-  expectedMatchdays?: number | null;
   /**
    * RMM-6 — entry-deadline projection, read-only (written by the bulk endpoint
    * below, never the CRUD). `entryDeadline` is the club's OWN value; the backend
@@ -25,28 +31,8 @@ export interface Competition {
   deadlineSource?: "club" | "community" | null;
 }
 
-/** L'engagement d'une équipe dans une compétition : son libellé FBI, sa poule, ses journées attendues. */
-export interface CompetitionEngagement {
-  teamId: string;
-  fbiTeamLabel: string | null;
-  ffbbPouleId: string | null;
-  ffbbPouleName: string | null;
-  expectedMatchdays: number | null;
-}
-
-/**
- * La seule porte de l'écran vers l'équipe d'une compétition. Une compétition sert
- * aujourd'hui une seule équipe : la liste a un élément, bâti sur `teamId`.
- */
-export const engagementsOf = (competition: Competition): CompetitionEngagement[] => [
-  {
-    teamId: competition.teamId,
-    fbiTeamLabel: competition.fbiTeamLabel ?? null,
-    ffbbPouleId: competition.ffbbPouleId ?? null,
-    ffbbPouleName: competition.ffbbPouleName ?? null,
-    expectedMatchdays: competition.expectedMatchdays ?? null,
-  },
-];
+/** La seule porte de l'écran vers l'équipe d'une compétition : ses engagements, servis par le serveur. */
+export const engagementsOf = (competition: Competition): CompetitionEngagement[] => competition.engagements;
 
 export interface LeagueWindow {
   id: string;

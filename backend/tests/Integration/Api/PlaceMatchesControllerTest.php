@@ -30,6 +30,7 @@ use App\Service\MatchPlacementLock;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -55,6 +56,7 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 final class PlaceMatchesControllerTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -704,14 +706,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
     private function createFixture(string $clubId, string $seasonId, string $teamId, string $date): Fixture
     {
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName('D2-' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

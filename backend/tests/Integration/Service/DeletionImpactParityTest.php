@@ -11,6 +11,7 @@ use App\Deletion\DeleteByFieldStep;
 use App\Deletion\DeletionImpactCounter;
 use App\Deletion\ScopedConstraintStep;
 use App\Deletion\SharedTrainingBlockPruneStep;
+use App\Deletion\TeamEngagementStep;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
@@ -998,6 +999,9 @@ final class DeletionImpactParityTest extends KernelTestCase
         }
         if ($step instanceof SharedTrainingBlockPruneStep) {
             return ['SharedTrainingBlockTeam.teamId' => OnDelete::DELETE];
+        }
+        if ($step instanceof TeamEngagementStep) {
+            return ['Engagement.teamId' => OnDelete::DELETE];
         }
         if (!$step instanceof DeleteByFieldStep && !$step instanceof ClearFieldStep) {
             return [];

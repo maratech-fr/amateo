@@ -54,9 +54,10 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
 
   Scénario: Deux équipes du club dans une même division gardent chacune leurs matchs, au dépôt comme au re-dépôt
     Le fichier porte la division deux fois, sous deux libellés d'équipe du club (« - 1 » et « - 2 ») :
-    chaque libellé est apparié à son équipe. La division donne aujourd'hui deux compétitions de même
-    nom, une par équipe, et chaque match reste à l'équipe de son libellé. Le re-dépôt du même fichier,
-    sans aucune correspondance, retrouve chaque équipe par son libellé et n'ajoute rien.
+    chaque libellé est apparié à son équipe. La division donne deux compétitions de même nom, chacune
+    avec l'engagement de son équipe, et chaque match reste à l'équipe de son libellé. Le re-dépôt du
+    même fichier, sans aucune correspondance, retrouve chaque équipe par son libellé et n'ajoute rien ;
+    un fichier qui ne porte plus qu'une des deux équipes range ses matchs par le libellé de la ligne.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »
     Et une seconde équipe jetable du club
@@ -65,6 +66,10 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Et chaque équipe porte le seul match de son libellé, dans sa propre compétition
     Quand je re-dépose ce fichier aux deux équipes, sans aucune correspondance
     Alors la division a donné deux compétitions de même nom, une par équipe
+    Et chaque équipe porte le seul match de son libellé, dans sa propre compétition
+    Quand je re-dépose, sans aucune correspondance, un fichier de cette division qui ne porte que la seconde équipe, avec un match de plus
+    Alors la division a donné deux compétitions de même nom, une par équipe
+    Et le match de plus est à la seconde équipe, dans sa propre compétition
     Et chaque équipe porte le seul match de son libellé, dans sa propre compétition
 
   Scénario: Un match à l'extérieur naît déjà traité

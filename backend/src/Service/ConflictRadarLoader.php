@@ -18,6 +18,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Matches\CompetitionRegistry;
 use App\Repository\ClubRepository;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use DateTimeImmutable;
@@ -56,6 +57,7 @@ final class ConflictRadarLoader
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ClubPublicHolidays $clubPublicHolidays,
         private readonly PlanHoldingInputs $planHoldingInputs,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     /**
@@ -173,6 +175,12 @@ final class ConflictRadarLoader
         // P1-4 PR F2 — cohérence de complétude des compétitions APPARIÉES.
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
+        // La poule et les journées attendues vivent sur l'engagement (lot 7, PR 3b) : une lecture.
+        $engagementsByCompetition = $this->competitionRegistry->engagementsByCompetition();
+        $competitionsWithEngagements = array_map(static fn (Competition $competition): array => [
+            'competition' => $competition,
+            'engagements' => $engagementsByCompetition[$competition->getId()] ?? [],
+        ], $competitions);
         // Échéances de saisie effectives par compétition (club gagne, sinon défaut
         // communautaire — maison unique CompetitionDeadlineResolver) : le détecteur s'en
         // sert pour graduer la cohérence de complétude (info « pas encore tout là » vs
@@ -252,7 +260,7 @@ final class ConflictRadarLoader
             $habits,
             $matchWindows,
             $envelope,
-            $competitions,
+            $competitionsWithEngagements,
             $profilesByTeam,
             $roundTripByFixtureId,
             $clubToday,

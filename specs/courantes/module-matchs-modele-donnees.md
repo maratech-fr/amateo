@@ -20,8 +20,16 @@ vigueur, il n'a rien à comparer.
 
 ### Entités season-scoped (tenant, RLS)
 
-- **`Competition`** (`teamId`, `name` = code/division FBI, `competitionType`
-  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §4) — N par équipe.
+- **`Competition`** (`name` = code/division FBI, `competitionType`
+  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §4) — plus aucune
+  unicité sur le nom : deux compétitions de même nom existent (une par équipe d'une division neuve).
+- **`Engagement`** (table `engagement`, une ligne par (compétition, équipe)) : `competitionId`, `teamId`,
+  `fbiTeamLabel` (ce qui distingue deux équipes du club dans une division), `ffbbPouleId`/`ffbbPouleName`/
+  `ffbbPouleOpponents`, `expectedMatchdays`. Lu et écrit par `App\Matches\CompetitionRegistry`, qui tient
+  « pas deux compétitions de même nom pour une même équipe » (comparaison sur le nom normalisé). Un match
+  de compétition exige l'engagement de son équipe (clé `fixture (competition_id, team_id, club_id)` et
+  refus 422 applicatif) ; un amical (`competitionId` nul) n'est pas contrôlé. L'API des compétitions sert
+  `engagements[]`.
 - **`Fixture`** (table `fixture`) : `teamId`, `competitionId` nullable = amical, `matchDate`,
   `homeAway`, `opponentLabel`, `opponentOrganismeCode`/`opponentTeamKey` (résolus serveur),
   `externalDivision` (nullable, interne — jamais servi par `FixtureResource` — le libellé de

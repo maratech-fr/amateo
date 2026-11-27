@@ -73,9 +73,14 @@ class Fixture implements TenantOwnedInterface
     #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
-    /** Null = friendly (no FFBB competition/phase). */
+    /**
+     * Null = friendly (no FFBB competition/phase). With the team, it designates the team's
+     * engagement in that competition (composite key `(competition_id, team_id, club_id)` →
+     * `engagement`, `ON DELETE RESTRICT`, posed by hand in migration).
+     */
     #[ORM\Column(type: 'guid', nullable: true)]
     #[RefersTo(Competition::class, OnDelete::DELETE)]
+    #[RefersTo(Engagement::class, OnDelete::DELETE)]
     private ?string $competitionId = null;
 
     #[ORM\Column(type: 'date_immutable')]

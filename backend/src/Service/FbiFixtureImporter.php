@@ -21,6 +21,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Exception\ImportRejectedException;
 use App\Matches\CompetitionRegistry;
+use App\Matches\EngagementView;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueExternalLabelAttacher;
@@ -163,7 +164,7 @@ final class FbiFixtureImporter
 
         $divisions = [];
         foreach ($groups as $group) {
-            $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
+            [$competition, $engagement] = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']) ?? [null, null];
             // Pre-fill (6.3): an UNMAPPED division whose label matches a paired
             // competition's canonical FFBB name → suggestion, never a resolution.
             // NEVER for a multi-label division: the canonical name cannot say
@@ -176,23 +177,23 @@ final class FbiFixtureImporter
             if ($suggested instanceof Competition && null !== $this->mappingGuards->fbiFilledDivisionConflicting($suggested, $group['divisionKey'])) {
                 $suggested = null;
             }
-            $guard = $competition instanceof Competition ? $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']) : null;
+            $guard = $engagement instanceof EngagementView ? $this->mappingGuards->pouleGuard($engagement, $group['rows'], $group['name']) : null;
             $divisions[] = [
                 'name' => $group['name'],
                 'fbiTeamLabel' => $group['multiLabel'] ? $group['label'] : null,
                 'rowCount' => $group['rowCount'],
-                'teamId' => $competition?->getTeamId(),
+                'teamId' => $engagement?->teamId,
                 'competitionId' => $competition?->getId(),
-                'suggestedTeamId' => $suggested?->getTeamId(),
+                'suggestedTeamId' => $suggested instanceof Competition ? ($this->competitionRegistry->engagementsOf($suggested)[0]->teamId ?? null) : null,
                 'suggestedCompetitionId' => $suggested?->getId(),
                 'pouleError' => null !== $guard && $guard['blocking'] ? $guard['message'] : null,
                 'pouleUnknownOpponents' => null !== $guard && !$guard['blocking'] ? $guard['unknown'] : [],
             ];
 
-            if (!$competition instanceof Competition) {
+            if (!$engagement instanceof EngagementView) {
                 continue;
             }
-            $teamId = $competition->getTeamId();
+            $teamId = $engagement->teamId;
             foreach ($group['rows'] as $row) {
                 $existing = $existingByTeamRef[$teamId . '|' . $group['divisionKey'] . '|' . $row['numero']] ?? null;
                 if (!$existing instanceof Fixture || isset($seenFixtures[$existing->getId()])) {
@@ -306,8 +307,9 @@ final class FbiFixtureImporter
         // renommé ni absorbé.
         $mappings = $this->mappingGuards->rejectSecondPhaseOntoFilledCompetition($mappings, $groups, $errors, $blockedKeys);
 
-        $this->persistMappings($mappings, $club);
-        $resolver = $this->buildCompetitionResolver();
+        // Une division mise en correspondance par CE dépôt va à l'engagement choisi, jamais à un autre
+        // engagement de même nom (le nom ne fait jamais entrer une équipe dans une compétition existante).
+        $resolver = $this->buildCompetitionResolver($this->persistMappings($mappings, $club));
 
         // Existing FBI refs of the whole club, keyed team|division|ref (D1/M15: the
         // number is unique only within a division → within a (team, division) pair ;
@@ -346,8 +348,8 @@ final class FbiFixtureImporter
 
         $touchedCompetitions = [];
         foreach ($groups as $group) {
-            $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
-            if (!$competition instanceof Competition) {
+            $resolved = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
+            if (null === $resolved) {
                 // A division whose mapping the guard just refused is already
                 // ERRORED — reporting it unmapped too would say « re-map me »
                 // about a mapping deliberately not written.
@@ -361,11 +363,12 @@ final class FbiFixtureImporter
                 ];
                 continue;
             }
+            [$competition, $engagement] = $resolved;
             // Poule guard (P1-4 PR F2, 6.1 — founder decision): a division whose
             // opponents do not belong to the PAIRED poule is a wrong file/team/
             // phase — refused NAMED and SKIPPED, the other divisions go through.
             // Offline by construction: the poule club list was copied at pairing.
-            $guard = $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']);
+            $guard = $this->mappingGuards->pouleGuard($engagement, $group['rows'], $group['name']);
             if (null !== $guard) {
                 if ($guard['blocking']) {
                     $errors[] = $guard['message'];
@@ -378,8 +381,8 @@ final class FbiFixtureImporter
                     'message' => $guard['message'],
                 ];
             }
-            $teamId = $competition->getTeamId();
-            $touchedCompetitions[$competition->getId()] = $competition;
+            $teamId = $engagement->teamId;
+            $touchedCompetitions[$competition->getId()] = [$competition, $engagement];
 
             foreach ($group['rows'] as $row) {
                 // D1/D2 (M15) — identité = équipe | DIVISION normalisée | numéro. La dédup
@@ -470,8 +473,8 @@ final class FbiFixtureImporter
         // sortie » — counted on the PERSISTED fixtures (the data that is true),
         // only for competitions carrying a pairing expectation.
         $completeness = [];
-        foreach ($touchedCompetitions as $competition) {
-            $expected = $competition->getExpectedMatchdays();
+        foreach ($touchedCompetitions as [$competition, $engagement]) {
+            $expected = $engagement->expectedMatchdays;
             if (null === $expected) {
                 continue;
             }
@@ -1211,7 +1214,7 @@ final class FbiFixtureImporter
      * non mappée, mapping refusé, poule bloquante). Lecture seule.
      *
      * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
-     * @param callable(string, string, bool): (Competition|null)                                                                                                                                                                                                                                                $resolver
+     * @param callable(string, string, bool): (array{0: Competition, 1: EngagementView}|null)                                                                                                                                                                                                                   $resolver
      * @param array<string, Fixture>                                                                                                                                                                                                                                                                            $existingByTeamRef
      * @param array<string, true>                                                                                                                                                                                                                                                                               $blockedKeys
      * @param array<string, true>                                                                                                                                                                                                                                                                               $neutralLabels
@@ -1225,18 +1228,19 @@ final class FbiFixtureImporter
         /** @var array<string, true> $seen team|ref dedup */
         $seen = [];
         foreach ($groups as $group) {
-            $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
-            if (!$competition instanceof Competition) {
+            $resolved = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
+            if (null === $resolved) {
                 continue; // non mappée → ni créée ni erreur, rien à couvrir
             }
+            [, $engagement] = $resolved;
             if (isset($blockedKeys[$group['divisionKey'] . '|' . $group['labelKey']])) {
                 continue; // mapping refusé par le garde → division errorée, pas créée
             }
-            $guard = $this->mappingGuards->pouleGuard($competition, $group['rows'], $group['name']);
+            $guard = $this->mappingGuards->pouleGuard($engagement, $group['rows'], $group['name']);
             if (null !== $guard && $guard['blocking']) {
                 continue; // division bloquée → sautée, pas créée
             }
-            $teamId = $competition->getTeamId();
+            $teamId = $engagement->teamId;
             foreach ($group['rows'] as $row) {
                 if (FixtureHomeAway::HOME !== $row['homeAway']) {
                     continue;
@@ -1627,9 +1631,9 @@ final class FbiFixtureImporter
         // A resolvable division points at a Competition carrying the season.
         $resolver = $this->buildCompetitionResolver();
         foreach ($groups as $group) {
-            $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
-            if ($competition instanceof Competition) {
-                return $competition->getSeasonId();
+            $resolved = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
+            if (null !== $resolved) {
+                return $resolved[0]->getSeasonId();
             }
         }
 
@@ -1656,26 +1660,33 @@ final class FbiFixtureImporter
     }
 
     /**
-     * Persists the manager's mapping choices as Competition rows (the durable
-     * Division↔team correspondence, fact F7). Reuses an existing row for the
-     * same (team, division) — or, when the mapping carries the SUGGESTION's
-     * competitionId, the PAIRED competition itself (its name moves to the FBI
-     * division label, the resolver key; the canonical FFBB name stays in
-     * ffbbCompetitionName — refs/expectation/poule are reused, never duplicated).
-     * Type inferred from the name (« Brassage »).
+     * Persists the manager's mapping choices as Competition rows and their
+     * engagement (the durable Division↔team correspondence, fact F7). Reuses the
+     * team's competition of the same name (normalized compare, the registry's
+     * single one) — or, when the mapping carries the SUGGESTION's competitionId,
+     * the PAIRED competition itself (its name moves to the FBI division label,
+     * the resolver key; the canonical FFBB name stays in ffbbCompetitionName —
+     * refs/expectation/poule are reused, never duplicated). The name never brings
+     * a team into another team's competition: a division known for another team
+     * only gives a new competition for this one. Type inferred from the name
+     * (« Brassage »).
      *
      * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}> $mappings
+     *
+     * @return array<string, EngagementView> divisionKey|labelKey (labelKey '' = the mapping named no label) → the engagement this deposit chose
      */
-    private function persistMappings(array $mappings, Club $club): void
+    private function persistMappings(array $mappings, Club $club): array
     {
         if ([] === $mappings) {
-            return;
+            return [];
         }
         $teamRepository = $this->entityManager->getRepository(Team::class);
         $competitionRepository = $this->entityManager->getRepository(Competition::class);
         $dirty = false;
         /** @var array<string, true> $seenBatch teamId|normalized name — the DB lookup cannot see unflushed siblings */
         $seenBatch = [];
+        /** @var array<string, array{0: Competition, 1: string}> $chosen divisionKey|labelKey → (competition, team) */
+        $chosen = [];
 
         foreach ($mappings as $mapping) {
             $name = mb_substr(trim($mapping['division']), 0, 180);
@@ -1690,7 +1701,7 @@ final class FbiFixtureImporter
             }
 
             // In-batch dedupe: two mappings sharing (team, division) in ONE call
-            // would both miss the findOneBy (nothing flushed yet) and create
+            // would both miss the lookup (nothing flushed yet) and create
             // duplicate rows — the resolver ambiguity P4-67 warns about.
             $batchKey = $team->getId() . '|' . $this->normalizeLabel($name);
             if (isset($seenBatch[$batchKey])) {
@@ -1699,6 +1710,7 @@ final class FbiFixtureImporter
             $seenBatch[$batchKey] = true;
 
             $label = null !== $mapping['fbiTeamLabel'] ? mb_substr(trim($mapping['fbiTeamLabel']), 0, 180) : null;
+            $chosenKey = $this->normalizeLabel($name) . '|' . (null !== $label ? $this->normalizeLabel($label) : '');
             $existing = null;
             $mappingCompetitionId = $mapping['competitionId'] ?? null;
             if (null !== $mappingCompetitionId) {
@@ -1713,7 +1725,7 @@ final class FbiFixtureImporter
                     }
                 }
             }
-            $existing ??= $this->mappingGuards->exactNameCompetitionOf($team->getId(), $name);
+            $existing ??= $this->competitionRegistry->findForTeam($team->getId(), $name);
             if ($existing instanceof Competition) {
                 // The manager's LATEST choice wins: only refreshing a null label
                 // would leave a drifted FBI label permanently unresolvable — the
@@ -1723,63 +1735,62 @@ final class FbiFixtureImporter
                     $this->competitionRegistry->writeFbiTeamLabel($existing, $team->getId(), $label);
                     $dirty = true;
                 }
+                $chosen[$chosenKey] = [$existing, $team->getId()];
                 continue;
             }
 
-            $competition = new Competition;
-            $competition->setClubId($club->getId());
-            $competition->setSeasonId($team->getSeasonId());
-            $competition->setName($name);
-            $competition->setCompetitionType(
+            $competition = $this->competitionRegistry->create(
+                $club->getId(),
+                $team->getSeasonId(),
+                $name,
                 str_contains($this->normalizeLabel($name), 'brassage') ? CompetitionType::BRASSAGE : CompetitionType::CHAMPIONSHIP,
             );
             $this->competitionRegistry->engage($competition, $team->getId(), $label);
-            $this->entityManager->persist($competition);
+            $chosen[$chosenKey] = [$competition, $team->getId()];
             $dirty = true;
         }
 
         if ($dirty) {
             $this->entityManager->flush();
         }
+
+        $engagements = [];
+        foreach ($chosen as $key => [$competition, $teamId]) {
+            $engagement = $this->competitionRegistry->engagementOf($competition, $teamId);
+            if ($engagement instanceof EngagementView) {
+                $engagements[$key] = $engagement;
+            }
+        }
+
+        return $engagements;
     }
 
     /**
-     * The persisted Division↔team resolver. Rules:
-     * - single club label in the division → any Competition whose normalized
-     *   name matches (label ignored: the nominal case stores none);
-     * - several club labels in the division (two club teams, fact F7bis) → the
-     *   Competition whose fbiTeamLabel matches the row's club label; a
-     *   label-less Competition never resolves a multi-label division (it cannot
-     *   say WHICH team it is — the manager re-maps once, per label).
+     * The persisted Division↔team resolver: a division mapped by this deposit
+     * goes to the engagement it chose (a label-less mapping only for a
+     * single-label division); otherwise the registry resolves it among the
+     * engagements of the competitions of that name
+     * ({@see CompetitionRegistry::resolveDivision}): the only engagement when
+     * the file carries a single club label, else the one whose FBI label is the
+     * row's, else nothing (« à faire correspondre ») — never the first
+     * competition of that name.
      *
-     * @return callable(string, string, bool): (Competition|null)
+     * @param array<string, EngagementView> $mapped divisionKey|labelKey → engagement chosen by this deposit ({@see persistMappings})
+     *
+     * @return callable(string, string, bool): (array{0: Competition, 1: EngagementView}|null)
      */
-    private function buildCompetitionResolver(): callable
+    private function buildCompetitionResolver(array $mapped = []): callable
     {
-        /** @var array<string, list<Competition>> $byName tenant+season filters scope findAll() */
-        $byName = [];
-        foreach ($this->entityManager->getRepository(Competition::class)->findAll() as $competition) {
-            $byName[$this->normalizeLabel($competition->getName())][] = $competition;
-        }
-
-        return function (string $divisionKey, string $labelKey, bool $multiLabel) use ($byName): ?Competition {
-            $candidates = $byName[$divisionKey] ?? [];
-            if ([] === $candidates) {
+        return function (string $divisionKey, string $labelKey, bool $multiLabel) use ($mapped): ?array {
+            $engagement = $mapped[$divisionKey . '|' . $labelKey]
+                ?? ($multiLabel ? null : ($mapped[$divisionKey . '|'] ?? null))
+                ?? $this->competitionRegistry->resolveDivision($divisionKey, $labelKey, !$multiLabel);
+            if (!$engagement instanceof EngagementView) {
                 return null;
             }
-            if (!$multiLabel) {
-                return $candidates[0];
-            }
-            foreach ($candidates as $candidate) {
-                foreach ($this->competitionRegistry->engagementsOf($candidate) as $engagement) {
-                    $candidateLabel = $engagement->fbiTeamLabel;
-                    if (null !== $candidateLabel && $this->normalizeLabel($candidateLabel) === $labelKey) {
-                        return $candidate;
-                    }
-                }
-            }
+            $competition = $this->entityManager->find(Competition::class, $engagement->competitionId);
 
-            return null;
+            return $competition instanceof Competition ? [$competition, $engagement] : null;
         };
     }
 

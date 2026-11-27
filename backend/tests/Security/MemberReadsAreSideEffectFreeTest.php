@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
 use App\Enum\CompetitionType;
@@ -13,6 +12,7 @@ use App\Enum\OpponentLocationPrecision;
 use App\Service\TenantConnectionContext;
 use App\Storage\LogoStorage;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\BanGeocodingHttpClientStub;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\Double\IgnRoutingHttpClientStub;
@@ -63,6 +63,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
 final class MemberReadsAreSideEffectFreeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use MemberReadOnlyDecorTrait;
     use StartsFreshBrowserSession;
     use VerifiesRegistration;
@@ -324,15 +325,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         \assert($em instanceof EntityManagerInterface);
         self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
 
-        $competition = new Competition;
-        $competition->setClubId($this->clubId);
-        $competition->setSeasonId($this->ids['season']);
-        $competition->setTeamId($this->ids['team']);
-        $competition->setName('Championnat MR');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        $em->persist($competition);
-        $em->flush();
+        $competition = $this->competitionFor($this->ids['team'], 'Championnat MR', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
 
         $home = new Fixture;
         $home->setClubId($this->clubId);

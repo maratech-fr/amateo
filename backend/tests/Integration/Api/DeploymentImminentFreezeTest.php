@@ -11,7 +11,6 @@ use App\Controller\PlaceMatchesController;
 use App\Controller\RegenerateController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -26,6 +25,7 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -69,6 +69,7 @@ use Symfony\Component\Uid\Uuid;
 final class DeploymentImminentFreezeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -316,10 +317,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase gel');
         $this->em->persist($venue);
-        $competition = (new Competition)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
-            ->setName('Championnat gel')->setCompetitionType(CompetitionType::CHAMPIONSHIP)->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($team->getId(), 'Championnat gel', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
 
         $fixture = (new Fixture)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
             ->setCompetitionId($competition->getId())->setMatchDate(new DateTimeImmutable('2099-03-14'))->setHomeAway(FixtureHomeAway::HOME)

@@ -23,7 +23,6 @@ use App\Service\CompetitionDeadlineResolver;
 use App\State\Processor\CompetitionStateProcessor;
 use App\State\Provider\CompetitionStateProvider;
 use DateTimeImmutable;
-use LogicException;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 // PUT/DELETE retirés (nettoyage API) : non appelés par le front. Supprimer une équipe
@@ -50,9 +49,6 @@ class CompetitionResource
     public DateTimeImmutable $updatedAt;
 
     #[Groups(['read'])]
-    public string $teamId = '';
-
-    #[Groups(['read'])]
     public string $seasonId = '';
 
     #[Groups(['read'])]
@@ -71,9 +67,22 @@ class CompetitionResource
     #[Groups(['read'])]
     public ?string $endDate = null;
 
-    /** FBI club-team label — disambiguates two club teams in one division. */
+    /**
+     * The teams engaged in this competition — one for a division (two club teams in one division make two
+     * competitions). Per engagement: the FBI club-team label (disambiguates two club teams in one division),
+     * the paired poule and the expected matchdays, written by the pairing confirm endpoint, never by this CRUD.
+     *
+     * @var list<array{teamId: string, fbiTeamLabel: string|null, ffbbPouleId: string|null, ffbbPouleName: string|null, expectedMatchdays: int|null}>
+     */
+    #[ApiProperty(openapiContext: ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['teamId', 'fbiTeamLabel', 'ffbbPouleId', 'ffbbPouleName', 'expectedMatchdays'], 'properties' => [
+        'teamId' => ['type' => 'string', 'format' => 'uuid'],
+        'fbiTeamLabel' => ['type' => ['string', 'null']],
+        'ffbbPouleId' => ['type' => ['string', 'null']],
+        'ffbbPouleName' => ['type' => ['string', 'null']],
+        'expectedMatchdays' => ['type' => ['integer', 'null']],
+    ]]])]
     #[Groups(['read'])]
-    public ?string $fbiTeamLabel = null;
+    public array $engagements = [];
 
     // ── FFBB pairing refs (P1-4 PR F) — read-only: written by the pairing
     // confirm endpoint, never by this CRUD. ──
@@ -82,16 +91,7 @@ class CompetitionResource
     public ?string $ffbbCompetitionId = null;
 
     #[Groups(['read'])]
-    public ?string $ffbbPouleId = null;
-
-    #[Groups(['read'])]
-    public ?string $ffbbPouleName = null;
-
-    #[Groups(['read'])]
     public ?string $ffbbCompetitionName = null;
-
-    #[Groups(['read'])]
-    public ?int $expectedMatchdays = null;
 
     // ── Entry deadline (RMM-6) — read-only projection. `entryDeadline` is the
     // club's own value; `effectiveEntryDeadline` applies the rule « club value
@@ -114,28 +114,29 @@ class CompetitionResource
     public ?string $deadlineSource = null;
 
     /**
-     * @param list<EngagementView> $engagements the competition's engagements ({@see CompetitionRegistry::engagementsOf}) — one today
+     * @param list<EngagementView> $engagements the competition's engagements ({@see CompetitionRegistry::engagementsOf})
      */
     public static function fromEntity(Competition $entity, array $engagements, ?SharedCompetitionDeadline $shared = null): self
     {
-        $engagement = $engagements[0] ?? throw new LogicException('Compétition sans équipe engagée.');
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->teamId = $engagement->teamId;
         $dto->seasonId = $entity->getSeasonId();
         $dto->name = $entity->getName();
         $dto->competitionType = $entity->getCompetitionType()->value;
         $dto->startDate = $entity->getStartDate()?->format('Y-m-d');
         $dto->endDate = $entity->getEndDate()?->format('Y-m-d');
-        $dto->fbiTeamLabel = $engagement->fbiTeamLabel;
+        $dto->engagements = array_map(static fn (EngagementView $engagement): array => [
+            'teamId' => $engagement->teamId,
+            'fbiTeamLabel' => $engagement->fbiTeamLabel,
+            'ffbbPouleId' => $engagement->ffbbPouleId,
+            'ffbbPouleName' => $engagement->ffbbPouleName,
+            'expectedMatchdays' => $engagement->expectedMatchdays,
+        ], $engagements);
         $dto->ffbbCompetitionId = $entity->getFfbbCompetitionId();
-        $dto->ffbbPouleId = $engagement->ffbbPouleId;
-        $dto->ffbbPouleName = $engagement->ffbbPouleName;
         $dto->ffbbCompetitionName = $entity->getFfbbCompetitionName();
-        $dto->expectedMatchdays = $engagement->expectedMatchdays;
 
         $dto->entryDeadline = $entity->getEntryDeadline()?->format('Y-m-d');
         // « club gagne, sinon le défaut communautaire » — la règle vit en maison unique

@@ -10,11 +10,13 @@ use App\ApiResource\FixtureResource;
 use App\Dto\FixtureInput;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
+use App\Matches\CompetitionRegistry;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\ClubPublicHolidays;
 use App\Service\ConflictRadarLoader;
@@ -35,6 +37,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
 {
     private SocleGuard $socleGuard;
 
+    private CompetitionRegistry $competitionRegistry;
+
     private ClockInterface $clock;
 
     private VenueAliasResolver $venueAliasResolver;
@@ -44,6 +48,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
     private PlanVenueClosures $planVenueClosures;
 
     private ClubPublicHolidays $clubPublicHolidays;
+
+    #[Required]
+    public function setCompetitionRegistry(CompetitionRegistry $competitionRegistry): void
+    {
+        $this->competitionRegistry = $competitionRegistry;
+    }
 
     #[Required]
     public function setSocleGuard(SocleGuard $socleGuard): void
@@ -113,6 +123,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         $competitionId = '' === $input->competitionId ? null : $input->competitionId;
         $this->assertCompetitionInScope($competitionId);
         $entity->setCompetitionId($competitionId);
+        $this->assertTeamEngaged($entity);
         if (null !== $input->matchDate) {
             $entity->setMatchDate(new DateTimeImmutable($input->matchDate));
         }
@@ -168,6 +179,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $this->assertCompetitionInScope($competitionId);
             $entity->setCompetitionId($competitionId);
         }
+        // L'équipe et la compétition RETENUES (renvoyées ou laissées telles quelles) désignent un engagement.
+        $this->assertTeamEngaged($entity);
         if (null !== $input->matchDate) {
             $entity->setMatchDate(new DateTimeImmutable($input->matchDate));
         }
@@ -395,5 +408,27 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null === $this->entityManager->find(Competition::class, $competitionId)) {
             throw new UnprocessableEntityHttpException('Compétition inconnue pour ce club et cette saison.');
         }
+    }
+
+    /**
+     * Un match de compétition exige que son équipe y soit engagée (lot 7, PR 3b) : refus 422, jamais le 500
+     * de la clé du match vers l'engagement. Un match sans compétition (amical) n'est pas contrôlé.
+     */
+    private function assertTeamEngaged(Fixture $fixture): void
+    {
+        $competitionId = $fixture->getCompetitionId();
+        if (null === $competitionId) {
+            return;
+        }
+        $competition = $this->entityManager->find(Competition::class, $competitionId);
+        if ($competition instanceof Competition && $this->competitionRegistry->isEngaged($competition, $fixture->getTeamId())) {
+            return;
+        }
+        $team = $this->entityManager->find(Team::class, $fixture->getTeamId());
+        $this->refuse(\sprintf(
+            'L\'équipe %s n\'est pas engagée dans « %s ». Choisissez une de ses compétitions, ou aucune pour un amical.',
+            $team instanceof Team ? $team->getName() : $fixture->getTeamId(),
+            $competition instanceof Competition ? $competition->getName() : $competitionId,
+        ));
     }
 }

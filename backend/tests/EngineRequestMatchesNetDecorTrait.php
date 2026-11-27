@@ -15,6 +15,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use PHPUnit\Framework\Assert;
@@ -134,7 +135,7 @@ trait EngineRequestMatchesNetDecorTrait
     private function assertMatchesNetTwoTeamsOneDivisionWitnesses(): void
     {
         Assert::assertSame(2, $this->netCount(
-            'SELECT COUNT(DISTINCT f.team_id) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE c.name = :name AND c.team_id = f.team_id',
+            'SELECT COUNT(DISTINCT f.team_id) FROM fixture f JOIN competition c ON c.id = f.competition_id JOIN engagement e ON e.competition_id = c.id WHERE c.name = :name AND e.team_id = f.team_id',
             ['name' => 'DF2'],
         ), 'témoin 16 : deux équipes portent chacune un match d\'une compétition « DF2 »');
         Assert::assertSame(2, $this->netCount('SELECT COUNT(*) FROM competition WHERE name = :name', ['name' => 'DF2']), 'témoin 16 : deux compétitions de même nom');
@@ -211,8 +212,10 @@ trait EngineRequestMatchesNetDecorTrait
 
     private function netCompetition(int $n, string $teamId, string $name, CompetitionType $type, ?string $fbiTeamLabel = null): void
     {
-        $this->erEm()->persist((new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setTeamId($teamId)->setName($name)->setCompetitionType($type)->setFbiTeamLabel($fbiTeamLabel));
+        $competition = (new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+            ->setName($name)->setCompetitionType($type);
+        $this->erEm()->persist($competition);
+        static::getContainer()->get(CompetitionRegistry::class)->engage($competition, $teamId, $fbiTeamLabel);
         $this->erEm()->flush();
     }
 

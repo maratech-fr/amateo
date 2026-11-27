@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Enum\TeamLevel;
 use App\Matches\CompetitionRegistry;
+use App\Matches\EngagementView;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\EngagementLevelDeducer;
 use App\Service\Basketball\FbiDivisionSignature;
@@ -92,6 +93,7 @@ final class FfbbEngagementsController extends AbstractController
 
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
+        $engagementsByCompetition = $this->competitionRegistry->engagementsByCompetition();
         $byFfbbId = [];
         $byCanonicalName = [];
         // FBI-signature bridge candidates (C1): the club's UNPAIRED xlsx
@@ -136,13 +138,13 @@ final class FfbbEngagementsController extends AbstractController
                 if ($suggested instanceof Competition) {
                     $source = 'canonical';
                 } else {
-                    $suggested = $this->bridgeSuggestion($bridgeCandidates, $row);
+                    $suggested = $this->bridgeSuggestion($bridgeCandidates, $row, $engagementsByCompetition);
                     $source = $suggested instanceof Competition ? 'fbi' : null;
                 }
             }
 
             $deduced = $this->levelDeducer->deduce($row['category'], $row['level'], $row['gender'], $row['competitionName']);
-            $suggestedTeamId = $suggested?->getTeamId();
+            $suggestedTeamId = $suggested instanceof Competition ? ($engagementsByCompetition[$suggested->getId()][0]->teamId ?? null) : null;
             $suggestedCompetitionId = $suggested?->getId();
             if (null !== $suggestedTeamId) {
                 $teamIds[$suggestedTeamId] = true;
@@ -381,8 +383,9 @@ final class FfbbEngagementsController extends AbstractController
      *
      * @param list<array{competition: Competition, signature: Signature}>                                    $candidates
      * @param array{category: string|null, level: string|null, gender: string|null, competitionName: string} $row
+     * @param array<string, list<EngagementView>>                                                            $engagementsByCompetition
      */
-    private function bridgeSuggestion(array $candidates, array $row): ?Competition
+    private function bridgeSuggestion(array $candidates, array $row, array $engagementsByCompetition): ?Competition
     {
         $ffbbSignature = $this->divisionSignature->fromFfbbRow($row['category'], $row['level'], $row['gender'], $row['competitionName']);
 
@@ -391,7 +394,9 @@ final class FfbbEngagementsController extends AbstractController
         foreach ($candidates as $candidate) {
             if ($this->divisionSignature->bridges($candidate['signature'], $ffbbSignature)) {
                 $matches[] = $candidate['competition'];
-                $teamIds[$candidate['competition']->getTeamId()] = true;
+                foreach ($engagementsByCompetition[$candidate['competition']->getId()] ?? [] as $engagement) {
+                    $teamIds[$engagement->teamId] = true;
+                }
             }
         }
         if (1 !== \count($teamIds)) {
@@ -513,13 +518,8 @@ final class FfbbEngagementsController extends AbstractController
         }
 
         $clubId = $this->resolveCurrentClubId($this->requestStack) ?? '';
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setName($canonicalName);
-        $competition->setCompetitionType($inferredType ?? CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $canonicalName, $inferredType ?? CompetitionType::CHAMPIONSHIP);
         $this->competitionRegistry->engage($competition, $teamId);
-        $this->entityManager->persist($competition);
         $competitions[] = $competition;
 
         return $competition;

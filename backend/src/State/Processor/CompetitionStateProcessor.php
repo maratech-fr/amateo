@@ -7,6 +7,7 @@ namespace App\State\Processor;
 use App\ApiResource\CompetitionResource;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
+use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
 use App\Service\ManagementAccessGuard;
@@ -18,6 +19,11 @@ use LogicException;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
+ * `POST /api/competitions` : une compétition neuve de la saison, l'équipe engagée, par la porte
+ * ({@see CompetitionRegistry::create} puis {@see CompetitionRegistry::engage}, un flush). Refusé 422 si
+ * l'équipe n'est pas du club et de la saison, ou si elle a déjà une compétition de ce nom (comparaison
+ * normalisée, {@see CompetitionRegistry::findForTeam}).
+ *
  * @extends AbstractStateProcessor<Competition, CompetitionInput, CompetitionResource>
  */
 class CompetitionStateProcessor extends AbstractStateProcessor
@@ -41,22 +47,35 @@ class CompetitionStateProcessor extends AbstractStateProcessor
     /**
      * @param CompetitionInput $input
      */
+    protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
+    {
+        $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
+        // Les filtres club et saison rendent invisible l'équipe d'un autre club ou d'une autre saison.
+        $team = null === $input->teamId ? null : $this->entityManager->find(Team::class, $input->teamId);
+        if (null === $clubId || null === $resolvedSeasonId || !$team instanceof Team || $team->getClubId() !== $clubId || $team->getSeasonId() !== $resolvedSeasonId) {
+            $this->refuse('Équipe inconnue pour ce club et cette saison.');
+        }
+        $name = (string) $input->name;
+        $twin = $this->competitionRegistry->findForTeam($team->getId(), $name);
+        if ($twin instanceof Competition) {
+            $this->refuse(\sprintf('L\'équipe %s a déjà une compétition « %s ».', $team->getName(), $twin->getName()));
+        }
+
+        $competition = $this->competitionRegistry->create($clubId, $resolvedSeasonId, $name, CompetitionType::from((string) $input->competitionType));
+        $competition->setStartDate($this->parseDate($input->startDate));
+        $competition->setEndDate($this->parseDate($input->endDate));
+        $this->competitionRegistry->engage($competition, $team->getId());
+        $this->entityManager->flush();
+
+        return $this->mapEntityToOutput($competition);
+    }
+
+    /**
+     * La création passe par {@see processPost} : l'abstraction impose seulement que ce foyer existe.
+     */
     protected function createEntityFromInput(object $input): Competition
     {
-        $entity = new Competition;
-        if (null !== $input->teamId) {
-            $this->competitionRegistry->engage($entity, $input->teamId);
-        }
-        if (null !== $input->name) {
-            $entity->setName($input->name);
-        }
-        if (null !== $input->competitionType) {
-            $entity->setCompetitionType(CompetitionType::from($input->competitionType));
-        }
-        $entity->setStartDate($this->parseDate($input->startDate));
-        $entity->setEndDate($this->parseDate($input->endDate));
-
-        return $entity;
+        throw new LogicException('Une compétition se crée par la porte des engagements.');
     }
 
     /**

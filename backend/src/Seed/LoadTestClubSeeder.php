@@ -9,6 +9,7 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
+use App\Entity\Engagement;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\Person;
@@ -43,6 +44,7 @@ use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Service\Basketball\CategoryCatalog;
@@ -120,6 +122,7 @@ final class LoadTestClubSeeder
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly PlanComposition $planComposition,
         private readonly PlanStates $planStates,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     /**
@@ -325,12 +328,12 @@ final class LoadTestClubSeeder
 
     /**
      * Purge des collections saison-scopées (idempotence d'un reseed) — ordre FK-safe :
-     * matchs avant compétitions, créneaux de planning avant le planning lui-même.
+     * matchs avant engagements, engagements avant compétitions, créneaux de planning avant le planning lui-même.
      */
     private function purgeCollections(EntityManagerInterface $manager, string $clubId, string $seasonId): void
     {
         $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];
-        foreach ([Fixture::class, Competition::class, MatchConstraint::class, TeamMatchHabit::class, VenueMatchWindow::class, VenueTrainingSlot::class, TeamLink::class, CoachPlayerMembership::class, TeamCoach::class] as $class) {
+        foreach ([Fixture::class, Engagement::class, Competition::class, MatchConstraint::class, TeamMatchHabit::class, VenueMatchWindow::class, VenueTrainingSlot::class, TeamLink::class, CoachPlayerMembership::class, TeamCoach::class] as $class) {
             foreach ($manager->getRepository($class)->findBy($scope) as $row) {
                 $manager->remove($row);
             }
@@ -753,13 +756,9 @@ final class LoadTestClubSeeder
         foreach ($matches as $match) {
             $key = $match['teamId'] . '|' . $match['phase'];
             if (!isset($competitions[$key])) {
-                $competition = new Competition;
-                $competition->setClubId($clubId);
-                $competition->setSeasonId($seasonId);
-                $competition->setTeamId($match['teamId']);
-                $competition->setName(\sprintf('Championnat Phase %d', $match['phase']));
-                $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-                $manager->persist($competition);
+                // Compétition puis engagement, par la porte, persistés avant les matchs (un flush).
+                $competition = $this->competitionRegistry->create($clubId, $seasonId, \sprintf('Championnat Phase %d', $match['phase']), CompetitionType::CHAMPIONSHIP);
+                $this->competitionRegistry->engage($competition, $match['teamId']);
                 $competitions[$key] = ['competition' => $competition, 'min' => $match['date'], 'max' => $match['date']];
             }
             if ($match['date'] < $competitions[$key]['min']) {

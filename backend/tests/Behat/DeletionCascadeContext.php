@@ -47,6 +47,9 @@ final class DeletionCascadeContext extends BaseContext
     /** @var array<string, string> titre de la période → id de son planning */
     private array $periodPlanIds = [];
 
+    /** @var array<string, string> nom de la compétition → id */
+    private array $competitionIds = [];
+
     #[Given('un petit club de trois équipes sans compétition, deux gymnases et deux coachs, dont le planning de saison est généré')]
     public function unPetitClubDeTroisEquipes(): void
     {
@@ -204,6 +207,38 @@ final class DeletionCascadeContext extends BaseContext
             'règle qui impose le gymnase' => ['constraint', \sprintf('id=\'%s\'', $this->ruleIds['gymnase imposé'])],
             'règle dont un réglage nomme le gymnase' => ['constraint', \sprintf('season_id=\'%s\' AND config::text LIKE \'%%%s%%\'', $this->seasonId, $this->smallClubVenueIds[$venue])],
         ], 'après la suppression du ' . $venue);
+    }
+
+    /**
+     * Lot 7, PR 3b : une compétition créée par l'API (`POST /api/competitions`), l'équipe engagée, sans aucun match —
+     * l'équipe reste supprimable. Témoin du décor : la compétition et son engagement existent.
+     */
+    #[Given('/^l\'équipe « (?P<team>[^»]+) » est engagée dans « (?P<competition>[^»]+) », sans aucun match$/u')]
+    public function lEquipeEstEngageeSansMatch(string $team, string $competition): void
+    {
+        $this->competitionIds[$competition] = $this->createdId($this->apiPost('competitions', [
+            'name' => $competition, 'competitionType' => 'CHAMPIONSHIP', 'teamId' => $this->smallClubTeamIds[$team],
+        ], $this->smallClubToken), 'compétition ' . $competition);
+        if (1 !== $this->count('engagement', \sprintf('competition_id=\'%s\' AND team_id=\'%s\'', $this->competitionIds[$competition], $this->smallClubTeamIds[$team]))) {
+            throw new RuntimeException(\sprintf('décor : %s devrait être engagée dans « %s »', $team, $competition));
+        }
+    }
+
+    #[Then('/^sa compétition « (?P<competition>[^»]+) », vidée, a disparu avec son engagement$/u')]
+    public function saCompetitionVideeADisparu(string $competition): void
+    {
+        $this->assertNone([
+            'compétition' => ['competition', \sprintf('id=\'%s\'', $this->competitionIds[$competition])],
+            'engagement' => ['engagement', \sprintf('competition_id=\'%s\'', $this->competitionIds[$competition])],
+        ], 'la compétition « ' . $competition . ' »');
+    }
+
+    #[Then('/^« (?P<team>[^»]+) » reste engagée dans « (?P<competition>[^»]+) »$/u')]
+    public function resteEngagee(string $team, string $competition): void
+    {
+        if (1 !== $this->count('engagement', \sprintf('competition_id=\'%s\' AND team_id=\'%s\'', $this->competitionIds[$competition], $this->smallClubTeamIds[$team]))) {
+            throw new RuntimeException(\sprintf('%s n\'est plus engagée dans « %s » après la suppression d\'une autre équipe', $team, $competition));
+        }
     }
 
     #[When('/^je supprime l\'équipe « (?P<team>[^»]+) »$/u')]

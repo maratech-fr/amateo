@@ -17,6 +17,7 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -48,6 +49,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FfbbConfirmPerimeterTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -81,6 +83,8 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $reloadedTarget->getFfbbCompetitionId(), 'the refs land on the fixture-bearing competition');
 
         self::assertNull($this->em->getRepository(Competition::class)->find($twinId), 'the empty twin is resorbed (deleted)');
+        self::assertSame([], $this->engagedTeams($clubId, $twinId), 'the resorbed twin leaves no engagement behind');
+        self::assertSame([$team->getId()], $this->engagedTeams($clubId, $target->getId()), 'the target keeps its single engagement');
 
         $reloadedFixture = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertInstanceOf(Fixture::class, $reloadedFixture, 'the target match survives the confirm');
@@ -113,6 +117,7 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         $reloadedEngaged = $this->em->getRepository(Competition::class)->find($engagedId);
         self::assertInstanceOf(Competition::class, $reloadedEngaged, 'a competition carrying matches is NEVER deleted at confirm');
         self::assertNull($reloadedEngaged->getFfbbCompetitionId(), 'it loses the refs (they moved to the target)');
+        self::assertSame([$team->getId()], $this->engagedTeams($clubId, $engagedId), 'it keeps its engagement: its matches still designate it');
 
         $reloadedTarget = $this->em->getRepository(Competition::class)->find($target->getId());
         self::assertInstanceOf(Competition::class, $reloadedTarget);
@@ -152,22 +157,22 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         return $season;
     }
 
+    /** Une compétition de l'équipe (lot 7, PR 3b : compétition puis engagement, par la porte), ses refs fédérales posées. */
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, ?string $ffbbCompetitionId = null): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        if (null !== $ffbbCompetitionId) {
-            $competition->setFfbbCompetitionId($ffbbCompetitionId);
-        }
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId($ffbbCompetitionId));
+        self::assertSame($seasonId, $competition->getSeasonId());
 
         return $competition;
+    }
+
+    /** @return list<string> les équipes engagées dans la compétition, lues en base */
+    private function engagedTeams(string $clubId, string $competitionId): array
+    {
+        $this->scopeGucToClub($clubId);
+
+        return array_map(strval(...), $this->em->getConnection()->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ? ORDER BY team_id', [$competitionId]));
     }
 
     private function createFixture(string $clubId, string $seasonId, string $teamId, string $competitionId): Fixture

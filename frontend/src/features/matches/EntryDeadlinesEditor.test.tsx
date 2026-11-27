@@ -23,8 +23,8 @@ vi.mock("@/shared/session/queries", async (importOriginal) => ({
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
 const TEAMS: Team[] = [team("t1", "U13"), team("t2", "U15"), team("t3", "U11")];
 
-const comp = (over: Partial<Competition> & { id: string }): Competition => ({
-  teamId: "t1",
+const comp = ({ teamId = "t1", ...over }: Partial<Competition> & { id: string; teamId?: string }): Competition => ({
+  engagements: [{ teamId: teamId, fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }],
   name: "Compétition",
   competitionType: "CHAMPIONSHIP",
   entryDeadline: null,

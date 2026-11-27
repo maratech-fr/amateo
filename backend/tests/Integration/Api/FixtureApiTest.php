@@ -7,13 +7,15 @@ namespace App\Tests\Integration\Api;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
 use App\Entity\Place;
 use App\Entity\PublicHoliday;
 use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
@@ -31,6 +33,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -38,6 +41,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\TestWith;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -50,6 +54,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FixtureApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -563,14 +568,7 @@ final class FixtureApiTest extends WebTestCase
     {
         [$id, $body] = $this->placedOutOfAccess();
 
-        $coupe = new Competition;
-        $coupe->setClubId($this->club->getId());
-        $coupe->setSeasonId($this->season->getId());
-        $coupe->setTeamId(self::TEAM_ID);
-        $coupe->setName('Coupe');
-        $coupe->setCompetitionType(CompetitionType::CUP);
-        $this->em->persist($coupe);
-        $this->em->flush();
+        $coupe = $this->competitionFor(self::TEAM_ID, 'Coupe', CompetitionType::CUP);
 
         $this->putFixture($id, ['competitionId' => $coupe->getId()] + $body);
         self::assertResponseStatusCodeSame(422);
@@ -708,11 +706,79 @@ final class FixtureApiTest extends WebTestCase
         self::assertNull($byId[$home]['awayTravel'] ?? null);
     }
 
+    /**
+     * Abus (lot 7, PR 3b, ligne 10 du plan) : un match ne se pose jamais dans la compétition d'une autre équipe du
+     * club — 422 au texte du plan, aucun match écrit ; témoin : la même demande pour l'équipe engagée passe.
+     */
+    public function testAMatchIsRefusedInACompetitionWhereItsTeamIsNotEngaged(): void
+    {
+        $u13 = $this->persistTeam('U13 F');
+        $u15 = $this->persistTeam('U15 M');
+        $championnat = $this->competitionFor($u15, 'Championnat U15');
+        $body = ['competitionId' => $championnat->getId(), 'matchDate' => '2026-11-01', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire'];
+
+        $this->post(['teamId' => $u13] + $body);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou aucune pour un amical.', $this->firstViolation());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE team_id = ?', [$u13]), 'aucun match n\'est écrit');
+
+        $this->post(['teamId' => $u15] + $body);
+        self::assertResponseStatusCodeSame(201, 'témoin : l\'équipe engagée pose son match dans sa compétition');
+    }
+
+    /**
+     * Abus (lot 7, PR 3b, ligne 10 du plan) : changer l'équipe d'un match en gardant sa compétition — qu'elle soit
+     * renvoyée (l'écran la renvoie à chaque geste, C54) ou absente (elle reste alors celle du match, C55) — est
+     * refusé 422, jamais un 500 de la clé vers l'engagement ; le match garde son équipe.
+     */
+    #[TestWith([true])]
+    #[TestWith([false])]
+    public function testChangingTheTeamWhileKeepingTheCompetitionIsRefused(bool $echoesTheCompetition): void
+    {
+        $u13 = $this->persistTeam('U13 F');
+        $u15 = $this->persistTeam('U15 M');
+        $championnat = $this->competitionFor($u15, 'Championnat U15');
+        $body = ['competitionId' => $championnat->getId(), 'matchDate' => '2026-11-01', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire'];
+        $created = $this->post(['teamId' => $u15] + $body);
+        self::assertResponseStatusCodeSame(201);
+        $id = (string) $created['id'];
+        if (!$echoesTheCompetition) {
+            unset($body['competitionId']);
+        }
+
+        $this->putFixture($id, ['teamId' => $u13] + $body);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou aucune pour un amical.', $this->firstViolation());
+        self::assertSame($u15, $this->em->getConnection()->fetchOne('SELECT team_id FROM fixture WHERE id = ?', [$id]), 'le match garde son équipe');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->user = $this->createClubUser();
+    }
+
+    /** Une équipe du club et de la saison du test, nommée : le texte du refus la nomme. */
+    private function persistTeam(string $name): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
+        if (null === $sport) {
+            $uid = uniqid('', true);
+            $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);
+            $this->em->persist($sport);
+        }
+        $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName($name . ' ' . uniqid('', true));
+        $this->em->persist($category);
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
+            ->setPriorityTierId(3)->setName($name)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team->getId();
     }
 
     /**
@@ -994,14 +1060,7 @@ final class FixtureApiTest extends WebTestCase
 
     private function createCompetition(): string
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->season->getId());
-        $competition->setTeamId(self::TEAM_ID);
-        $competition->setName('Championnat');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
 
         return $competition->getId();
     }
