@@ -164,7 +164,7 @@ describe("computeReservationWarnings (W6)", () => {
   // P3-20 (décision fondateur 2026-08-06) — « plus de réservations que de séances » est
   // désormais une INCOHÉRENCE qui BLOQUE, rendue par le serveur
   // (`ValidateConstraintsController::overBookedTeamBlockers`). Cet écran ne doit plus en
-  // faire un avertissement : deux vérités, dont une plus tendre que la porte (§7.2 pt 2).
+  // faire un avertissement : deux vérités, dont une plus tendre que la porte.
   it("ne dit plus « trop de réservations » ici — c'est un bloqueur SERVEUR, pas un avertissement d'écran", () => {
     const teams = [team("t1", "U13", 2)];
     const venues = [venue("v1", "Gymnase A", false)];

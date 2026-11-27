@@ -12,6 +12,24 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-11-27 — correctifs de sécurité Twig et Symfony (hors Dependabot)
+
+### Paquets du backend
+
+**C'est quoi** : Twig (le moteur de gabarits des mails et des pages rendues par le serveur) et les
+briques Symfony du serveur (routes, sécurité, envoi des mails, appels HTTP sortants, sérialisation).
+
+**Ça apporte** : les avis publiés les 23 et 24/11 sont corrigés : 9 sur Twig, par 3.30.0 → 3.31.1,
+et ceux de neuf paquets Symfony, par la série 7.4.24. `composer audit` est revenu à zéro. Avant cette
+mise à jour, le check obligatoire « Dependency Audit » était rouge sur toute PR vers `main`.
+
+**Adapté chez nous** : rien dans notre code. Commande : `composer update twig/twig "symfony/*"
+--with-dependencies`, lancée dans le conteneur. Flex garde toute la pile en 7.4.*, et aucun pin
+n'est ajouté. Par ricochet, quelques paquets non visés montent d'une version mineure : `lcobucci/jwt`
+5.6.1 → 5.7.0 (signature des JWT, entraîné par `mercure-bundle`), `monolog` 3.13.0,
+`doctrine/collections` 3.1.1, `doctrine/deprecations` 1.2.0 et `egulias/email-validator` 4.0.5.
+Validé par `make -C backend tests-complete` (code retour 0).
+
 ## 2026-11-08 — lot Dependabot (3 PRs mergées dont 1 réparée, aucune majeure)
 
 ### Paquets du backend (PR #1351 — réparée)
@@ -200,27 +218,3 @@ Jamais de `workerUrl` : le worker de la librairie chargerait un script externe, 
 produit bloque. Aucun réglage serveur ni schéma à adapter — la sortie (WebP/PNG, ≤1920 px,
 ≤2 Mo) est validée côté serveur comme n'importe quel fichier joint, indépendamment de la
 librairie qui l'a produite.
-
-## 2026-10-16 (soir) — Python 3.12 → 3.14 (moteur, option B, montée complète)
-
-**C'est quoi** : la version de Python qui fait tourner le moteur (`engine/`) — l'interpréteur
-lui-même, pas une dépendance applicative.
-
-**Ça apporte** : deux versions majeures de Python d'un coup (décision fondateur : sauter la 3.13
-intermédiaire, « option B »), donc plus longtemps avant la prochaine montée obligatoire et le
-dernier train de correctifs de sécurité de la branche en date.
-
-**Adapté chez nous** : l'image `docker/engine/Dockerfile` passe à `python:3.14-slim` ;
-`engine/pyproject.toml` relève le plancher (`requires-python >=3.14`) et recale les outils sur la
-même cible (ruff, mypy) ; les verrous pip sont recompilés sous 3.14.8 SANS faire bouger la version
-d'aucun paquet applicatif (`ortools` reste 9.15.6755, `pydantic` 2.14.0, `fastapi` 0.143.0 — seule
-l'empreinte binaire change) ; le job CI « Dependency Audit » bascule son `setup-python` en 3.14 ;
-le nouveau style `ruff format` autorisé par cette version (PEP 758, un `except A, B:` sans les
-parenthèses qu'exigeait la 3.12) s'applique sur 21 fichiers, mécaniquement. Validé par
-`make -C engine test` et `phpunit --group contract` (le contrat backend↔engine ne bouge pas,
-`CONTRACT_VERSION` reste `1.5`), complétés par une contre-vérification indépendante 3.12 ⇄ 3.14 :
-13 payloads réels (`/generate`, `/place-matches` — dont le snapshot BCCL à 141 matchs —,
-`/validate-assignments`) rendent des sorties byte-identiques entre les deux versions (même statut,
-même score sur le cas `dense_club` multi-worker), et 5 payloads invalides rendent le même 422
-byte-identique des deux côtés. Seul écart mesuré : l'empreinte mémoire du conteneur monte
-d'environ 6 % (≈147 Mo contre ≈138 Mo) — surveillé, non bloquant.

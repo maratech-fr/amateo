@@ -27,7 +27,7 @@ A delivered item **moves**: it is deleted from the roadmap and gains a trace lin
 |------|----------|-------|
 | `README.md` (root) | human | project purpose, problem solved, architecture sketch, quickstart, layout, links to subproject READMEs |
 | `<zone>/README.md` | human | that zone's scope + what/why, **command recap**, **project recap** (structure/entry points), pointers to its structuring/business docs |
-| `<zone>/AGENTS.md` | agent | **pointers + zone-only gotchas.** NOT a re-description of commands, flows, tooling or counts already in CLAUDE.md / project-map / zone README — duplication here is the #1 historical cause of doc rot (audit 2026-07-03, DOC-02). If a fact exists elsewhere, link it. |
+| `<zone>/AGENTS.md` | agent | **pointers + zone-only gotchas.** NOT a re-description of commands, flows, tooling or counts already in CLAUDE.md / project-map / zone README — duplication here is the #1 historical cause of doc rot. If a fact exists elsewhere, link it. |
 | `CLAUDE.md` (root) | agent | short operational index — always-active rules only, the detail lives in `docs/` — facts not obvious from filenames |
 | `<zone>/docs/` | both | deep-dives (business rules, how-to guides, structuring mechanisms). **Single dir per zone** — `doc/` merged into `docs/` 2026-07-11; never recreate a `doc/` |
 | `docs/` (root) | both | cross-cutting: project-map, glossary, testing, architecture/ADRs |
@@ -55,9 +55,8 @@ Trois questions, dans l'ordre. La première qui répond « oui » décide.
 
 ⚠ **`specs/courantes/` n'est pas le dossier du « courant »** — c'est le dossier du **produit**
 courant. Un inventaire technique de zone, une stratégie de test de zone, une liste de composants
-n'y ont rien à faire : ils décrivent UNE zone, ils appartiennent à cette zone. Ce glissement est le
-défaut historique du dépôt (mesuré le 2026-08-18 : ~4 000 lignes de doc de zone logées en
-`specs/courantes/`, pendant que `frontend/docs/` ne contenait qu'un fichier).
+n'y ont rien à faire : ils décrivent UNE zone, ils appartiennent à cette zone. Ce glissement (doc de zone logée en
+`specs/courantes/`) est le défaut classique du dépôt.
 
 **Ce que tu fais quand tu constates un fichier mal placé — et ce que tu ne fais PAS.**
 Tu le **SIGNALES** dans le résumé de changement (fichier, où il devrait vivre, pourquoi) et, si
@@ -89,7 +88,7 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
 1. **Verify before you write.** Any factual claim you add or keep in a touched doc must be checked against the code *now* (read the file, grep the config). Never propagate a claim just because the doc already said it.
 2. **No volatile counts.** Never write "N controllers", "N entities", "N fixtures", "N tests" in any doc — these rot in days. Describe *where* things live (`src/Controller/`), not how many there are. If you find a count while editing, delete or replace it with a location.
 3. **Security-critical facts require a code citation.** Tenant listener priority, RLS status, auth/firewall behaviour, lock mechanics: when a touched doc states one, quote the source (`file:line` or config key) in the doc itself. If doc and code disagree, the code wins and the doc is fixed in the same pass.
-   ⚑ **Exception `engine/app/main.py` :** une citation vers CE fichier dans un doc vivant s'ancre sur le SYMBOLE (`app/main.py::nom`), jamais sur un numéro de ligne — DOC-46→50, deux récidives sur le même fichier (une ligne ajoutée décale tous les numéros). Un commentaire sans symbole propre se cite par un marqueur textuel stable (`commentaire FACILITY_CAPACITY, app/main.py`). Gardé par `EngineMainCitationsAnchorOnSymbolTest`.
+   ⚑ **Exception `engine/app/main.py` :** une citation vers CE fichier dans un doc vivant s'ancre sur le SYMBOLE (`app/main.py::nom`), jamais sur un numéro de ligne (une ligne ajoutée décale tous les numéros). Un commentaire sans symbole propre se cite par un marqueur textuel stable (`commentaire FACILITY_CAPACITY, app/main.py`). Gardé par `EngineMainCitationsAnchorOnSymbolTest`.
 4. **Claimed ≠ implemented.** Docs must state what the code *does*, not what is planned. If a mechanism is prepared but inactive (e.g. an RLS template never executed), the doc must say "prepared, NOT active" explicitly. Aspirational statements go to `specs/evolution/`, nowhere else.
 5. **Cross-file consistency.** When you change a fact, grep for its other occurrences (`grep -rn` on the key term across `CLAUDE.md`, `docs/`, `*/AGENTS.md`, `specs/courantes/`) and fix or remove them all — half-updated facts created the priority-7/8 contradiction (DOC-01).
 6. **Le présent seulement — l'historique vit dans git** (décision fondateur 2026-09-25). Un doc
@@ -100,9 +99,7 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    jamais dans le corps. Quand un fait change, on ÉCRASE l'ancien énoncé, on n'empile pas un
    correctif daté par-dessus. Seule exception : la
    mention datée qui est la RAISON D'ÊTRE d'un garde-fou encore actif — une phrase, jamais une
-   chronologie. Précédent : passe frontend du 2026-09-26 (4 640 → ~2 700 lignes ; le §4.2
-   « sidebar » fiction vivait sous un stamp du jour, et §3 « Shared Components » vivant était
-   enterré sous un bandeau « superseded »). ⚑ **Les journaux autorisés sont deux, nulle part
+   chronologie. Exemple : une section fictive qui vit sous un stamp du jour, ou une section vivante enterrée sous un bandeau « superseded ». ⚑ **Les journaux autorisés sont deux, nulle part
    ailleurs** : `specs/courantes/etat-des-lieux.md` (§2 décisions fermées, §3 traces datées) et
    `docs/upgrades.md` (borné aux 6 derniers lots par sa propre charte, `docs/upgrades.md` en
    tête). Ailleurs dans `specs/courantes/`, une décision prise en chemin va en §2, une livraison
@@ -116,8 +113,7 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    son Contexte et sa Décision datés par nature, mais énonce sa Décision au présent — un
    amendement se PLIE dans la décision (une mention datée d'une ligne, jamais plus, si elle est la
    raison d'être d'un garde-fou encore actif) ; le journal d'implémentation (lots, PR, dates de
-   livraison) n'y vit jamais, il part dans `etat-des-lieux.md` §2/§3 comme n'importe où ailleurs
-   (précédent : ADR-0001/0002/0003/0004, passe du 2026-09-26).
+   livraison) n'y vit jamais, il part dans `etat-des-lieux.md` §2/§3 comme n'importe où ailleurs.
 
    **Exception distincte : `docs/archive/`.** Un instantané daté (compte-rendu de cadrage,
    snapshot d'audit), cité depuis le code ou une décision comme référence historique, échappe à
@@ -149,7 +145,7 @@ Three buckets, distinct meaning — keep them true:
 - **`evolution/`** — what the app will do **later** (future/vision). When an item is delivered, **remove it from evolution** (it has graduated into `courantes`).
 
 **Purge des items livrés (mandatory each run) — the MOVE, in four steps.** For every item delivered since the last pass:
-1. **Delete the backlog line** (P*x-y*, DOC-n, SEC-n…) from `roadmap.md`. Do **not** flip it to ✅ and leave it there — the roadmap holds no ✅. The id is never reused: a numbering hole means delivered, by design. **Entretenir le compteur du titre** (« Roadmap (N) — … », exception fondateur 2026-08-04 à la règle anti-décompte) : chaque ligne supprimée décrémente N, chaque ligne ajoutée l'incrémente — en cas de doute, `grep -cE '^\| [A-Z]+[0-9]*-[0-9]+[a-z]? \|' specs/evolution/roadmap.md` fait foi (le suffixe littéral compte : `P5-4b` est un sous-item, pas une coquille). ⚑ **Le compteur ET l'unicité des identifiants sont tenus par `RoadmapIdentityTest`** depuis le 2026-08-22 — inutile de les recompter à la main, mais inutile aussi de les laisser dériver : un identifiant est une CLÉ, cité depuis le code et les PR, et **ne se réattribue jamais**. Un trou de numérotation signifie « livré » ; le prochain numéro est le successeur du plus grand de sa famille, jamais un trou recyclé.
+1. **Delete the backlog line** (P*x-y*, DOC-n, SEC-n…) from `roadmap.md`. Do **not** flip it to ✅ and leave it there — the roadmap holds no ✅. The id is never reused: a numbering hole means delivered, by design. **Entretenir le compteur du titre** (« Roadmap (N) — … », exception fondateur 2026-08-04 à la règle anti-décompte) : chaque ligne supprimée décrémente N, chaque ligne ajoutée l'incrémente — en cas de doute, `grep -cE '^\| [A-Z]+[0-9]*-[0-9]+[a-z]? \|' specs/evolution/roadmap.md` fait foi (le suffixe littéral compte : `P5-4b` est un sous-item, pas une coquille). ⚑ **Le compteur ET l'unicité des identifiants sont tenus par `RoadmapIdentityTest`** — inutile de les recompter à la main, mais inutile aussi de les laisser dériver : un identifiant est une CLÉ, cité depuis le code et les PR, et **ne se réattribue jamais**. Un trou de numérotation signifie « livré » ; le prochain numéro est le successeur du plus grand de sa famille, jamais un trou recyclé.
 2. **Add one trace line** to `etat-des-lieux.md` §3 (date · id · subject · pointer to the `courantes/` file that now holds the behaviour). A delivered item MUST leave a dated trace — deletion without trace is the failure mode this step blocks.
 3. **Update the capability map** (`etat-des-lieux.md` §1) if the delivery changed what the app can do. It is a **map**: pointers and one-liners, never behavioural detail.
 4. **Detail file** — if a `specs/evolution/*.md` detail file is now fully delivered, delete it (history lives in git) and drop its entry from the roadmap header's active-files list.
@@ -158,13 +154,13 @@ Three buckets, distinct meaning — keep them true:
 
 **Dette technique (same pipeline):** actionable debt lives as **P4-x backlog lines in the roadmap** (proof `file:line` required); deliberate "won't fix" keeps live in roadmap **§Dette — keeps délibérés** with their rationale. When a debt is resolved: same MOVE ritual. New debt found during any pass → PROPOSE a P4 line in the summary (the founder decides to open it), never a separate file.
 
-**Graduation check (mandatory each run, opposable):** for **every item delivered this run**, either **name the `courantes/` file that receives the behaviour** (create or extend it in the same pass) or **state in the change summary why no graduation applies**. Silence is not an option — "updated the roadmap line" alone is the failure mode this check blocks (2026-07-06: school-holidays + public-holidays imports fully specced in roadmap notes, nothing in courantes, snapshot stale across 2 PRs). The check covers the items this PR delivers; `specs/evolution/` is not swept for older items in this pass (an older delivered item found on the way is reported in one line).
+**Graduation check (mandatory each run, opposable):** for **every item delivered this run**, either **name the `courantes/` file that receives the behaviour** (create or extend it in the same pass) or **state in the change summary why no graduation applies**. Silence is not an option — "updated the roadmap line" alone is the failure mode this check blocks (e.g. an import fully specced in roadmap notes, nothing in courantes). The check covers the items this PR delivers; `specs/evolution/` is not swept for older items in this pass (an older delivered item found on the way is reported in one line).
 
 **A roadmap line is a line, not a spec.** It holds the problem, its proof (`file:line`), the decision if one was taken, and the traps a future implementer would step into. If you are writing the *solution's* behavioural detail (filters, natural keys, endpoints, edge cases) into a roadmap line, stop: that content belongs in a `specs/evolution/` detail file while open, and in `courantes/` once delivered.
 
 **New open items.** A bug or a need surfaced by the founder or by a review is PROPOSED as a roadmap line **in the right bucket** (the founder decides to open it), with a **verified** proof (`file:line`, read the code — never from memory), an impact and an effort. If the need is not yet framed, say so in the line rather than inventing a solution.
 
-**API-change trigger:** if the work changed any API Platform resource, custom controller route, or DTO exposed over HTTP, regenerate `specs/courantes/openapi-snapshot.json` from the running backend and update `openapi-snapshot.meta.md` (SHA + date). A stale snapshot silently poisons the frontend type-gen pipeline. ⚠ A custom Symfony `#[Route]` is **invisible to the export** unless declared in a `CustomPathContributor` (`backend/src/OpenApi/PathContributor/`, one per domain, composed by `App\OpenApi\CustomRoutesOpenApiFactory` since P4-138, 2026-08-30 — adding to the factory file itself does nothing anymore) — a new custom route means an entry in its domain's contributor **plus** the regen; regenerating alone silently misses it.
+**API-change trigger:** if the work changed any API Platform resource, custom controller route, or DTO exposed over HTTP, regenerate `specs/courantes/openapi-snapshot.json` from the running backend and update `openapi-snapshot.meta.md` (SHA + date). A stale snapshot silently poisons the frontend type-gen pipeline. ⚠ A custom Symfony `#[Route]` is **invisible to the export** unless declared in a `CustomPathContributor` (`backend/src/OpenApi/PathContributor/`, one per domain, composed by `App\OpenApi\CustomRoutesOpenApiFactory`, which declares no route itself) — a new custom route means an entry in its domain's contributor **plus** the regen; regenerating alone silently misses it.
 
 No `archive/` bucket — nothing is lost (git + `initiales` hold the history). When reconciling, flag files that are neither current nor future (e.g. one-off process/handoff notes) and propose removing them; do not silently delete large specs — surface the list first.
 

@@ -11,7 +11,7 @@ import { useCredits } from "./useCredits";
 // Clé de session : on y grave le solde AU MOMENT de la fermeture. Le bandeau
 // d'urgence reste masqué tant que le solde ne bouge pas, réapparaît dès qu'il
 // BAISSE encore (valeur différente) ou à la session suivante (sessionStorage
-// vidé) — règle §7.2 : un bandeau qui crie à chaque navigation n'alerte plus.
+// vidé) — un bandeau qui crie à chaque navigation n'alerte plus.
 const DISMISS_KEY = "credits-urgency-dismissed-at";
 
 /**

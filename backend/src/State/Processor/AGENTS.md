@@ -1,6 +1,6 @@
 # State Processors — Agent Context
 
-> 14+ API Platform state processors. Inheritance pattern with `AbstractStateProcessor`.
+> API Platform state processors. Inheritance pattern with `AbstractStateProcessor`.
 
 ## Structure
 
@@ -11,7 +11,7 @@
 | `TeamStateProcessor.php` | Team CRUD |
 | `CoachStateProcessor.php` | Coach CRUD |
 | `ScheduleStateProcessor.php` | Schedule + generation trigger |
-| `...` | 10+ other entity processors |
+| `...` | the other entity processors |
 
 ## Pattern
 
@@ -33,7 +33,7 @@ All processors extend `AbstractStateProcessor` which handles:
 
 - **Never** hardcode `seasonId` in a processor — always use `resolveSeasonId()`
 - **Never** rely on `method_exists('getClubId')` for tenant scoping — use `instanceof TenantOwnedInterface` (BCK-03); a club_id entity that forgets the marker is caught by `TenantOwnedInterfaceCompletenessTest`
-- **Never** call `$entityManager->flush()` outside `AbstractStateProcessor` — the base class handles it
+- The base class flushes the plain POST/PUT/DELETE path; a processor that writes beyond it (side rows, its own transaction) flushes itself
 
 ## Quick Reference
 
