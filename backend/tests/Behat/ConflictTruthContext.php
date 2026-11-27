@@ -782,6 +782,11 @@ final class ConflictTruthContext extends BaseContext
         [$this->inForceCoachId, $this->inForceTeamAId, $this->inForceTeamBId] = $parts;
         $this->inForceOriginalLink = implode('|', [$parts[3], $parts[1], $parts[0], $parts[4], $parts[5]]);
         $this->poserLesDeuxMatchsEnVigueur();
+        // Témoin : avant tout geste, le radar porte bien le conflit de ce coach en double.
+        $this->jeDemandeLesConflits();
+        if (null === $this->conflictBetween($this->inForceMatchAId, $this->inForceMatchBId)) {
+            throw new RuntimeException('témoin : le coach principal sur les deux équipes devrait mettre leurs deux matchs en conflit avant tout geste');
+        }
     }
 
     #[Given('un coach principal du planning en vigueur entraîne une équipe dont le match chevauche celui d\'une autre équipe')]
