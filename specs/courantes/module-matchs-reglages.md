@@ -64,7 +64,7 @@ livrées — P4-272 est désormais livré EN ENTIER (①②③④⑤).
 (`ClubLeagueWindow`, §1) — une **ligne compacte par fenêtre** (résumé + ✎ + 🗑 au repos, dépliée en
 champs catégorie/niveau/genre/jour/de-à à l'édition, P4-271), ajout/suppression, badge
 `added`/`modified` calculé SERVEUR (affiché, jamais redérivé, § règle frontend « le backend dit »).
-Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement n'applique plus de règle
+Bandeau permanent (`role="status"`, visible aussi d'un Membre) quand la ligue du club n'est pas au catalogue `league_match_window` : les fenêtres copiées sont alors celles de la ligue de référence, nommée par le serveur (`leagueFallback.referenceLeagueLabel`, jamais redérivé à l'écran). Bandeau si la copie est VIDE (« Aucune fenêtre ligue — le placement n'applique plus de règle
 fédérale », §1). Le placement, le radar et cet écran lisent la MÊME copie
 — une correction ici est immédiatement honorée par le placement automatique (§3) et le radar (§2).
 

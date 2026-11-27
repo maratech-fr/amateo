@@ -6,6 +6,8 @@
  * marque (→ product), identifiant interne (noms d'équipe/gymnase/adversaire restent des données).
  */
 
+import { PRODUCT_NAME } from "@/shared/lib/product";
+
 // Le libellé de la bascule d'alignement — partagé par la pastille ET l'annonce de la région live.
 const LEVEL_WILL_ALIGN = "Sera aligné à la confirmation";
 
@@ -393,4 +395,7 @@ export const MATCHES_TEXTS = {
   panelEnvelopeHintIndicative: (windows: string) => `Fenêtres ligue (indicatif) : ${windows}`,
   panelEnvelopeOk: "Dans la fenêtre autorisée par la ligue",
   panelEnvelopeOut: "Hors fenêtre autorisée (jour ou heure)",
+  /** Le nom de la ligue de référence est servi par le serveur (`leagueFallback.referenceLeagueLabel`). */
+  leagueFallbackNotice: (referenceLeagueLabel: string) =>
+    `${PRODUCT_NAME} ne connaît pas les règles de votre ligue ; celles affichées sont celles de la ligue ${referenceLeagueLabel}, merci de les vérifier.`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -39,6 +39,9 @@ class LeagueMatchWindow implements LeagueWindowInterface
     /** Federation default base inherited by every club (couche 1). */
     public const FEDERATION_DEFAULT_LEAGUE = 'AURA';
 
+    /** Readable name of FEDERATION_DEFAULT_LEAGUE, shown when a club falls back to it. */
+    public const FEDERATION_DEFAULT_LEAGUE_LABEL = 'Auvergne-Rhône-Alpes';
+
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
     private string $id;

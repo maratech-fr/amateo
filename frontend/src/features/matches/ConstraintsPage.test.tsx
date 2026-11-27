@@ -5,13 +5,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_TEXTS } from "@/shared/session/texts";
 import { renderWithProviders } from "@/test/utils";
 
-import type { ClubLeagueWindow, Coach, MatchConstraint, MatchConstraintCoherence, PriorityTier, Team, Venue } from "./api";
+import type { ClubLeagueWindow, Coach, LeagueWindowsResponse, MatchConstraint, MatchConstraintCoherence, PriorityTier, Team, Venue } from "./api";
 import { ConstraintsPage } from "./ConstraintsPage";
+import { MATCHES_TEXTS } from "./texts";
 
 const createWindow = vi.fn();
 const updateWindow = vi.fn();
 const deleteWindow = vi.fn();
 const windowsState: { data: ClubLeagueWindow[] | undefined; isError: boolean } = { data: [], isError: false };
+// Lot 7 PR 5 — le repli de ligue vient du SERVEUR (`GET /api/league-match-windows`, `leagueFallback`).
+const leagueWindowsState: { data: LeagueWindowsResponse | undefined; isError: boolean } = {
+  data: { league: "AURA", items: [], resolvedTeamWindows: {}, leagueFallback: null },
+  isError: false,
+};
 const createRule = vi.fn();
 const updateRule = vi.fn();
 const deleteRule = vi.fn();
@@ -38,6 +44,7 @@ vi.mock("@/shared/session/queries", () => ({
 // l'alerte de cohérence viennent du SERVEUR : l'écran les affiche, on ne les recalcule pas ici.
 vi.mock("./queries", () => ({
   useClubLeagueWindows: () => ({ ...windowsState, refetch: vi.fn() }),
+  useLeagueWindows: () => ({ ...leagueWindowsState, refetch: vi.fn() }),
   useCreateClubLeagueWindow: () => ({ mutate: createWindow, isPending: false }),
   useUpdateClubLeagueWindow: () => ({ mutate: updateWindow, isPending: false }),
   useDeleteClubLeagueWindow: () => ({ mutate: deleteWindow, isPending: false }),
@@ -112,6 +119,8 @@ beforeEach(() => {
   deleteWindow.mockClear();
   windowsState.data = [];
   windowsState.isError = false;
+  leagueWindowsState.data = { league: "AURA", items: [], resolvedTeamWindows: {}, leagueFallback: null };
+  leagueWindowsState.isError = false;
   createRule.mockClear();
   updateRule.mockClear();
   deleteRule.mockClear();
@@ -185,6 +194,25 @@ describe("ConstraintsPage — section Ligue (P4-272 ①)", () => {
       },
       expect.anything(),
     );
+  });
+
+  // Lot 7 PR 5 — le repli de ligue est dit : le bandeau suit `leagueFallback` servi par le
+  // serveur (jamais redérivé), nomme la ligue de référence servie, et se tait au catalogue.
+  it("affiche le bandeau de repli de ligue quand le serveur sert leagueFallback, et seulement alors", () => {
+    windowsState.data = [window()];
+    leagueWindowsState.data = {
+      league: "AURA",
+      items: [],
+      resolvedTeamWindows: {},
+      leagueFallback: { clubLeague: "BOFC", referenceLeagueLabel: "Ligue de référence servie" },
+    };
+    const { unmount } = renderWithProviders(<ConstraintsPage />, { route: "/matchs/contraintes?section=ligue" });
+    expect(screen.getByText(MATCHES_TEXTS.leagueFallbackNotice("Ligue de référence servie"))).toBeInTheDocument();
+    unmount();
+
+    leagueWindowsState.data = { league: "AURA", items: [], resolvedTeamWindows: {}, leagueFallback: null };
+    openLigue();
+    expect(screen.queryByText(MATCHES_TEXTS.leagueFallbackNotice("Ligue de référence servie"))).not.toBeInTheDocument();
   });
 });
 
