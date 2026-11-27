@@ -11,6 +11,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\PlanTeam;
 use App\Entity\Reservation;
+use App\Entity\Schedule;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
@@ -18,12 +19,20 @@ use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\LockLevel;
+use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use App\Service\ScheduleConstraintBuilder;
 use App\Structure\Family;
 use App\Structure\Level;
+use App\Tests\EngineRequestDecorTrait;
+use App\Tests\EngineRequestPlanSettingsDecorTrait;
+use App\Tests\EngineRequestRunnerTrait;
+use App\Tests\EngineRequestSocleNetDecorTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
-use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * NR BLOQUANT — axes *constraint semantics* et *generation pipeline* (lot 5, PR 2, ligne 8 du plan, §3.3) : chaque clé
@@ -47,18 +56,27 @@ use ReflectionClass;
  *
  * Angle jumeau, cité : `la-boucle-de-travail-du-gestionnaire.feature` (les mêmes gestes, par l'écran « périmé ») ; la
  * copie elle-même : `Integration/Plans/PlanStatesTest`.
+ *
+ * Cas « non validé » (lot 5, PR 5, ligne 26 du plan) : ce qui lit l'en vigueur ne voit pas le froid modifié sans
+ * validation. Sur les décors réels des références 12, 13 (demande d'une période), 5, 6 et 21 (placement des matchs), le
+ * socle est validé (copie prise sur l'état du décor), puis un champ froid de chaque famille du socle est modifié en
+ * base sans valider ; la demande reste identique à l'octet à sa référence. Jumeau, cité : {@see EngineRequestReferenceTest}
+ * (les mêmes décors, sans modification).
  */
 #[Group('phase1')]
 #[Group('integration')]
-final class EngineRequestKeySourcesTest extends TestCase
+final class EngineRequestKeySourcesTest extends KernelTestCase
 {
+    use EngineRequestDecorTrait;
+    use EngineRequestPlanSettingsDecorTrait;
+    use EngineRequestRunnerTrait;
+    use EngineRequestSocleNetDecorTrait;
+
     private const string FREE = 'libre';
 
     private const string COLD = 'froide';
 
     private const string HOT = 'à chaud';
-
-    private const string REFERENCE_DIR = __DIR__ . '/../Fixtures/engine-requests';
 
     /** Les demandes de génération (empreinte) et de placement (sources seules). */
     private const array GENERATION_REFERENCES = ['socle-11-socle-complet', 'periode-12-vacances-reglages', 'periode-13-fermeture-reglages'];
@@ -326,6 +344,120 @@ final class EngineRequestKeySourcesTest extends TestCase
         $hash = ScheduleConstraintBuilder::structureHash($payload);
         self::assertSame($hash, ScheduleConstraintBuilder::structureHash($withTravel), 'saisir un temps de trajet ne change pas l\'empreinte');
         self::assertSame($hash, ScheduleConstraintBuilder::structureHash($corrected), 'le corriger non plus');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function inForceReaders(): iterable
+    {
+        foreach (['periode-12-vacances-reglages', 'periode-13-fermeture-reglages', 'placement-5-club-entier', 'placement-6-fenetre', 'placement-21-equipe-creee-apres-validation'] as $reference) {
+            yield $reference => [$reference];
+        }
+    }
+
+    /**
+     * Non validé : un champ froid de chaque famille du socle, modifié en base après la validation, laisse la demande
+     * d'une période ou du placement identique à sa référence (elle lit l'en vigueur, la copie de la validation). Les
+     * familles : équipe (rang, niveau, gymnase imposé), gymnase (« divisible »), coach principal, coach-joueur,
+     * passerelle, règle permanente (réglage, activité), ligne d'équipe, grille, réservation, règle de bien-être et
+     * groupe mutualisé du plan de saison.
+     */
+    #[DataProvider('inForceReaders')]
+    public function testAColdFieldChangedWithoutValidationLeavesTheRequestOfAnInForceReader(string $reference): void
+    {
+        self::bootKernel();
+        $this->pinEngineRequestClock();
+        $this->seedEngineRequestBase();
+        $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::COMPLETED, [
+            [1, self::ER_TEAM_U13, self::ER_VENUE_NORD, 1, '18:00', LockLevel::HARD],
+            [2, self::ER_TEAM_U15, self::ER_VENUE_NORD, 3, '18:00', LockLevel::NONE],
+            [3, self::ER_TEAM_SM1, self::ER_VENUE_NORD, 4, '18:00', LockLevel::NONE],
+        ]);
+        $this->chooseAndLoadSocle(self::ER_SOCLE_V1);
+
+        $run = match ($reference) {
+            'periode-12-vacances-reglages' => function (): array {
+                $this->seedEngineRequestHolidaySettings();
+                $this->erVersion(self::ER_HOLIDAY_V1, self::ER_HOLIDAY_WEEK, ScheduleStatus::DRAFT, []);
+                $this->validateSocleAsItStands();
+                $this->changeEveryColdFamilyOfTheSocle();
+
+                return $this->runGeneration(self::ER_HOLIDAY_V1)['body'];
+            },
+            'periode-13-fermeture-reglages' => function (): array {
+                $this->seedEngineRequestClosureSettings();
+                $this->erVersion(self::ER_CLOSURE_V1, self::ER_CLOSURE_SETTINGS, ScheduleStatus::DRAFT, []);
+                $this->validateSocleAsItStands();
+                $this->changeEveryColdFamilyOfTheSocle();
+
+                return $this->runGeneration(self::ER_CLOSURE_V1)['body'];
+            },
+            'placement-5-club-entier', 'placement-6-fenetre' => function () use ($reference): array {
+                $this->seedEngineRequestMatches();
+                $this->validateSocleAsItStands();
+                $this->changeEveryColdFamilyOfTheSocle();
+
+                return $this->runPlacement('placement-6-fenetre' === $reference ? ['from' => '2026-01-12', 'to' => '2026-01-18'] : null);
+            },
+            'placement-21-equipe-creee-apres-validation' => function (): array {
+                $this->seedEngineRequestMatches();
+                $this->validateSocleAsItStands();
+                $this->seedEngineRequestTeamCreatedAfterValidation();
+                $this->changeEveryColdFamilyOfTheSocle();
+
+                return $this->runPlacement(null);
+            },
+            default => self::fail('référence inconnue ' . $reference),
+        };
+
+        $this->assertReference($reference, $run());
+    }
+
+    protected function tearDown(): void
+    {
+        if (static::$booted) {
+            $this->unpinEngineRequestClock();
+        }
+        parent::tearDown();
+    }
+
+    /** La validation du socle sur l'état du décor : la version en vigueur (V1) reçoit la copie de l'état du jour. */
+    private function validateSocleAsItStands(): void
+    {
+        $this->erEm()->flush();
+        $version = $this->erEm()->getRepository(Schedule::class)->find(self::ER_SOCLE_V1);
+        self::assertInstanceOf(Schedule::class, $version);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($this->erSeasonPlanId()));
+    }
+
+    /** Après la validation, sans valider : un champ froid de chaque famille du socle change en base (identifiants du décor). */
+    private function changeEveryColdFamilyOfTheSocle(): void
+    {
+        $em = $this->erEm();
+        $em->flush();
+        $connection = $em->getConnection();
+        $socle = $this->erSeasonPlanId();
+        $witnesses = [
+            'rang d\'une équipe' => ['UPDATE team SET priority_tier_id = 1 WHERE id = ?', [self::ER_TEAM_U15]],
+            'niveau d\'une équipe' => ['UPDATE team SET level = \'REGIONAL\' WHERE id = ?', [self::ER_TEAM_U13]],
+            'gymnase imposé' => ['UPDATE team SET forced_venue_id = ? WHERE id = ?', [self::ER_VENUE_SUD, self::ER_TEAM_SM1]],
+            '« divisible » d\'un gymnase' => ['UPDATE venue SET can_split = false WHERE id = ?', [self::ER_VENUE_NORD]],
+            'coach principal' => ['UPDATE team_coach SET coach_id = ? WHERE id = ?', [self::ER_COACH_A, self::erId('7c0a', 3)]],
+            'coach-joueur' => ['UPDATE coach_player_membership SET is_active = false WHERE id = ?', [self::erId('3e3b', 1)]],
+            'passerelle' => ['DELETE FROM team_link WHERE id = ?', [self::erId('11c0', 1)]],
+            'réglage d\'une règle permanente' => ['UPDATE "constraint" SET config = \'{"minStartTime": "19:30"}\' WHERE id = ?', [self::erId('c057', 1)]],
+            'activité d\'une règle permanente' => ['UPDATE "constraint" SET is_active = false WHERE id = ?', [self::erId('c057', 4)]],
+            'séances d\'une équipe au socle' => ['UPDATE plan_team SET sessions_per_week = 3 WHERE schedule_plan_id = ? AND team_id = ?', [$socle, self::ER_TEAM_U13]],
+            'grille du socle' => ['UPDATE venue_training_slot SET capacity = 1 WHERE id = ?', [self::erId('a7a1', 1)]],
+            'réservation du socle' => ['UPDATE reservation SET start_time = \'19:30:00\' WHERE id = ?', [self::erId('e5e0', 1)]],
+        ];
+        foreach ($witnesses as $what => [$sql, $parameters]) {
+            self::assertSame(1, $connection->executeStatement($sql, $parameters), \sprintf('témoin : %s modifié en base', $what));
+        }
+        // Présents dans un seul décor : le groupe mutualisé du socle (13), la règle de bien-être du socle (12).
+        $connection->executeStatement('UPDATE shared_training_block SET common_sessions = 2 WHERE id = ?', [self::ER_BLOCK_SOCLE]);
+        $connection->executeStatement('UPDATE implicit_rule_setting SET params = \'{"maxConsecutiveDays": 4}\' WHERE id = ?', [self::erId('a1e5', 32)]);
+        $em->clear();
     }
 
     /** @return array<string, mixed> */
