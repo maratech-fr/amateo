@@ -62,8 +62,9 @@ final class ImplicitRuleSettingRepository extends ServiceEntityRepository
      * NULL). Copie TOTALE : un plan « tout au défaut » garde ses 4 lignes, donc reste
      * distinguable d'un plan legacy sans copie.
      *
-     * Appelée à la NAISSANCE du plan (`PlanBirth::copy`) et à la PREMIÈRE ÉCRITURE
-     * portant un `schedulePlanId` (processor) — jamais à la LECTURE (le build overlay n'écrit
+     * Appelée à la naissance d'un plan dans une saison sans plan de saison (`SchedulePlanProvisioner`) et à la
+     * PREMIÈRE ÉCRITURE portant un `schedulePlanId` (processor) ; la naissance depuis le plan de saison a sa
+     * copie à elle (`PlanBirth::copy`, par la porte de l'en vigueur) — jamais à la LECTURE (le build overlay n'écrit
      * pas). SQL brut : `season_filter` épingle les lectures ORM à la saison active, or un plan
      * peut naître pour une autre saison (transition) ; RLS scope le club. `gen_random_uuid()`,
      * comme la copie de grille (`PlanBirth::copy`).

@@ -12,6 +12,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\InForce;
 use App\Plans\PlanStates;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -82,6 +83,7 @@ final class PeriodPlanTranscriber
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
         private readonly PlanStates $planStates,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -122,7 +124,7 @@ final class PeriodPlanTranscriber
 
             // Le socle DOIT être pointé (on en copie la version choisie). Le contrôleur l'exige déjà
             // via SocleGuard ; défense en profondeur ici sous le verrou.
-            $chosenSocleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
+            $chosenSocleId = $this->inForce->socleVersionId($seasonId);
             if (null === $chosenSocleId) {
                 throw new ConflictHttpException('Validez le planning de la saison avant de transcrire une période depuis le socle.');
             }

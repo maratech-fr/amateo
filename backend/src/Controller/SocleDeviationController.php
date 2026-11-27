@@ -12,6 +12,7 @@ use App\Entity\Schedule;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\InForce;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleDeviationCalculator;
 use Doctrine\ORM\EntityManagerInterface;
@@ -63,6 +64,7 @@ final class SocleDeviationController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleDeviationCalculator $calculator,
+        private readonly InForce $inForce,
     ) {}
 
     #[Route('/api/schedules/{id}/socle-deviation', name: 'api_schedule_socle_deviation', methods: ['GET'])]
@@ -100,7 +102,7 @@ final class SocleDeviationController extends AbstractController
             return $this->json(['error' => 'Seule une version terminée peut être comparée au planning de saison.'], Response::HTTP_CONFLICT);
         }
 
-        $chosenSocleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($context['seasonId']);
+        $chosenSocleId = $this->inForce->socleVersionId($context['seasonId']);
         if (null === $chosenSocleId) {
             return $this->json(['error' => 'Validez le planning de la saison pour comparer cette période avec lui.'], Response::HTTP_CONFLICT);
         }

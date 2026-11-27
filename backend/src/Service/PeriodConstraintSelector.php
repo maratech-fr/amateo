@@ -9,10 +9,10 @@ use App\Entity\Constraint;
 use App\Entity\Team;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintScope;
+use App\Plans\InForce;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
-use App\Repository\TeamRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 use Psr\Log\LoggerInterface;
@@ -49,7 +49,6 @@ final class PeriodConstraintSelector
 
     public function __construct(
         private readonly ConstraintRepository $constraintRepository,
-        private readonly TeamRepository $teamRepository,
         private readonly TeamTagResolver $tagResolver,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly LoggerInterface $logger,
@@ -57,6 +56,7 @@ final class PeriodConstraintSelector
         private readonly PlanComposition $planComposition,
         private readonly SoclePlan $soclePlan,
         private readonly EntityManagerInterface $entityManager,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -126,7 +126,7 @@ final class PeriodConstraintSelector
 
         $activeTeamIds = [];
         $allSeasonTeamIds = [];
-        foreach ($clubSeasonTeams ?? $this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $team) {
+        foreach ($clubSeasonTeams ?? $this->inForce->rows($seasonId, Team::class) as $team) {
             $allSeasonTeamIds[] = $team->getId();
             if (!isset($deactivatedTeamIds[$team->getId()])) {
                 $activeTeamIds[$team->getId()] = true;
@@ -139,7 +139,10 @@ final class PeriodConstraintSelector
         // sens. Les STRUCTURES — blocs de mutualisation, liens coach↔équipe, coach↔joueur, passerelles — passent hors de
         // ce sélecteur (elles ne sont pas des `Constraint`) et ne changent donc pas.
         $permanent = [];
-        foreach ($this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId) as $constraint) {
+        foreach ($this->inForce->rows($seasonId, Constraint::class) as $constraint) {
+            if (null !== $constraint->getCalendarEntryId()) {
+                continue; // une datée n'est pas une règle de saison
+            }
             $line = $ruleLines[$constraint->getId()] ?? throw new LogicException(\sprintf('La contrainte %s n\'a pas de ligne dans le plan %s.', $constraint->getId(), $schedulePlanId));
             if ($line->applies()) {
                 $permanent[] = $constraint;

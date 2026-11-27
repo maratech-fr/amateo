@@ -29,6 +29,7 @@ use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\InForce;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\PlaceTravelTimeRepository;
@@ -151,6 +152,9 @@ final class ScheduleConstraintBuilder
         // Lot 4, PR 3a : les équipes d'un plan (séances, plafond par jour), lues sur ses lignes. Nullable pour le mode
         // léger sans DB, qui reçoit les lignes de l'appelant.
         private readonly ?PlanComposition $planComposition = null,
+        // Lot 5 : la porte de l'en vigueur, par laquelle la demande d'une période lit les familles froides du socle.
+        // Nullable pour le mode léger sans DB ; le chemin période l'exige.
+        private readonly ?InForce $inForce = null,
     ) {}
 
     /**
@@ -960,6 +964,10 @@ final class ScheduleConstraintBuilder
         if (!$this->periodConstraintSelector instanceof PeriodConstraintSelector) {
             throw new LogicException('ScheduleConstraintBuilder requires the period constraint selector for overlay builds.');
         }
+        if (!$this->inForce instanceof InForce) {
+            throw new LogicException('ScheduleConstraintBuilder requires the in-force door for overlay builds.');
+        }
+        $inForce = $this->inForce;
 
         // P2-14 — LA sélection (quelles entités partent au solveur, pourquoi les autres
         // non) est calculée par la source UNIQUE partagée avec le gate pré-solve. Ce qui
@@ -968,7 +976,8 @@ final class ScheduleConstraintBuilder
         // expansions par équipe, invisibles au niveau entité).
         // Les équipes servent DEUX fois (la sélection dérive ses actives, le payload les
         // sérialise) : une seule requête, passée à la sélection (revue #340 round 1).
-        $clubSeasonTeams = array_values($this->findByClubSeason(Team::class, $clubId, $seasonId, $em));
+        // Les familles froides du socle se lisent par la porte de l'en vigueur, triées par id.
+        $clubSeasonTeams = $inForce->rows($seasonId, Team::class);
         // Sélection RÉUTILISÉE quand l'appelant la tient déjà (le gate pré-solve la calcule
         // pour ses warnings) : la recalculer coûtait ~7 requêtes par ouverture de récap pour
         // une valeur en main (revue #341).
@@ -1042,13 +1051,14 @@ final class ScheduleConstraintBuilder
             // inoffensif pour le solveur, mais toute contrainte le nommant deviendrait un
             // id fantôme (cf. post-filtre plus bas) — on le retire à la source.
             venues: array_values(array_filter(
-                $this->findByClubSeason(Venue::class, $clubId, $seasonId, $em),
+                $inForce->rows($seasonId, Venue::class),
                 static fn (Venue $venue): bool => !isset($disabledVenueIds[$venue->getId()]),
             )),
             teams: $teams,
             coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
-            teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
-            coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
+            // La porte rend les liens équipe-coach par date de création : la demande les veut par id.
+            teamCoaches: $this->sortedLinksById($inForce->rows($seasonId, TeamCoach::class)),
+            coachPlayerMemberships: $inForce->rows($seasonId, CoachPlayerMembership::class),
             // Overlay's OWN slot templates (its work-loop locks), not the base plan's.
             // Filtre défensif : un verrou sur un gymnase désactivé pointerait un gymnase
             // absent du payload. Un verrou ORPHELIN (plus aucun créneau à cet horaire) est,
@@ -1079,7 +1089,7 @@ final class ScheduleConstraintBuilder
             // Passerelles : STRUCTURE de club+saison (patron Team/Coach) — mêmes lignes que le
             // socle, jamais des copies ancrées au plan. Le roster de période filtre : une équipe
             // désactivée pour la période sort du payload, son lien est abandonné (serializeTeamLinks).
-            teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            teamLinks: $inForce->rows($seasonId, TeamLink::class),
             // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison, mêmes lignes que le
             // socle (jamais une copie ancrée au plan) — le trajet entre deux gymnases ne change
             // pas parce qu'on est en période. Sa présence active `travelTime` (opt-in).
@@ -1432,6 +1442,20 @@ final class ScheduleConstraintBuilder
         usort($constraints, static fn (Constraint $a, Constraint $b): int => strcmp($a->getId(), $b->getId()));
 
         return $constraints;
+    }
+
+    /**
+     * Liens équipe-coach triés par id, l'ordre de la demande.
+     *
+     * @param list<TeamCoach> $links
+     *
+     * @return list<TeamCoach>
+     */
+    private function sortedLinksById(array $links): array
+    {
+        usort($links, static fn (TeamCoach $a, TeamCoach $b): int => strcmp($a->getId(), $b->getId()));
+
+        return $links;
     }
 
     /** @return array<ScheduleSlotTemplate> */

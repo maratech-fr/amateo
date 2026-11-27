@@ -11,7 +11,9 @@ use App\Enum\ScheduleStatus;
 use App\Exception\EngineRequestNotComposable;
 use App\Exception\EngineRequestRejectedException;
 use App\Message\GenerateScheduleMessage;
+use App\Plans\InForce;
 use App\Plans\PlanStates;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DevScheduleReportWriter;
 use App\Service\EngineClient;
@@ -25,6 +27,7 @@ use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
 use App\Service\TenantConnectionContext;
+use App\Structure\FamilyCatalog;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -85,7 +88,7 @@ final class GenerateScheduleHandler
         private ?SolverMetricsRecorder $metricsRecorder = null,
         ?EngineRequestComposer $requestComposer = null,
     ) {
-        $this->requestComposer = $requestComposer ?? new EngineRequestComposer($entityManager, $constraintBuilder, $schedulePlanProvisioner);
+        $this->requestComposer = $requestComposer ?? new EngineRequestComposer($entityManager, $constraintBuilder, $schedulePlanProvisioner, new InForce($entityManager, new SoclePlan($entityManager), new FamilyCatalog($entityManager)));
     }
 
     public function __invoke(GenerateScheduleMessage $message): void
