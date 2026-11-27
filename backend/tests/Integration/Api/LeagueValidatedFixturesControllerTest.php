@@ -140,6 +140,35 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
      * balayée, ni nommée à traiter, ni signalée sans échéance. La verrouiller en ancre fixe
      * au moment où il faut pouvoir la bouger serait le piège que ce lot ferme.
      */
+    /**
+     * Lot 7, PR 6b : un championnat créé à la main (hors FBI) n'est jamais « validé ligue » — échu, son domicile daté
+     * n'est ni balayé, ni proposé, ni nommé à traiter, et reste « à placer ». Témoin : le même domicile d'un championnat
+     * FBI échu est balayé.
+     */
+    public function testAHandMadeChampionshipIsNeverLeagueValidated(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14');
+        $handMadeId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-15', source: CompetitionSource::MANUAL)->getId();
+
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(1, $data['swept'] ?? -1, 'seul le domicile du championnat FBI est balayé');
+        self::assertSame(0, $data['totalValidatable'], 'rien d\'autre n\'est proposé');
+        self::assertNotContains($handMadeId, array_column($data['toTreat'], 'fixtureId'), 'le domicile hors FBI n\'est pas nommé à traiter');
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $fresh = $this->em->find(Fixture::class, $handMadeId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em), 'il reste « à placer »');
+        self::assertNull($fresh->getPlacementSource(), 'aucune ancre posée');
+    }
+
     public function testAFutureDeadlineCompetitionIsProposedNowhere(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
@@ -565,9 +594,9 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
      * past). Pass a future `$competitionDeadline` to build the danger case (a validatable
      * fixture whose championship deadline has NOT passed yet).
      */
-    private function eligible(string $clubId, string $seasonId, string $teamId, string $venueId, string $date, string $kickoff = '15:30', ?string $competitionDeadline = '2020-09-10'): Fixture
+    private function eligible(string $clubId, string $seasonId, string $teamId, string $venueId, string $date, string $kickoff = '15:30', ?string $competitionDeadline = '2020-09-10', CompetitionSource $source = CompetitionSource::FBI): Fixture
     {
-        $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, $competitionDeadline);
+        $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, $competitionDeadline, source: $source);
         $fixture->setVenueId($venueId);
         $fixture->setKickoffTime(new DateTimeImmutable($kickoff));
         $this->em->flush();
@@ -728,14 +757,14 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null, CompetitionType $type = CompetitionType::CHAMPIONSHIP): Fixture
+    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null, CompetitionType $type = CompetitionType::CHAMPIONSHIP, CompetitionSource $source = CompetitionSource::FBI): Fixture
     {
         // Match de COMPÉTITION : un domicile sans compétition sortirait du payload de
         // placement (les amicaux ne sont plus confiés au solveur, P4-193). Chaque
         // rencontre porte SA compétition (jetable) — dont l'échéance de saisie pilote
         // désormais la validation ligue. `competitionName` et `type` posent le cas d'une
         // compétition amicale, ou d'un championnat libellé « Amical X ».
-        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), $type, static fn ($c) => $c->setSource(CompetitionSource::FBI)->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
+        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), $type, static fn ($c) => $c->setSource($source)->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
