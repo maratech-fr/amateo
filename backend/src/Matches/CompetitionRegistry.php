@@ -176,7 +176,8 @@ final readonly class CompetitionRegistry
         $byCompetition = $this->engagementsByCompetition();
         $candidates = [];
         foreach ($this->entityManager->getRepository(Competition::class)->findAll() as $competition) {
-            if ($this->labelNormalizer->normalize($competition->getName()) === $divisionKey) {
+            // Jamais « Amicaux », la compétition d'office : un match de la fédération y entrerait non suivi.
+            if (!$competition->isDefaultFriendly() && $this->labelNormalizer->normalize($competition->getName()) === $divisionKey) {
                 array_push($candidates, ...$byCompetition[$competition->getId()] ?? []);
             }
         }

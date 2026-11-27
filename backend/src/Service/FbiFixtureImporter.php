@@ -1723,8 +1723,10 @@ final class FbiFixtureImporter
                 // Honoured ONLY for the same team the manager chose — a drifted
                 // suggestion must not hijack another team's pairing. Never across the
                 // friendly boundary (lot 7, PR 4a): an existing competition never becomes
-                // friendly nor stops being one — the division follows its own label.
-                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $team->getId())
+                // friendly nor stops being one — the division follows its own label. Never « Amicaux », the
+                // season's default friendly (lot 7, PR 6b): a federation match is tracked, it lands in the
+                // friendly competition of its own label.
+                if ($byId instanceof Competition && !$byId->isDefaultFriendly() && $this->competitionRegistry->isEngaged($byId, $team->getId())
                     && $byId->getCompetitionType()->isFriendly() === CompetitionClassifier::classify($name)->isFriendly()
                 ) {
                     $existing = $byId;
@@ -1735,6 +1737,9 @@ final class FbiFixtureImporter
                 }
             }
             $existing ??= $this->competitionRegistry->findForTeam($team->getId(), $name);
+            if ($existing instanceof Competition && $existing->isDefaultFriendly()) {
+                $existing = null; // jamais « Amicaux » : la division a sa propre compétition (lot 7, PR 6b)
+            }
             if ($existing instanceof Competition) {
                 // The manager's LATEST choice wins: only refreshing a null label
                 // would leave a drifted FBI label permanently unresolvable — the

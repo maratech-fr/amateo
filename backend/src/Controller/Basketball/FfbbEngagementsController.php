@@ -489,7 +489,8 @@ final class FfbbEngagementsController extends AbstractController
     {
         if (null !== $competitionId) {
             $byId = $this->entityManager->getRepository(Competition::class)->findOneBy(['id' => $competitionId]);
-            if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $teamId)) {
+            // Jamais « Amicaux », la compétition d'office (lot 7, PR 6b) : elle ne porte aucune référence fédérale.
+            if ($byId instanceof Competition && !$byId->isDefaultFriendly() && $this->competitionRegistry->isEngaged($byId, $teamId)) {
                 $reclass = CompetitionClassifier::reclassOf($byId, $canonicalName);
                 if ($reclass instanceof CompetitionType) {
                     $byId->setCompetitionType($reclass);

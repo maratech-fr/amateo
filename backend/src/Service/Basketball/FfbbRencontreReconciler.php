@@ -580,7 +580,8 @@ final class FfbbRencontreReconciler
             return $createdByKey[$key];
         }
         $competition = $this->competitionRegistry->findForTeam($teamId, $name);
-        if (!$competition instanceof Competition) {
+        // Jamais « Amicaux », la compétition d'office (lot 7, PR 6b) : l'amical de la fédération est suivi.
+        if (!$competition instanceof Competition || $competition->isDefaultFriendly()) {
             $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::FRIENDLY, CompetitionSource::FBI);
             $this->competitionRegistry->engage($competition, $teamId);
         }
