@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from "./fixtures";
 import { ensureValidated, escapeRegExp, landOnMatchesCalendar, loginSeededClub } from "./support";
+import { buildFixturesXlsx } from "./support-xlsx";
 
 // ── Le login + la validation du socle du club seedé vivent dans support.ts (maison unique) : ce
 //    fichier (et les ex-specs matches-consulter / matches-fbi-todo / matches-importer, fusionnés
@@ -876,9 +877,12 @@ test("consulter: chips, semaine type, et filtre par famille de conflit", async (
 });
 
 /**
- * La liste « FBI — à faire » du Calendrier, FUSIONNÉE ici (ex-`matches-fbi-todo.spec.ts`). Le test
- * S'AUTO-PROVISIONNE (crée SA rencontre — un domicile PLACÉ — via l'API, nettoyée en `finally`), ouvre
- * la liste, coche « saisi », éprouve le toast. Un geste qui n'exerce rien laisserait le toast absent.
+ * La liste « FBI — à faire » du Calendrier, FUSIONNÉE ici (ex-`matches-fbi-todo.spec.ts`). Promesse (lot 7,
+ * PR 6b, lignes 28 et 30 du plan) : un domicile placé d'un championnat FBI est « à saisir » et se coche
+ * « saisi » ; un amical posé à la main et placé n'y figure jamais. Le club seedé n'a aucun championnat FBI :
+ * le test en dépose un (fichier FBI d'une rencontre extérieure, division au nom FIXE pour que les runs
+ * successifs réutilisent la même compétition), pose ses deux domiciles par l'API et les nettoie en `finally`.
+ * Un geste qui n'exerce rien laisserait le toast absent.
  */
 test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque saisi dans FBI", async ({ page }) => {
   test.setTimeout(240_000);
@@ -893,16 +897,43 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
   const venueId = ((await venuesRes.json()).member?.[0]?.id ?? undefined) as string | undefined;
   expect(teamId, "le club seedé a au moins une équipe").toBeTruthy();
   expect(venueId, "le club seedé a au moins un gymnase").toBeTruthy();
+  const meRes = await page.request.get("/api/me");
+  expect(meRes.ok(), "GET /api/me").toBeTruthy();
+  const clubName = String((await meRes.json()).club?.name ?? "");
+  expect(clubName, "le club seedé a un nom (l'import y reconnaît son côté)").not.toBe("");
 
-  // NOTRE domicile PLACÉ (amical) compte dans « à saisir dans FBI » (domiciles PLACED).
-  const opp = `E2E-FBI-${Date.now()}`;
-  const created = await page.request.post("/api/fixtures", {
-    data: { teamId, matchDate: nextSaturdayAtLeast(7), homeAway: "HOME", opponentLabel: opp, venueId, kickoffTime: "15:00", status: "PLACED", competitionId: null },
+  // Un championnat FBI : déposé par un fichier FBI (source FBI), une rencontre extérieure (aucune salle à apparier).
+  const division = "E2E Championnat FBI suivi";
+  const saturday = nextSaturdayAtLeast(7);
+  const [yyyy, mm, dd] = saturday.split("-");
+  const importRes = await page.request.post("/api/fixtures/import", {
+    multipart: {
+      file: {
+        name: "rencontres.xlsx",
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buffer: buildFixturesXlsx([{ division, numero: "E2EFBI01", equipe1: "ADVERSAIRE E2E", equipe2: clubName, date: `${dd}/${mm}/${yyyy}`, heure: "20:00" }]),
+      },
+      mappings: JSON.stringify([{ division, fbiTeamLabel: null, teamId }]),
+    },
   });
-  expect(created.ok(), "POST /api/fixtures").toBeTruthy();
-  const id = (await created.json()).id as string;
+  expect(importRes.ok(), `POST /api/fixtures/import : ${await importRes.text()}`).toBeTruthy();
+  const competitions = membersOf(await (await page.request.get("/api/competitions?itemsPerPage=200")).json());
+  const championship = competitions.find((c) => division === c.name);
+  expect(championship?.source, "le championnat déposé est de source FBI").toBe("FBI");
 
+  const stamp = Date.now();
+  const tracked = `E2E-FBI-${stamp}`;
+  const byHand = `E2E-AMICAL-${stamp}`;
+  const createdIds: string[] = [];
   try {
+    for (const [opponentLabel, competitionId] of [[tracked, championship?.id], [byHand, null]] as const) {
+      const created = await page.request.post("/api/fixtures", {
+        data: { teamId, matchDate: saturday, homeAway: "HOME", opponentLabel, venueId, kickoffTime: "15:00", status: "PLACED", competitionId },
+      });
+      expect(created.ok(), `POST /api/fixtures (${opponentLabel})`).toBeTruthy();
+      createdIds.push((await created.json()).id as string);
+    }
+
     await page.goto("/matchs");
     await landOnMatchesCalendar(page);
 
@@ -912,13 +943,20 @@ test("fbi — le compteur « FBI à faire » ouvre la liste ; cocher marque sais
 
     const dialog = page.getByRole("dialog", { name: "FBI — à faire" });
     await expect(dialog).toBeVisible();
-    const submitBtn = dialog.getByRole("button", { name: new RegExp(`Marquer saisi.*${opp}`) });
+    const submitBtn = dialog.getByRole("button", { name: new RegExp(`Marquer saisi.*${tracked}`) });
     await expect(submitBtn).toBeVisible();
+    // L'amical posé à la main n'est pas suivi par la fédération : jamais « à saisir ».
+    await expect(dialog.getByRole("button", { name: new RegExp(`Marquer saisi.*${byHand}`) })).toHaveCount(0);
     await submitBtn.click();
 
     await expect(page.getByText("Match marqué saisi dans FBI")).toBeVisible();
   } finally {
-    await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
+    const imported = membersOf(await (await page.request.get("/api/fixtures?itemsPerPage=200")).json())
+      .filter((f) => "ADVERSAIRE E2E" === f.opponentLabel && championship?.id === f.competitionId)
+      .map((f) => String(f.id));
+    for (const id of [...createdIds, ...imported]) {
+      await page.request.delete(`/api/fixtures/${id}`).catch(() => undefined);
+    }
   }
 });
 
