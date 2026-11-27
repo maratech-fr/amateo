@@ -108,13 +108,17 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertSame('Cette action est réservée aux gestionnaires.', $body['detail'] ?? null);
     }
 
-    public function testSocleEnVigueurIsRefusedWith409(): void
+    /**
+     * Socle en vigueur, l'analyse du parc est permise (lot 5, ligne 31 : plus de refus « socle pointé »). Le parcours
+     * complet, import compris, est joué par `l-import-du-parc-en-un-geste.feature:26`.
+     */
+    public function testSocleEnVigueurDoesNotRefuseTheAnalysis(): void
     {
         $this->settleSeasonPlan($this->season);
 
-        [$status] = $this->analyze($this->validParc());
+        [$status, $body] = $this->analyze($this->validParc());
 
-        self::assertSame(409, $status);
+        self::assertSame(200, $status, (string) json_encode($body));
     }
 
     public function testArchivedSeasonIsRefusedWith409(): void

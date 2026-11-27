@@ -40,7 +40,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * (ADR-0002, grille possédée par la période). D'où les promesses gardées ici, un test par geste :
  * naissance du plan (copie fidèle), « Reprendre » et « Vider » (limités au gymnase visé), copie
  * vers un plan frère (exactement les occupations du plan source), suppression du plan (cascade,
- * saison intacte), valider puis rouvrir le planning de saison (saison intacte), charger une version
+ * saison intacte), valider puis retravailler le planning de saison (saison intacte), charger une version
  * (AUCUNE occupation supprimée : l'occupation est libre, hors de la copie d'une version), passage de
  * saison (la saison se copie, la période non), purge de saison, suppression d'un gymnase (et son
  * compte d'impact). Depuis le lot 5 (PR 3), « Charger » ne supprime plus aucun gymnase : une
@@ -173,8 +173,8 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         self::assertSame([[2, '14:00', 135, 'École']], $this->shape($venue, null), 'celles de la saison restent');
     }
 
-    /** Valider puis rouvrir le planning de saison laisse les occupations de saison telles quelles. */
-    public function testValidatingThenReopeningTheSeasonPlanKeepsSeasonOccupancies(): void
+    /** Valider puis retravailler le planning de saison laisse les occupations de saison telles quelles. */
+    public function testValidatingThenReworkingTheSeasonPlanKeepsSeasonOccupancies(): void
     {
         $this->seedClub();
         $venue = $this->venue('Gymnase Barros');
@@ -182,14 +182,14 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $this->periodPlan('Fermeture à venir', 21);
         $before = $this->rowsWithIds('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')');
 
-        $version = $this->seasonVersion();
-        $this->em->flush();
-        foreach (['validate', 'reopen'] as $gesture) {
+        // Une version née d'une génération porte sa copie (la porte et « Retravailler » la lisent).
+        $version = $this->photo();
+        foreach (['validate', 'rework'] as $gesture) {
             $this->client->request('POST', '/api/schedules/' . $version->getId() . '/' . $gesture, [], [], $this->headers() + ['CONTENT_TYPE' => 'application/json'], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
             self::assertResponseIsSuccessful(\sprintf('décor : « %s » du planning de saison doit réussir', $gesture));
         }
 
-        self::assertSame($before, $this->rowsWithIds('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'), 'valider puis rouvrir le planning de saison ne touche aucune occupation de saison');
+        self::assertSame($before, $this->rowsWithIds('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'), 'valider puis retravailler le planning de saison ne touche aucune occupation de saison');
     }
 
     /**
