@@ -18,6 +18,7 @@ use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestSocleNetDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
 use App\Tests\Integration\EngineRequestReferenceTest;
+use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
@@ -130,6 +131,22 @@ final class InForceTest extends KernelTestCase
         );
 
         self::assertSame([self::ER_TEAM_SM1 . '→' . self::ER_COACH_B], $links, 'seul SM1 → B reste : A, supprimé, est ignoré ; C, posé sans valider, ne vaut pas');
+    }
+
+    /**
+     * Promesse (lot 5, PR 5, limite 8 du plan) : une version en vigueur sans copie de son état fait lever la porte ; elle
+     * ne retombe jamais en silence sur les lignes de travail, qui serviraient alors aux matchs et aux périodes des
+     * modifications pas validées.
+     */
+    public function testAVersionInForceWithoutACopyMakesTheDoorRaise(): void
+    {
+        $this->validateSocleNow();
+        $this->erEm()->getConnection()->executeStatement('DELETE FROM schedule_state WHERE schedule_id = ?', [self::ER_SOCLE_V1]);
+        $this->erEm()->clear();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessageMatches('/n\'a pas de copie de son état/');
+        self::getContainer()->get(InForce::class)->rows(self::ER_SEASON, Team::class);
     }
 
     protected function setUp(): void
