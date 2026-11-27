@@ -31,7 +31,7 @@ détail : [`deploy.md`](deploy.md) § Secret `ENV_PROD`.
 
 | Image | Build | Contenu spécifique prod |
 |---|---|---|
-| `scheduler-php` | `docker/php/Dockerfile` target `prod` | code + `composer install --no-dev`, opcache `validate_timestamps=0`, `max_execution_time=60`, **rclone** (hook off-site), USER www-data |
+| `scheduler-php` | `docker/php/Dockerfile` target `prod` | code + `composer install --no-dev`, opcache `validate_timestamps=0`, `max_execution_time=120`, **rclone** (hook off-site), USER www-data |
 | `scheduler-nginx` | `docker/php/Dockerfile` target `nginx-prod` | `backend/public` copié **depuis le stage php prod** (inclut `public/bundles` d'`assets:install`, gitignoré — un COPY du contexte le raterait en CI et casserait `/api/docs`) |
 | `scheduler-frontend` | `docker/frontend/Dockerfile` target `prod` | conf edge **sans `location /engine/`** — le solveur n'a pas d'auth, il ne doit JAMAIS être joignable de l'extérieur. ⚑ **Une seule conf** (`docker/frontend/nginx.conf`, P4-118) : la cible `prod` du Dockerfile est un alias vide de `runtime` — le nom survit parce que la CI et `docker-compose.prod.yml` le nomment |
 | `scheduler-postgres` | `docker/postgres/Dockerfile.prod` | scripts init RLS/rôles copiés (la VM n'a pas le repo) ; `02-users.sh` lit `APP_USER_PASSWORD` de l'env — plus de mot de passe en dur au premier init |

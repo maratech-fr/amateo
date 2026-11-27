@@ -134,7 +134,8 @@ RUN apt-get update \
        done \
     && rm -rf /var/lib/apt/lists/*
 
-RUN usermod -u ${UID} www-data && groupmod -g ${GID} www-data
+# `-o` : le GID hôte peut être déjà pris dans Debian (macOS : 20 `staff` = `dialout`).
+RUN usermod -u ${UID} www-data && groupmod -o -g ${GID} www-data
 
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 

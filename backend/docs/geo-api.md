@@ -214,7 +214,7 @@ jamais lues (nouvelle origine = nouvelle clé), elles ne s'accumulent donc plus 
 ### Calcul asynchrone — le calcul quitte le rail synchrone
 
 La rafale IGN pacée à 1/s dépasserait le plafond HTTP prod (`max_execution_time`/
-`fastcgi_read_timeout` = 60 s chacun) dès qu'un club a plus d'une poignée d'adversaires ou de
+`fastcgi_read_timeout` = 120 s chacun) dès qu'un club a plus d'une poignée d'adversaires ou de
 gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au **worker**
 (`messenger-worker`, patron `GenerateScheduleHandler`) :
 
@@ -318,9 +318,9 @@ leur nom technique `walking*`/`pedestrian` (contrat, entité, cache), seul le SE
    (`IgnRoutingClient.php`) — sans lui, le cap de 120 paires × 2 profils = jusqu'à 240 appels pacés à
    1/s pouvait tenir la requête ~240 s. Le premier appel part toujours ; à partir du second, une fois
    le budget consommé, les appels suivants ne sont plus dispatchés et leurs clés reviennent dans
-   `budgetExceededKeys`. Valeur adossée aux plafonds prod réels : `max_execution_time = 60`
-   (`docker/php/Dockerfile:170`) et `fastcgi_read_timeout 60s` (`docker/nginx/default.conf:46`) —
-   30 s = la moitié, marge pour le dernier appel bloquant + le flush + la sérialisation.
+   `budgetExceededKeys`. Valeur adossée aux plafonds prod réels : `max_execution_time = 120`
+   (couche `zz-prod.ini` de `docker/php/Dockerfile`) et `fastcgi_read_timeout 120s` (`docker/nginx/default.conf`) —
+   30 s = le quart, marge pour le dernier appel bloquant + le flush + la sérialisation.
 5. Écriture : minute + `source=AUTO`. Une paire dont un mode nécessaire ne résout pas revient
    `unresolved` avec sa raison — `missing_geo` (géo manquante), `routing_failed` (IGN a répondu sans
    durée exploitable ou le transport a échoué) ou **`budget_exceeded`** (le lot s'est arrêté avant
