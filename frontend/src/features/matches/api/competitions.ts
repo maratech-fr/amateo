@@ -55,6 +55,9 @@ export interface LeagueWindowsResponse {
   /** P1-4 PR E2 (dette iv) — teamId → applicable window ids, resolved by the
    * SERVER with the same join as the solver ([] = unmapped → advisory only). */
   resolvedTeamWindows: Record<string, string[]>;
+  /** Null when the club league is catalogued; otherwise the club inherits the reference
+   * league windows (`clubLeague` null = FFBB code yields no league). Decided by the SERVER. */
+  leagueFallback: { clubLeague: string | null; referenceLeagueLabel: string } | null;
 }
 
 export const getCompetitions = (): Promise<Competition[]> => collectionAll<Competition>("competitions");

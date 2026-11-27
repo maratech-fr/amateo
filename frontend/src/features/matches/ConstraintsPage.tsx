@@ -32,6 +32,7 @@ import {
   useCreateMatchConstraint,
   useDeleteClubLeagueWindow,
   useDeleteMatchConstraint,
+  useLeagueWindows,
   useMatchConstraintCoherence,
   useMatchConstraints,
   usePriorityTiers,
@@ -134,6 +135,9 @@ const GENDER_LABEL = new Map(GENDERS.map((g) => [g.value, g.label]));
  */
 function LeagueSection() {
   const windows = useClubLeagueWindows();
+  // Le repli de ligue est décidé par le SERVEUR (`leagueFallback`) : l'écran l'affiche, il ne le
+  // redérive pas. Lecture annexe : son échec ne masque pas la copie club.
+  const leagueFallback = useLeagueWindows().data?.leagueFallback ?? null;
 
   if (readFailed(windows)) {
     return <LoadErrorHint onRetry={() => void windows.refetch()} />;
@@ -146,6 +150,10 @@ function LeagueSection() {
 
   return (
     <div className="flex flex-col gap-3">
+      {null !== leagueFallback ? (
+        <NoticeBanner tone="accent" role="status" message={MATCHES_TEXTS.leagueFallbackNotice(leagueFallback.referenceLeagueLabel)} />
+      ) : null}
+
       <p className="text-sm text-muted-foreground">
         Les fenêtres de coup d'envoi imposées par la ligue, copiées pour votre club — vous pouvez les corriger, en ajouter ou en retirer. Le
         placement des matchs et le radar suivent cette copie.

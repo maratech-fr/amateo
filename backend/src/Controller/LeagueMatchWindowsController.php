@@ -8,6 +8,7 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Entity\ClubLeagueWindow;
+use App\Entity\LeagueMatchWindow;
 use App\Entity\LeagueWindowInterface;
 use App\Entity\SportCategory;
 use App\Entity\Team;
@@ -90,6 +91,18 @@ final class LeagueMatchWindowsController extends AbstractController
             $this->envelopeResolver->resolve($teams, $categories, $windows),
         );
 
-        return $this->json(['league' => $effectiveLeague, 'items' => $items, 'resolvedTeamWindows' => $resolvedTeamWindows]);
+        // Le repli est dit : jugé contre le catalogue
+        // `league_match_window` (même clé interne que le club), jamais contre
+        // l'annuaire fédéral `ffbb_league`. Code FFBB illisible → repli sans clé.
+        $leagueFallback = $effectiveLeague === $league
+            ? null
+            : ['clubLeague' => $league, 'referenceLeagueLabel' => LeagueMatchWindow::FEDERATION_DEFAULT_LEAGUE_LABEL];
+
+        return $this->json([
+            'league' => $effectiveLeague,
+            'items' => $items,
+            'resolvedTeamWindows' => $resolvedTeamWindows,
+            'leagueFallback' => $leagueFallback,
+        ]);
     }
 }
