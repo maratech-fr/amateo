@@ -290,6 +290,30 @@ final class FbiFixtureImporterTest extends KernelTestCase
     }
 
     /**
+     * Une division connue d'un seul engagement, re-déposée avec deux étiquettes du club (une seconde équipe y entre) :
+     * la seule compétition de ce nom ne prend que les lignes de son libellé — celles de l'autre étiquette sont « à faire
+     * correspondre », jamais rangées sous l'équipe déjà engagée (le cas (1) de la résolution exige une seule étiquette
+     * dans le fichier).
+     */
+    public function testATwoLabelRedepositOfASingleEngagementDivisionLeavesTheNewLabelToBeMatched(): void
+    {
+        $this->importMapped([['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', '']], [
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
+        ]);
+        $mine = $this->competitionOfTeamNamed($this->team->getId(), 'D2');
+
+        $result = $this->importMapped([
+            ['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
+            ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
+        ], []);
+
+        self::assertSame(0, $result['created'], 'le match connu ne se recrée pas, celui de la nouvelle étiquette attend sa correspondance');
+        self::assertSame(['D2'], array_column($result['unmappedDivisions'], 'name'), 'la nouvelle étiquette est « à faire correspondre »');
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE external_ref = ?', ['A2']), 'aucun match de « - 2 » sous l\'équipe de « - 1 »');
+        self::assertSame($mine, $this->fixtureCompetitionAndTeam('A1'), 'le match de « - 1 » reste à son engagement');
+    }
+
+    /**
      * Deux engagements de même nom sans libellé stocké (données anciennes) : un fichier à une seule étiquette ne sait
      * pas dire laquelle des deux équipes il porte — la division revient « à faire correspondre », rien n'est créé.
      */
