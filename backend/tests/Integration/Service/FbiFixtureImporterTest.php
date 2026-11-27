@@ -314,6 +314,26 @@ final class FbiFixtureImporterTest extends KernelTestCase
     }
 
     /**
+     * La correspondance choisie par le dépôt passe avant la résolution par les engagements : une division que les
+     * engagements rangeraient sous une équipe (son libellé y est stocké) va à l'équipe que le gestionnaire désigne dans
+     * ce dépôt, dans la compétition de cette équipe.
+     */
+    public function testTheDepositsOwnMappingWinsOverTheEngagementResolution(): void
+    {
+        $teamTwo = $this->createTeam('U13-2');
+        $this->importMapped([['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', '']], [
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
+        ]);
+
+        $result = $this->importMapped([['D2', 'A9', 'BC TESTVILLE - 1', 'AS Z', '10/10/2026', '', '']], [
+            ['division' => 'D2', 'fbiTeamLabel' => null, 'teamId' => $teamTwo->getId()],
+        ]);
+
+        self::assertSame(1, $result['created']);
+        self::assertSame($this->competitionOfTeamNamed($teamTwo->getId(), 'D2'), $this->fixtureCompetitionAndTeam('A9'), 'le match va à l\'équipe que le dépôt désigne, jamais à celle que le libellé stocké désignerait');
+    }
+
+    /**
      * Deux engagements de même nom sans libellé stocké (données anciennes) : un fichier à une seule étiquette ne sait
      * pas dire laquelle des deux équipes il porte — la division revient « à faire correspondre », rien n'est créé.
      */
