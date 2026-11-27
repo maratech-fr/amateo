@@ -17,7 +17,6 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use App\State\Processor\ScheduleStateProcessor;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -29,36 +28,24 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * NR — P2-9bis, axe *planning lifecycle* : LE SOCLE EN VIGUEUR EST SOUVERAIN.
+ * NR bloquant — axe *planning lifecycle* (lot 5, PR 5, ligne 31 du plan) : LE SOCLE EN VIGUEUR RESTE EN VIGUEUR PENDANT
+ * QU'ON LE RETRAVAILLE.
  *
- * Invariant : tant que le plan SEASON POINTE une version choisie (« le planning de la
- * saison est en vigueur »), aucune AUTRE version de saison n'est créée ni relancée — le
- * seul geste qui rouvre l'espace de travail est la RÉOUVERTURE (dépointer).
+ * Avec un planning de saison validé, générer, régénérer, charger une autre version et préparer une nouvelle version
+ * sont permis : aucun ne touche au pointeur — la version en vigueur reste celle que lisent matchs, radar et plans de
+ * période jusqu'à la prochaine validation. « Rouvrir » un plan de saison est refusé (409) : il n'y a plus de geste qui
+ * vide le pointeur. (Un plan de période, lui, se rouvre comme avant : `un-planning-de-periode-commence-se-valide-seul.feature`.)
  *
- * Cet invariant est aujourd'hui tenu par une PROPRIÉTÉ ÉMERGENTE : valider une version
- * SUPPRIME ses sœurs ({@see ValidateScheduleController}) et P2-7 a fermé le POST direct
- * d'une seconde version ({@see ScheduleStateProcessor}). Résultat :
- * quand un plan pointe, il n'existe qu'UNE version de saison — donc aucun défaut
- * atteignable. Ce test épingle cette propriété ET pose la défense en profondeur : si une
- * future modification de la validation cesse de supprimer les sœurs, les trois portes de
- * (re)génération se rouvriraient en silence. Elles portent désormais une garde explicite
- * ({@see SocleGuard::assertSeasonPlanNotChosen}), sous le verrou de plan-scope
- * de la saison (une garde qui lit hors verrou n'est qu'un TOCTOU) :
- *   - {@see GenerateScheduleController}
- *   - {@see RegenerateController}
- *   - la route `POST /api/schedules/{id}/load` (« Charger », lot conception 5 PR 3)
+ * Avant le lot 5, cinq gardes `SocleGuard::assertSeasonPlanNotChosen` refusaient ces gestes ({@see GenerateScheduleController},
+ * {@see RegenerateController}, « Charger », {@see ScheduleStateProcessor}, l'import du parc) ; ce test prouve qu'elles
+ * sont retirées sans que la version en vigueur bouge. L'import du parc a son étape Behat :
+ * `l-import-du-parc-en-un-geste.feature`.
  *
- * Les états sont construits À LA MAIN (une version pointée + une sœur COMPLETED seedée par
- * la couche entité) pour que ce soit BIEN la nouvelle assertion qui morde, jamais une garde
- * antérieure (statut, isSeasonSchedule, isChosen, version en vol) — d'où l'assertion sur le
- * message « est en vigueur ». La sœur reçoit la copie du froid de son plan pour que
- * « Charger » franchisse la lecture de la copie et atteigne l'assertion.
+ * Les états sont construits À LA MAIN (une version pointée qui porte sa copie + une sœur COMPLETED) pour que la
+ * réponse dise le geste, jamais une garde antérieure (statut, version en vol). Valider une version supprime encore ses
+ * sœurs ({@see ValidateScheduleController}) : premier cas, gardé.
  *
- * PREUVE DE CHUTE (obligatoire, faite le 2026-07-31) : les trois assertions
- * `assertSeasonPlanNotChosen` ont été COMMENTÉES dans les trois contrôleurs, puis ce test
- * relancé — les trois cas de porte rougissent (la sœur est acceptée au lieu du 409 attendu).
- * Assertions remises, tous les cas repassent au vert. Un test qui ne peut pas échouer ne
- * prouve rien.
+ * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -102,37 +89,71 @@ final class SeasonPlanInForceTest extends WebTestCase
         self::assertSame(1, $this->countSeasonVersions($seasonPlanId), 'après validation : une seule version de saison subsiste');
     }
 
-    /** Porte generate — socle pointé + sœur COMPLETED : générer la sœur → 409 « est en vigueur ». */
-    public function testGeneratingASiblingWhileTheSocleIsInForceIsRefused(): void
+    /** Générer une version de travail, socle en vigueur : accepté (202), le planning en vigueur reste le même. */
+    public function testGeneratingASiblingWhileTheSocleIsInForceIsAccepted(): void
     {
-        $sibling = $this->seedChosenSocleAndSibling();
+        $inForce = $this->seedInForceSocle();
+        $sibling = $this->seedSeasonVersion(ScheduleStatus::DRAFT);
 
         $this->request('POST', '/api/schedules/' . $sibling->getId() . '/generate');
 
-        self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(202, (string) $this->client->getResponse()->getContent());
+        $this->assertStillInForce($inForce);
     }
 
-    /** Porte regenerate — socle pointé + sœur COMPLETED : régénérer la sœur → 409 « est en vigueur ». */
-    public function testRegeneratingASiblingWhileTheSocleIsInForceIsRefused(): void
+    /** Régénérer, socle en vigueur : accepté (202), le planning en vigueur reste le même. */
+    public function testRegeneratingWhileTheSocleIsInForceIsAccepted(): void
     {
-        $sibling = $this->seedChosenSocleAndSibling();
+        [$inForce, $sibling] = $this->seedChosenSocleAndSibling();
 
         $this->request('POST', '/api/schedules/' . $sibling->getId() . '/regenerate');
 
-        self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(202, (string) $this->client->getResponse()->getContent());
+        $this->assertStillInForce($inForce);
     }
 
-    /** Porte « Charger » — socle pointé + sœur COMPLETED (avec copie) : charger la sœur → 409 « est en vigueur » (jusqu'à la PR 5). */
-    public function testLoadingASiblingWhileTheSocleIsInForceIsRefused(): void
+    /** « Charger » une autre version, socle en vigueur : accepté (200), elle devient la chargée, l'en vigueur ne bouge pas. */
+    public function testLoadingASiblingWhileTheSocleIsInForceIsAccepted(): void
     {
-        $sibling = $this->seedChosenSocleAndSibling();
+        [$inForce, $sibling] = $this->seedChosenSocleAndSibling();
 
         $this->request('POST', '/api/schedules/' . $sibling->getId() . '/load');
 
-        self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        $this->em->clear();
+        self::assertSame($sibling->getId(), self::getContainer()->get(SchedulePlanProvisioner::class)->lockSourceScheduleIdOfPlan($this->seasonPlanId()), 'la version chargée (★) est la sœur');
+        $this->assertStillInForce($inForce);
+    }
+
+    /** Préparer une nouvelle version de saison (POST), socle en vigueur : acceptée (201), l'en vigueur ne bouge pas. */
+    public function testPostingASeasonVersionWhileTheSocleIsInForceIsAccepted(): void
+    {
+        $inForce = $this->seedInForceSocle();
+
+        $this->client->request('POST', '/api/schedules', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+            'HTTP_ACCEPT' => 'application/ld+json',
+        ], json_encode(['status' => 'DRAFT'], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        $this->assertStillInForce($inForce);
+    }
+
+    /** « Rouvrir » un plan de saison est refusé (409) : le pointeur ne se vide plus. */
+    public function testReopeningTheSeasonPlanIsRefused(): void
+    {
+        $inForce = $this->seedInForceSocle();
+
+        $this->client->request('POST', '/api/schedules/' . $inForce->getId() . '/reopen', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(409, (string) $this->client->getResponse()->getContent());
+        $this->assertStillInForce($inForce);
     }
 
     /** Non-régression : rien de pointé (espace de travail) → generate passe (202). */
@@ -215,14 +236,37 @@ final class SeasonPlanInForceTest extends WebTestCase
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
     }
 
-    /** Socle pointé (V1) + une sœur COMPLETED non pointée (avec photo) — l'état des cas « porte ». */
-    private function seedChosenSocleAndSibling(): Schedule
+    /**
+     * Socle pointé et chargé (V1, avec sa copie) + une sœur COMPLETED non pointée (avec sa copie) — l'état des cas « porte ».
+     *
+     * @return array{0: Schedule, 1: Schedule} [en vigueur, sœur]
+     */
+    private function seedChosenSocleAndSibling(): array
     {
-        $this->settleSeasonPlan($this->season); // le plan SEASON pointe une version = en vigueur
+        $inForce = $this->seedInForceSocle();
         $sibling = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->seedSnapshot($sibling); // pour que « Charger » franchisse la lecture de la copie
 
-        return $sibling;
+        return [$inForce, $sibling];
+    }
+
+    /** Le plan SEASON pointe une version terminée qui porte sa copie, et la charge : « le planning de saison est validé ». */
+    private function seedInForceSocle(): Schedule
+    {
+        $inForce = $this->settleSeasonPlan($this->season);
+        $this->seedSnapshot($inForce);
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($this->seasonPlanId(), $inForce->getId());
+        $this->em->flush();
+
+        return $inForce;
+    }
+
+    /** Le planning de saison en vigueur est toujours celui d'avant le geste. */
+    private function assertStillInForce(Schedule $inForce): void
+    {
+        $this->em->clear();
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame($inForce->getId(), $this->chosenPlanVersion($this->season), 'le planning de saison en vigueur n\'a pas bougé');
     }
 
     /** Une version de saison seedée par la couche entité, liée au plan SEASON puis numérotée. */

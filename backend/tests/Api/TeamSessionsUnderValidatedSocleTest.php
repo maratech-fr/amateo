@@ -22,10 +22,10 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * Promesse (lot 4, PR 3a, ligne 18 du plan) : sous un planning de saison en vigueur, le serveur garde ce qu'il gardait
- * quand les séances vivaient sur l'équipe. Le plafond de séances par jour d'une équipe est refusé, même message ; le
- * nombre de séances ne l'est pas (comportement actuel, seul l'écran le grise). Les deux se lisent et s'écrivent sur la
- * ligne du socle, et `/api/teams` les rend inchangés.
+ * Promesse (lot 5, PR 5, ligne 35 du plan ; avant : lot 4, PR 3a, ligne 18) : sous un planning de saison en vigueur, le
+ * plafond de séances par jour d'une équipe se modifie, comme le nombre de séances — le planning validé reste en
+ * vigueur, la modification attend la validation. Les deux s'écrivent sur la ligne de travail du socle, et
+ * `/api/teams` les rend.
  *
  * Jumeau, cité : le geste de bout en bout sous socle validé, `backend/features/le-socle-commande-les-plans.feature`.
  */
@@ -46,13 +46,13 @@ final class TeamSessionsUnderValidatedSocleTest extends WebTestCase
 
     private string $teamId;
 
-    public function testTheDailyCapIsRefusedUnderAValidatedSocleWithTheSameMessage(): void
+    public function testTheDailyCapIsWrittenUnderAValidatedSocle(): void
     {
         $this->put(['maxSessionsPerDay' => 2]);
 
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Rouvrez le planning de saison pour modifier le nombre de séances.', (string) $this->client->getResponse()->getContent());
-        self::assertSame(1, $this->lineRow(SeasonPlanOf::id(self::getContainer(), $this->season->getId()), $this->teamId)['maxSessionsPerDay'] ?? null, 'la ligne du socle garde son plafond');
+        self::assertResponseIsSuccessful((string) $this->client->getResponse()->getContent());
+        self::assertSame(2, $this->lineRow(SeasonPlanOf::id(self::getContainer(), $this->season->getId()), $this->teamId)['maxSessionsPerDay'] ?? null, 'la ligne de travail du socle porte le plafond écrit');
+        self::assertNotNull($this->chosenPlanVersion($this->season), 'le planning de saison reste en vigueur');
     }
 
     public function testTheSessionCountIsNotRefusedByTheServerAndLandsOnTheSocleLine(): void
