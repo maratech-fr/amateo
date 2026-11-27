@@ -174,6 +174,29 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
+     * Lot 7, PR 6b : le suivi fédéral d'un match ne traverse jamais deux clubs. La base refuse une ligne de suivi du
+     * club A qui désigne le match du club B (clé composée `(fixture_id, club_id)`), même sous la RLS du club qui écrit ;
+     * la ligne de suivi du club B est invisible sous le club A (RLS). Témoins : le suivi du match du club passe, et le
+     * club B voit le sien.
+     */
+    public function testTheFederalTrackingOfAMatchNeverCrossesClubs(): void
+    {
+        [$clubA] = $this->createClubUser('fta');
+        [$clubB] = $this->createClubUser('ftb');
+        $fixtureA = $this->createFixture($clubA, 'Adversaire A');
+        $fixtureB = $this->createFixture($clubB, 'Adversaire B');
+
+        self::assertSame('23503', $this->sqlStateOf(fn (): int|string => $this->insertTracking($clubA, $fixtureB)), 'un suivi du club A ne désigne jamais le match du club B');
+        self::assertNull($this->sqlStateOf(fn (): int|string => $this->insertTracking($clubA, $fixtureA)), 'témoin : le suivi du match du club passe');
+
+        $this->insertTracking($clubB, $fixtureB);
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$fixtureB->getId()]), 'le club A ne lit pas le suivi du club B');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$fixtureB->getId()]), 'témoin : le club B lit le sien');
+    }
+
+    /**
      * Abus (lot 7, PR 3b) : `POST /api/competitions` avec l'équipe d'un autre club est refusé 422 (« Équipe inconnue
      * pour ce club et cette saison. »), rien n'est écrit dans aucun des deux clubs ; témoin : la même demande avec une
      * équipe du club crée la compétition, l'équipe engagée.
@@ -1713,6 +1736,18 @@ final class MatchTenantIsolationTest extends WebTestCase
         return $this->em->getConnection()->executeStatement(
             'INSERT INTO engagement (id, version, created_at, updated_at, club_id, season_id, competition_id, team_id) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?)',
             [$club->getId(), $season->getId(), $competitionId, $teamId],
+        );
+    }
+
+    /** Une ligne de suivi fédéral « à saisir » écrite au nom du club, sous sa RLS, pour le match désigné. */
+    private function insertTracking(Club $club, Fixture $fixture): int|string
+    {
+        $this->scopeGucToClub($club->getId());
+
+        return $this->em->getConnection()->executeStatement(
+            'INSERT INTO fixture_federal_tracking (fixture_id, club_id, season_id, version, created_at, updated_at, state, pending_deviations, fbi_echo, kept_venue_label)'
+            . ' VALUES (?, ?, ?, 1, now(), now(), \'TO_ENTER\', \'[]\', NULL, NULL)',
+            [$fixture->getId(), $club->getId(), $fixture->getSeasonId()],
         );
     }
 
