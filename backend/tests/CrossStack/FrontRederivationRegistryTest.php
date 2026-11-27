@@ -109,8 +109,8 @@ final class FrontRederivationRegistryTest extends TestCase
             'parityTest' => 'MatchAccessMirrorParityTest.php',
         ],
         'features/matches/lib/envelope.ts' => [
-            'decides' => 'coup d\'envoi dans une fenêtre d\'enveloppe ligue de ce jour (intervalle fermé)',
-            'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideLeagueWindow',
+            'decides' => 'coup d\'envoi dans une fenêtre d\'enveloppe ligue de ce jour (intervalle fermé) ; règle d\'une coupe, sans fenêtre de ligue : coup d\'envoi entre 08:00 et 21:00 (intervalle fermé), tout jour, férié compris',
+            'backendTruth' => 'App\\Service\\MatchConflictDetector::kickoffInsideLeagueWindow + App\\Matches\\CupKickoffRule::accepts (bornes KICKOFF_MIN / KICKOFF_MAX)',
             'parityTest' => 'LeagueEnvelopeMirrorParityTest.php',
         ],
         'features/matches/lib/awayKickoff.ts' => [
