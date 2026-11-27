@@ -21,6 +21,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FixtureVenueLossMarker;
@@ -89,8 +90,9 @@ final class EngagedTeamGuardTest extends WebTestCase
         return [
             'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
             'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
-            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::SUBMITTED, $now); }],
-            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::VALIDATED, $now); }],
+            // Lot 7, PR 6b : « saisi » et « validé » s'écrivent par la porte du suivi fédéral, plus sur la ligne du match.
+            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { static::getContainer()->get(FederalFollowUp::class)->markSubmitted($fixture, $now); }],
+            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { static::getContainer()->get(FederalFollowUp::class)->markValidated($fixture, $now); }],
         ];
     }
 
@@ -298,6 +300,9 @@ final class EngagedTeamGuardTest extends WebTestCase
         $fixture = $this->fixture($team, FixtureStatus::UNPLACED, FixtureHomeAway::AWAY);
         $championshipId = (string) $fixture->getCompetitionId();
         $this->scopeGucToClub($this->club->getId());
+        // Lot 7, PR 6b : un match connu de la fédération est d'une compétition FBI ; le refus se rejoue après la
+        // conversion, l'état « saisi » ou « validé » lu dans le suivi fédéral et non plus sur la ligne du match.
+        self::assertSame(1, $this->em->getConnection()->executeStatement('UPDATE competition SET source = \'FBI\' WHERE id = ?', [$championshipId]));
         $known($fixture);
         $this->em->flush();
         $friendlyId = $this->postCompetition(['name' => 'AMICAL PNM', 'competitionType' => 'FRIENDLY', 'teamId' => $team->getId()]);
@@ -888,7 +893,7 @@ final class EngagedTeamGuardTest extends WebTestCase
             'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
             'homeAway' => $fixture->getHomeAway()->value,
             'opponentLabel' => $fixture->getOpponentLabel(),
-            'status' => $fixture->getStatus()->value,
+            'status' => static::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value,
         ];
     }
 
