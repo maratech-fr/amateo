@@ -91,8 +91,8 @@ final class EngagedTeamGuardTest extends WebTestCase
             'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
             'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
             // Lot 7, PR 6b : « saisi » et « validé » s'écrivent par la porte du suivi fédéral, plus sur la ligne du match.
-            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { static::getContainer()->get(FederalFollowUp::class)->markSubmitted($fixture, $now); }],
-            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { static::getContainer()->get(FederalFollowUp::class)->markValidated($fixture, $now); }],
+            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { self::getContainer()->get(FederalFollowUp::class)->markSubmitted($fixture, $now); }],
+            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { self::getContainer()->get(FederalFollowUp::class)->markValidated($fixture, $now); }],
         ];
     }
 
