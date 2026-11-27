@@ -156,3 +156,22 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »
     Quand je dépose un fichier FBI dont l'adversaire porte un suffixe numéroté
     Alors le libellé de l'adversaire importé est sans suffixe
+
+  Plan du scénario: Le club choisit le dimanche d'une coupe ; le fichier FBI garde la main sur la date
+    Une coupe tirée un samedi se joue le samedi ou le dimanche, au choix du club : le gestionnaire change
+    la date par « Modifier le match ». Tant que FBI porte le samedi, un re-dépôt remet la date du fichier
+    sur une coupe non placée ; placée, hors de la semaine du match, l'écart de date est à trancher et le
+    dimanche tient. C'est la règle de date de tout match, la coupe n'y fait pas exception.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi et le dimanche sur « GYM BEHAT »
+    Quand je dépose un fichier FBI d'une coupe avec un match à domicile le samedi au gymnase « GYM BEHAT » à 15h30
+    Alors la division de coupe a fait naître une coupe
+    Quand je passe la coupe au dimanche par « Modifier le match », <geste>
+    Et je re-dépose le même fichier de coupe
+    Alors la coupe <issue>
+
+    Exemples:
+      | geste                                        | issue                                                     |
+      | sans la placer                               | est revenue au samedi du fichier                          |
+      | et la place au gymnase « GYM BEHAT » à 15h30 | garde son dimanche, placée, et l'écart de date est à trancher |
