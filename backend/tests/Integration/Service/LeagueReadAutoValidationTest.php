@@ -447,11 +447,8 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, DateTimeImmutable $entryDeadline): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline($entryDeadline);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
-        return $competition;
+        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline($entryDeadline));
     }
 
     /** Un domicile de championnat ; avec gymnase, il porte une heure (16:00) et l'ancre MANUAL. */

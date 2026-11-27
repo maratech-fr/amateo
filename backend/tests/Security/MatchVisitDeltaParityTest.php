@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -779,9 +780,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
     private function competition(Club $club, Season $season, string $teamId, int $expected): string
     {
         $this->scopeGucToClub($club->getId());
-        $competition = $this->competitionFor($teamId, 'Championnat', CompetitionType::CHAMPIONSHIP);
-        self::getContainer()->get(CompetitionRegistry::class)->writePoule($competition, $teamId, null, null, null, $expected);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $competition = $this->competitionFor($teamId, 'Championnat', CompetitionType::CHAMPIONSHIP, static fn (Competition $c, CompetitionRegistry $registry) => $registry->writePoule($c, $teamId, null, null, null, $expected));
 
         return $competition->getId();
     }

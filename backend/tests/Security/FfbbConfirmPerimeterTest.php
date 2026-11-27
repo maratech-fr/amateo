@@ -161,13 +161,8 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, ?string $ffbbCompetitionId = null): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId($ffbbCompetitionId));
         self::assertSame($seasonId, $competition->getSeasonId());
-        if (null !== $ffbbCompetitionId) {
-            $competition->setFfbbCompetitionId($ffbbCompetitionId);
-        }
-        // competitionFor écrit par le gestionnaire d'entités du conteneur courant (le client redémarre le noyau).
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition;
     }

@@ -727,11 +727,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         // rencontre porte SA compétition (jetable) — dont l'échéance de saisie pilote
         // désormais la validation ligue. Un `competitionName` explicite permet le cas
         // « Amical X » typé CHAMPIONSHIP (jamais candidat, reconnu au libellé).
-        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
-        if (null !== $competitionDeadline) {
-            $competition->setEntryDeadline(new DateTimeImmutable($competitionDeadline));
-            self::getContainer()->get(EntityManagerInterface::class)->flush();
-        }
+        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

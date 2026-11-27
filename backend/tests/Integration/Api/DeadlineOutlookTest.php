@@ -141,11 +141,7 @@ final class DeadlineOutlookTest extends WebTestCase
 
     private function createMaturedCompetition(string $clubId, string $seasonId, string $teamId): Competition
     {
-        $competition = $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
-
-        return $competition;
+        return $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
     }
 
     private function homeFixture(string $clubId, string $seasonId, string $teamId, string $competitionId, string $date, ?string $venueId, ?string $kickoff): string

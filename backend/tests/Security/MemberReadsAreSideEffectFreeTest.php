@@ -325,9 +325,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         \assert($em instanceof EntityManagerInterface);
         self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
 
-        $competition = $this->competitionFor($this->ids['team'], 'Championnat MR', CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        $em->flush();
+        $competition = $this->competitionFor($this->ids['team'], 'Championnat MR', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
 
         $home = new Fixture;
         $home->setClubId($this->clubId);

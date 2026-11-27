@@ -465,11 +465,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      */
     private function seedHomeFixture(string $clubId, string $seasonId, string $teamId, string $date, string $kickoff, string $venueId, ?string $deadline): Fixture
     {
-        $competition = $this->competitionFor($teamId, 'D SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
-        if (null !== $deadline) {
-            $competition->setEntryDeadline(new DateTimeImmutable($deadline));
-            self::getContainer()->get(EntityManagerInterface::class)->flush();
-        }
+        $competition = $this->competitionFor($teamId, 'D SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $deadline ? null : new DateTimeImmutable($deadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

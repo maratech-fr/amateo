@@ -3159,13 +3159,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
     /** A competition of $this->team paired to a FFBB poule (refs + frozen data). */
     private function pairedCompetition(string $name, array $pouleClubs, int $expectedMatchdays, ?string $canonicalName = null): Competition
     {
-        $competition = $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
-        $competition->setFfbbCompetitionId('ffbb-' . md5($name));
-        $competition->setFfbbCompetitionName($canonicalName ?? $name);
-        self::getContainer()->get(CompetitionRegistry::class)->writePoule($competition, $this->team->getId(), 'poule-' . md5($name), 'Poule T', $pouleClubs, $expectedMatchdays);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $teamId = $this->team->getId();
 
-        return $competition;
+        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static function (Competition $c, CompetitionRegistry $registry) use ($name, $canonicalName, $teamId, $pouleClubs, $expectedMatchdays): void {
+            $c->setFfbbCompetitionId('ffbb-' . md5($name));
+            $c->setFfbbCompetitionName($canonicalName ?? $name);
+            $registry->writePoule($c, $teamId, 'poule-' . md5($name), 'Poule T', $pouleClubs, $expectedMatchdays);
+        });
     }
 
     /**

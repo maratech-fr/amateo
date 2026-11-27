@@ -204,9 +204,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertInstanceOf(Season::class, $season);
 
         $this->scopeGucToClub($clubA);
-        $existing = $this->competitionFor($team->getId(), FfbbHttpClientStub::CUP_ENGAGEMENT_NAME, CompetitionType::CHAMPIONSHIP);
-        self::getContainer()->get(CompetitionRegistry::class)->writePoule($existing, $team->getId(), null, null, null, 68);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $existing = $this->competitionFor($team->getId(), FfbbHttpClientStub::CUP_ENGAGEMENT_NAME, CompetitionType::CHAMPIONSHIP, static fn (Competition $c, CompetitionRegistry $registry) => $registry->writePoule($c, $team->getId(), null, null, null, 68));
         $existingId = $existing->getId();
 
         $this->confirm($tokenA, FfbbHttpClientStub::COMPETITION_ID_CUP, $team->getId());
@@ -499,13 +497,8 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, ?string $ffbbCompetitionId = null): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP);
-        if (null !== $ffbbCompetitionId) {
-            $competition->setFfbbCompetitionId($ffbbCompetitionId);
-            self::getContainer()->get(EntityManagerInterface::class)->flush();
-        }
 
-        return $competition;
+        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId($ffbbCompetitionId));
     }
 
     /** Point the club at the stub's FFBB code (the only one it answers). */

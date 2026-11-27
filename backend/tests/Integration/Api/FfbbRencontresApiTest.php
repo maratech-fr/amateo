@@ -321,9 +321,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $season = $this->seasonOf($clubId);
 
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($team->getId(), FfbbHttpClientStub::COUPE_NAME, CompetitionType::CUP);
-        $competition->setFfbbCompetitionId(FfbbHttpClientStub::COUPE_FFBB_ID);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $competition = $this->competitionFor($team->getId(), FfbbHttpClientStub::COUPE_NAME, CompetitionType::CUP, static fn ($c) => $c->setFfbbCompetitionId(FfbbHttpClientStub::COUPE_FFBB_ID));
         $competitionId = $competition->getId();
 
         self::assertSame(1, $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]])['created']);
@@ -905,9 +903,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     private function pairTeamToStubCompetition(string $clubId, string $seasonId, string $teamId): void
     {
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($teamId, 'Pré test masculine', CompetitionType::CHAMPIONSHIP);
-        $competition->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID);
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $this->competitionFor($teamId, 'Pré test masculine', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID));
     }
 
     private function replaceTeamFixtures(string $clubId, string $teamId): void

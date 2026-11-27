@@ -19,10 +19,18 @@ use PHPUnit\Framework\Assert;
  *
  * Club et saison : ceux de l'équipe si elle existe ; sinon (décor à identifiant d'équipe forgé, sans ligne
  * `team`), le club posé par l'appelant (`app.club_id`, `scopeGucToClub`) et sa seule saison. Noyau démarré.
+ *
+ * ⚠ Gestionnaire d'entités : la compétition rendue est gérée par celui du conteneur COURANT, qui n'est plus le
+ * `$this->em` du test dès que le client a redémarré le noyau. Ce qui la façonne (échéance, références fédérales,
+ * poule) passe donc par `$shape`, appliqué avant le flush d'ici : un `$this->em->flush()` après coup n'écrirait
+ * rien, en silence.
  */
 trait CreatesCompetitionsTrait
 {
-    private function competitionFor(string $teamId, string $name, CompetitionType $type = CompetitionType::CHAMPIONSHIP): Competition
+    /**
+     * @param (callable(Competition, CompetitionRegistry): void)|null $shape façonne la compétition (et l'engagement, par la porte) avant le flush
+     */
+    private function competitionFor(string $teamId, string $name, CompetitionType $type = CompetitionType::CHAMPIONSHIP, ?callable $shape = null): Competition
     {
         $em = static::getContainer()->get(EntityManagerInterface::class);
         [$clubId, $seasonId] = $this->clubAndSeasonOfTeam($em, $teamId);
@@ -30,6 +38,9 @@ trait CreatesCompetitionsTrait
         $registry = static::getContainer()->get(CompetitionRegistry::class);
         $competition = $registry->create($clubId, $seasonId, $name, $type);
         $registry->engage($competition, $teamId);
+        if (null !== $shape) {
+            $shape($competition, $registry);
+        }
         $em->flush();
 
         return $competition;

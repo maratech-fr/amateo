@@ -317,9 +317,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase gel');
         $this->em->persist($venue);
-        $competition = $this->competitionFor($team->getId(), 'Championnat gel', CompetitionType::CHAMPIONSHIP);
-        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        self::getContainer()->get(EntityManagerInterface::class)->flush();
+        $competition = $this->competitionFor($team->getId(), 'Championnat gel', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
 
         $fixture = (new Fixture)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
             ->setCompetitionId($competition->getId())->setMatchDate(new DateTimeImmutable('2099-03-14'))->setHomeAway(FixtureHomeAway::HOME)
