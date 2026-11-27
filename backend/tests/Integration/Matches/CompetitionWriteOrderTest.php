@@ -81,8 +81,9 @@ final class CompetitionWriteOrderTest extends WebTestCase
     }
 
     /**
-     * Supprimer une équipe sans match emporte son engagement, puis sa compétition, vidée ; la compétition d'une autre
-     * équipe, qui porte un match, reste avec son engagement.
+     * Supprimer une équipe sans match emporte son engagement, puis sa compétition, vidée ; les compétitions d'une autre
+     * équipe restent avec leur engagement, celle qui porte un match comme celle qui n'en porte encore aucun (seule une
+     * compétition sans engagement ni match est vidée).
      */
     public function testDeletingATeamWithoutMatchTakesItsEngagementAndItsEmptiedCompetition(): void
     {
@@ -92,6 +93,7 @@ final class CompetitionWriteOrderTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $emptied = $this->competitionFor($leaving->getId(), 'Championnat U11');
         $kept = $this->competitionFor($staying->getId(), 'Championnat U13');
+        $keptWithoutMatch = $this->competitionFor($staying->getId(), 'Coupe U13');
         $this->persistAway($staying, $kept->getId());
 
         $this->client->request('DELETE', '/api/teams/' . $leaving->getId(), [], [], $this->auth($token));
@@ -101,6 +103,7 @@ final class CompetitionWriteOrderTest extends WebTestCase
         self::assertSame(0, (int) $connection->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$leaving->getId()]), 'son engagement part');
         self::assertSame(0, (int) $connection->fetchOne('SELECT COUNT(*) FROM competition WHERE id = ?', [$emptied->getId()]), 'sa compétition, sans engagement ni match, part');
         self::assertSame([$staying->getId()], $connection->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$kept->getId()]), 'la compétition de l\'autre équipe reste, avec son engagement');
+        self::assertSame([$staying->getId()], $connection->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$keptWithoutMatch->getId()]), 'la compétition de l\'autre équipe sans match encore reste aussi : elle a un engagement');
     }
 
     protected function setUp(): void
