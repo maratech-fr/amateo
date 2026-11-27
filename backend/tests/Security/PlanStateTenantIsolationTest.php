@@ -4,7 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Schedule;
+use App\Entity\Team;
+use App\Entity\TeamCoach;
+use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
+use App\Plans\InForce;
+use App\Service\SchedulePlanProvisioner;
 use App\Tests\LoadsVersionDecorTrait;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -70,10 +76,69 @@ final class PlanStateTenantIsolationTest extends WebTestCase
         self::assertSame($theirState, $this->clubRows($theirTeam->getId(), $theirRule->getId(), $theirPlan), 'rien n\'est écrit chez B : son équipe, sa règle, sa ligne d\'équipe sont intactes');
     }
 
+    /**
+     * Promesse (lot 5, PR 5, ligne 37 du plan) : la porte de l'en vigueur ne rend jamais l'état d'un autre club. Le
+     * club A a validé son socle ; la copie de sa version en vigueur est réécrite en SQL pour citer l'équipe et le lien
+     * de coach du club B. Sous le contexte de A, la porte ne rend aucune équipe ni aucun lien de B, et la saison de B ne
+     * lui rend ni version en vigueur ni ligne. Témoin : la porte de A lit bien sa copie (le rang d'une équipe de A,
+     * changé depuis sans valider, revient à celui de la copie), sans quoi « rien de B » serait vrai d'une porte qui
+     * n'ouvre pas la copie.
+     */
+    public function testTheDoorNeverServesAnotherClubsState(): void
+    {
+        // Le club B, sa saison validée, son équipe et son coach principal.
+        $this->seedLoadClub('porte-b');
+        $clubB = $this->clubId;
+        $seasonB = $this->seasonId;
+        $theirTeam = $this->loadTeam('SM1 de B', tier: 2);
+        $theirCoach = $this->newCoach($clubB, $seasonB, 'Bea', 'Autreclub');
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($clubB)->setSeasonId($seasonB)->setTeamId($theirTeam->getId())->setCoachId($theirCoach->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+        $theirLink = (string) $this->loadScalar('SELECT id FROM team_coach WHERE team_id = ?', [$theirTeam->getId()]);
+        $this->makeInForce($this->loadVersionOf($this->soclePlanId));
+
+        // Le club A, sa saison validée (copie prise à la validation), puis son équipe changée de rang sans valider.
+        $this->seedLoadClub('porte-a');
+        $ours = $this->loadTeam('SM1 de A', tier: 1);
+        $inForce = $this->loadVersionOf($this->soclePlanId);
+        $this->makeInForce($inForce);
+        $this->em->getConnection()->executeStatement('UPDATE team SET priority_tier_id = 4 WHERE id = ?', [$ours->getId()]);
+        $copy = json_decode((string) $this->loadScalar('SELECT data::text FROM schedule_state WHERE schedule_id = ?', [$inForce->getId()]), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($copy);
+        $copy['Team'][$theirTeam->getId()] = ['forcedVenueId' => null, 'gender' => null, 'level' => TeamLevel::DEPARTEMENTAL->value, 'priorityTierId' => 2, 'sportCategoryId' => $this->categoryIds['Seniors']];
+        $copy['TeamCoach'][$theirLink] = ['coachId' => $theirCoach->getId(), 'role' => TeamCoachRole::MAIN->value, 'teamId' => $theirTeam->getId()];
+        $this->em->getConnection()->executeStatement('UPDATE schedule_state SET data = ? WHERE schedule_id = ?', [json_encode($copy, \JSON_THROW_ON_ERROR), $inForce->getId()]);
+
+        $this->scopeGucToClub($this->clubId);
+        $this->em->clear();
+        $door = self::getContainer()->get(InForce::class);
+        $teams = [];
+        foreach ($door->rows($this->seasonId, Team::class) as $team) {
+            $teams[$team->getId()] = $team->getPriorityTierId();
+        }
+        $links = array_map(static fn (TeamCoach $link): string => $link->getId() . '|' . $link->getTeamId(), $door->rows($this->seasonId, TeamCoach::class));
+
+        self::assertSame(1, $teams[$ours->getId()] ?? null, 'témoin : la porte de A lit sa copie (rang 1 validé, pas le 4 posé depuis)');
+        self::assertArrayNotHasKey($theirTeam->getId(), $teams, 'la porte de A ne rend jamais l\'équipe de B, même citée par sa copie');
+        self::assertSame([], array_values(array_filter($links, static fn (string $link): bool => str_contains($link, $theirTeam->getId()) || str_starts_with($link, $theirLink))), 'la porte de A ne rend jamais le lien de coach de B');
+        self::assertNull($door->socleVersionId($seasonB), 'sous le contexte de A, la saison de B n\'a pas de version en vigueur');
+        self::assertSame([], $door->rows($seasonB, Team::class), 'sous le contexte de A, la saison de B ne rend aucune équipe');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** La validation : le plan de saison pointe la version (en vigueur) et la charge. */
+    private function makeInForce(Schedule $version): void
+    {
+        $this->scopeGucToClub($this->clubId);
+        self::assertTrue(self::getContainer()->get(SchedulePlanProvisioner::class)->choose($version), 'la version doit pouvoir être pointée');
+        $this->makeLoaded($version);
+        $this->em->flush();
     }
 
     /** L'équipe, la règle et la ligne d'équipe d'un club, lues sous son contexte, en texte. */

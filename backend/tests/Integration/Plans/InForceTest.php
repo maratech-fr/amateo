@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Plans;
 
+use App\Entity\Coach;
 use App\Entity\Constraint;
+use App\Entity\Person;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\ScheduleStatus;
 use App\Plans\InForce;
+use App\Plans\PlanStates;
 use App\Tests\EngineRequestDecorTrait;
+use App\Tests\EngineRequestSocleNetDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
 use App\Tests\Integration\EngineRequestReferenceTest;
 use PHPUnit\Framework\Attributes\Group;
@@ -34,6 +39,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class InForceTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
+    use EngineRequestSocleNetDecorTrait;
     use EngineRequestTravelDecorTrait;
 
     public function testTheDoorReadsOnlyTheRowsOfTheAskedSeason(): void
@@ -59,6 +65,80 @@ final class InForceTest extends KernelTestCase
                 self::assertSame([$season], $seasons, \sprintf('%s : toutes les lignes rendues sont de la saison %s', $family, $season));
             }
         }
+    }
+
+    /**
+     * Promesse (lot 5, PR 5, ligne 28 du plan) : après la validation, la porte rend la structure en vigueur — les
+     * champs froids d'une équipe pris dans la copie (son rang, changé depuis, revient à celui de la validation), le
+     * libre lu en direct (son nom, changé depuis, est le nouveau) — et une équipe créée après la validation, qui
+     * porte un match, est lue en direct, en entier, son coach principal compris. Les objets rendus ne s'écrivent
+     * jamais : un flush après la lecture laisse l'état de travail tel quel.
+     *
+     * Jumeau, cité : la référence 21 de {@see EngineRequestReferenceTest} (la demande de placement qui porte cette
+     * équipe) ; ici, la règle de lecture elle-même.
+     */
+    public function testAfterValidationTheDoorReadsColdFieldsFromTheCopyAndATeamCreatedSinceLive(): void
+    {
+        $this->validateSocleNow();
+        $em = $this->erEm();
+        $em->getConnection()->executeStatement('UPDATE team SET priority_tier_id = 1, name = \'U13 Filles\' WHERE id = ?', [self::ER_TEAM_U13]);
+        $this->seedEngineRequestTeamCreatedAfterValidation();
+        $em->clear();
+
+        $door = self::getContainer()->get(InForce::class);
+        $teams = [];
+        foreach ($door->rows(self::ER_SEASON, Team::class) as $team) {
+            $teams[$team->getId()] = $team;
+        }
+        self::assertArrayHasKey(self::ER_TEAM_U13, $teams, 'témoin : U13, validée, est lue');
+        self::assertSame(3, $teams[self::ER_TEAM_U13]->getPriorityTierId(), 'le rang d\'U13 est celui de la copie (3), pas celui changé depuis sans valider (1)');
+        self::assertSame('U13 Filles', $teams[self::ER_TEAM_U13]->getName(), 'le nom, libre, est lu en direct');
+        self::assertArrayHasKey(self::ER_TEAM_U17_AFTER_VALIDATION, $teams, 'U17 F, créée après la validation, est lue en direct');
+
+        $links = array_map(static fn (TeamCoach $link): string => $link->getTeamId() . '→' . $link->getCoachId(), $door->rows(self::ER_SEASON, TeamCoach::class));
+        $u17Links = array_values(array_filter($links, static fn (string $link): bool => str_starts_with($link, self::ER_TEAM_U17_AFTER_VALIDATION)));
+        self::assertNotSame([], $u17Links, 'le coach principal d\'U17 F, créé avec elle après la validation, est lu');
+
+        $em->flush();
+        self::assertSame(1, (int) $em->getConnection()->fetchOne('SELECT priority_tier_id FROM team WHERE id = ?', [self::ER_TEAM_U13]), 'lire la porte n\'écrit rien : l\'état de travail garde le rang 1');
+    }
+
+    /**
+     * Promesse (lot 5, PR 5, ligne 28 du plan) : une ligne de coach principal de la copie dont le coach a été supprimé
+     * depuis la validation est ignorée, et une ligne changée depuis sans valider garde la valeur de la copie. Ici :
+     * U13 et U15 étaient tenues par A, SM1 par B ; depuis, U13 est passée à un coach C, puis A a été supprimé. La porte
+     * ne rend que SM1 → B : ni A (supprimé), ni C (pas validé).
+     */
+    public function testAMainCoachOfTheCopyDeletedSinceIsIgnored(): void
+    {
+        $this->validateSocleNow();
+        $em = $this->erEm();
+        $coachC = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Cyd')->setLastName('Nouveau');
+        $em->persist($coachC);
+        $em->persist(new Coach($coachC)->setId(self::erId('c0ac', 3))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON));
+        $em->flush();
+        $connection = $em->getConnection();
+        $connection->executeStatement('UPDATE team_coach SET coach_id = ? WHERE id = ?', [self::erId('c0ac', 3), self::erId('7c0a', 1)]);
+        $connection->executeStatement('DELETE FROM coach_player_membership WHERE coach_id = ?', [self::ER_COACH_A]);
+        $connection->executeStatement('DELETE FROM team_coach WHERE coach_id = ?', [self::ER_COACH_A]);
+        $connection->executeStatement('DELETE FROM coach WHERE id = ?', [self::ER_COACH_A]);
+        $em->clear();
+
+        $links = array_map(
+            static fn (TeamCoach $link): string => $link->getTeamId() . '→' . $link->getCoachId(),
+            self::getContainer()->get(InForce::class)->rows(self::ER_SEASON, TeamCoach::class),
+        );
+
+        self::assertSame([self::ER_TEAM_SM1 . '→' . self::ER_COACH_B], $links, 'seul SM1 → B reste : A, supprimé, est ignoré ; C, posé sans valider, ne vaut pas');
+    }
+
+    /** La validation du socle : V1 terminée, pointée et chargée, avec la copie de l'état du jour. */
+    private function validateSocleNow(): void
+    {
+        $version = $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::COMPLETED);
+        $this->chooseAndLoadSocle(self::ER_SOCLE_V1);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($version->getSchedulePlanId()));
     }
 
     protected function setUp(): void
