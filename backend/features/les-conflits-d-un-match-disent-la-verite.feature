@@ -152,3 +152,18 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Et un match à domicile de l'équipe posé ce jeudi à 20h45 sur ce gymnase
     Quand je demande les conflits des matchs
     Alors le radar signale l'entraînement de l'équipe sœur dans le gymnase de ce match, en gravité 5
+
+  Plan du scénario: Le radar lit le coach principal et le coach-joueur du planning en vigueur ; un adjoint compte tout de suite
+    Changer le coach principal ou un coach-joueur ne vaut pour les matchs qu'à la validation du planning de saison. Un adjoint est libre : il compte dès qu'il est saisi.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et <décor>
+    Quand <geste>, sans valider le planning de saison
+    Et je demande les conflits des matchs
+    Alors <verdict>
+
+    Exemples:
+      | décor                                                                                                                      | geste                                                   | verdict                                                     |
+      | un coach principal du planning en vigueur entraîne deux équipes dont les matchs à l'extérieur se chevauchent              | je confie la première équipe à un autre coach principal | le radar porte toujours le conflit de ce coach en double    |
+      | un coach principal du planning en vigueur entraîne une équipe dont le match chevauche celui d'une autre équipe            | j'inscris ce coach comme joueur de l'autre équipe       | le radar ne porte aucun conflit entre ces deux matchs       |
+      | le coach principal d'une équipe du planning en vigueur est indisponible au coup d'envoi de son match à domicile ce samedi | j'ajoute à cette équipe un adjoint disponible ce samedi | le radar signale ce coach principal indisponible, en orange |
