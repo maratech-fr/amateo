@@ -75,6 +75,21 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
     /** Un samedi (ISO 6) à venir, pour échapper au drop « déjà joué » (D1 règle 3). */
     private string $saturday;
 
+    /**
+     * Les bornes 08:00 et 21:00 sont comprises, un mercredi sans fenêtre de ligue comme un samedi.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: bool}>
+     */
+    public static function cupKickoffs(): iterable
+    {
+        yield 'mercredi 20:00, dedans' => ['wednesday', '20:00', false];
+        yield 'samedi 08:00, borne basse comprise' => ['saturday', '08:00', false];
+        yield 'samedi 21:00, borne haute comprise' => ['saturday', '21:00', false];
+        yield 'dimanche 07:45, trop tôt' => ['sunday', '07:45', true];
+        yield 'samedi 21:01, trop tard' => ['saturday', '21:01', true];
+        yield 'mercredi 21:30, trop tard' => ['wednesday', '21:30', true];
+    }
+
     public function testCorrectedClubWindowOutsideKickoffRaisesLeagueWindowViolation(): void
     {
         // Copie club : samedi matin 10:00-10:30, de la catégorie et du niveau de l'équipe.
@@ -123,21 +138,6 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
 
         self::assertFalse($this->hasLeagueWindowViolation($cup->getId()), 'une coupe n\'est jamais jugée contre la fenêtre de ligue');
         self::assertSame([], $this->cupKickoffItems($cup->getId()), 'une coupe à 18:00 est dans ses horaires');
-    }
-
-    /**
-     * Les bornes 08:00 et 21:00 sont comprises, un mercredi sans fenêtre de ligue comme un samedi.
-     *
-     * @return iterable<string, array{0: string, 1: string, 2: bool}>
-     */
-    public static function cupKickoffs(): iterable
-    {
-        yield 'mercredi 20:00, dedans' => ['wednesday', '20:00', false];
-        yield 'samedi 08:00, borne basse comprise' => ['saturday', '08:00', false];
-        yield 'samedi 21:00, borne haute comprise' => ['saturday', '21:00', false];
-        yield 'dimanche 07:45, trop tôt' => ['sunday', '07:45', true];
-        yield 'samedi 21:01, trop tard' => ['saturday', '21:01', true];
-        yield 'mercredi 21:30, trop tard' => ['wednesday', '21:30', true];
     }
 
     #[DataProvider('cupKickoffs')]
