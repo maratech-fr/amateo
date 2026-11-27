@@ -236,14 +236,13 @@ fenêtres J-7 du cockpit, §4) et `LeagueValidationOutlook` (la maturité « val
 
 Le prédicat « validable » d'un candidat (`passesPredicate`, ex-`isEligible`) est inchangé dans sa
 forme : un domicile `UNPLACED` rattaché à un championnat (`isCandidate` — **un amical est exclu**,
-qu'il s'agisse d'un domicile SANS compétition ou d'une compétition dont le LIBELLÉ est un amical
-(token exact « amical », maison unique `FbiDivisionSignature::isFriendlyCode` — couvre par exemple
-« Amical PNF »/« Amical PNM » typées `CHAMPIONSHIP` côté import) portant une heure ET un `venueId`
+qu'il s'agisse d'un domicile de « Amicaux » ou d'une compétition de nature `FRIENDLY` (posée à la création
+par `CompetitionClassifier`, premier mot « amical » : « Amical PNF », « Amical PNM ») portant une heure ET un `venueId`
 (gymnase identifié, jamais le libellé brut), sans écart en attente. Il ne suffit pas à lui seul — il
 faut EN PLUS que le championnat du candidat soit commencé.
 
 **Les amicaux ne rejoignent jamais ce lot** — « validé ligue » n'a pas de sens sans championnat.
-Un amical passé (domicile ET extérieur, même reconnaissance par libellé) se valide TOUT SEUL,
+Un amical passé (domicile ET extérieur, compétition `FRIENDLY`) se valide TOUT SEUL,
 sans confirmation chiffrée : `App\Service\FriendlyAutoValidator::sweep` bascule `VALIDATED`
 (source `MANUAL` posée sur le domicile seulement, l'extérieur garde sa source) tout amical
 strictement passé, non déjà saisi (`SUBMITTED`/`VALIDATED` exclus) et sans écart en attente ;
@@ -334,8 +333,8 @@ fédéral.
 FBI (xlsx) fait foi, l'API est un confort — bandeau d'honnêteté à chaque ouverture. Appariement à 3
 étages + tier-0 d'idempotence (id national déjà connu) : compétition appariée pour UNE seule équipe
 → suggère l'équipe ; date exacte ; adversaire normalisé. Une coupe non appariée devient une vraie
-`Competition` `CUP` (le libellé fédéral tranche, jamais l'absence d'appariement) — seul le token
-`amical` laisse `competitionId` null. Les rencontres publiées sans fixture correspondante sont
+`Competition` `CUP` (le libellé fédéral tranche, jamais l'absence d'appariement) — seul le premier mot
+« amical » donne une compétition `FRIENDLY` (jamais « Amicaux »). Les rencontres publiées sans fixture correspondante sont
 **proposées, jamais imposées** (`TeamSelect` par ligne, rien créé si vide) via la vue dédiée
 `/matchs/reconciliation` (zéro état serveur, payload en mémoire, renvoi propre sans payload), triées
 côté front **date croissante · heure croissante (une heure absente en dernier de son jour) ·

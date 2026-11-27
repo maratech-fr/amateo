@@ -110,7 +110,7 @@ chevauchement en diffère à domicile. Cas fondateur : une personne coache à l'
 estimé 19h17) et joue à domicile (coup d'envoi 19h30) — arrivée avant le coup d'envoi, aucun
 conflit, même règle que pour un coach.
 
-**Amicaux** (`competitionId` null) : jamais comparés aux fenêtres ligue, jamais soumis aux
+**Amicaux** (match d'une compétition `FRIENDLY`, « Amicaux » d'office ou « Amical … » fédérale) : jamais comparés aux fenêtres ligue, jamais soumis aux
 fenêtres/week-ends de match (ni solveur ni garde de placement manuel — juste un avertissement) ;
 seule famille qui les concerne : `FRIENDLY_ON_MATCH_SLOT` (§ échelle ci-dessous). Une rencontre de
 coupe porte une vraie `Competition` `CUP` (résolue au canal API/à l'appariement) et redevient un

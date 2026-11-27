@@ -21,16 +21,23 @@ vigueur, il n'a rien à comparer.
 ### Entités season-scoped (tenant, RLS)
 
 - **`Competition`** (`name` = code/division FBI, `competitionType`
-  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`, `entryDeadline` nullable, réfs FFBB — voir §4) — plus aucune
+  `CHAMPIONSHIP`/`CUP`/`BRASSAGE`/`FRIENDLY`, `entryDeadline` nullable, réfs FFBB — voir §4) — plus aucune
   unicité sur le nom : deux compétitions de même nom existent (une par équipe d'une division neuve).
+  La nature est écrite UNE fois, à la création, par `App\Matches\CompetitionClassifier::classify` (premier mot
+  « amical » → `FRIENDLY`, « coupe » ou début « crml »/« cmrl » → `CUP`, « brassage » → `BRASSAGE`) ; une compétition
+  existante ne devient jamais amicale et une amicale ne change jamais de nature (`reclassOf` ne propose que
+  championnat → coupe ou brassage). Chaque saison porte une compétition amicale d'office « Amicaux »
+  (`default_friendly`, unique par club et saison), créée à l'inscription, à la préparation de la saison suivante,
+  par les seeders et à la demande (`App\Matches\FriendlyCompetitions`) ; jamais supprimée (ni par `pruneEmpty`, ni
+  par la suppression d'une équipe) ; elle accepte plusieurs engagements.
 - **`Engagement`** (table `engagement`, une ligne par (compétition, équipe)) : `competitionId`, `teamId`,
   `fbiTeamLabel` (ce qui distingue deux équipes du club dans une division), `ffbbPouleId`/`ffbbPouleName`/
   `ffbbPouleOpponents`, `expectedMatchdays`. Lu et écrit par `App\Matches\CompetitionRegistry`, qui tient
   « pas deux compétitions de même nom pour une même équipe » (comparaison sur le nom normalisé). Un match
   de compétition exige l'engagement de son équipe (clé `fixture (competition_id, team_id, club_id)` et
-  refus 422 applicatif) ; un amical (`competitionId` nul) n'est pas contrôlé. L'API des compétitions sert
+  refus 422 applicatif, sauf pour une compétition amicale, où l'engagement est créé au passage). L'API des compétitions sert
   `engagements[]`.
-- **`Fixture`** (table `fixture`) : `teamId`, `competitionId` nullable = amical, `matchDate`,
+- **`Fixture`** (table `fixture`) : `teamId`, `competitionId` obligatoire (colonne NOT NULL ; une compétition absente, nulle ou vide à la création range le match dans « Amicaux », en modification seule la chaîne vide le fait) ; l'amical = match d'une compétition `FRIENDLY`, `matchDate`,
   `homeAway`, `opponentLabel`, `opponentOrganismeCode`/`opponentTeamKey` (résolus serveur),
   `externalDivision` (nullable, interne — jamais servi par `FixtureResource` — le libellé de
   division FBI DU FICHIER d'origine, posé à la création à côté d'`externalRef`, non nul SSI lui l'est
@@ -111,8 +118,8 @@ vigueur, il n'a rien à comparer.
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
-  seulement le candidat retenu (`W_COACH_UNAVAILABLE`, §3 SOFT ; valeur dans `match_placement/weights.py`) ; les amicaux (`competitionId`
-  nul) en sont exemptés structurellement, comme l'enveloppe ligue. Une pose MANUELLE hors d'une
+  seulement le candidat retenu (`W_COACH_UNAVAILABLE`, §3 SOFT ; valeur dans `match_placement/weights.py`) ; les amicaux (matchs d'une compétition
+  `FRIENDLY`) en sont exemptés structurellement, comme l'enveloppe ligue. Une pose MANUELLE hors d'une
   règle CLUB HARD ou dans un gymnase interdit à l'équipe reste PERMISE — le radar la SIGNALE
   (`CLUB_RULE_VIOLATION`/`TEAM_VENUE_FORBIDDEN`, §2), il ne la bloque pas ; **une indisponibilité
   COACH, elle, ne porte AUCUN radar** — une pénalité SOFT n'est pas un conflit à traiter (décision

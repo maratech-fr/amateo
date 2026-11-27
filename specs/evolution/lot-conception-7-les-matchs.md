@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26) et PR 3b (compétition et engagement séparés, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) et PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
@@ -9,8 +9,8 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a et 3b livrées (§4, « Écarts au plan, tels que livrés »), les cinq autres à faire.
-- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a et 3b sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b et 4a livrées (§4, « Écarts au plan, tels que livrés »), les quatre autres à faire.
+- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b et 4a sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
 | PR du lot 7 | Fichiers partagés avec | Contrainte |
@@ -350,6 +350,23 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - Écran : `matchAccess.parity.json` et ses deux tests de parité ; `leagueEnvelope.parity.test.ts` lit `natureCases` ; `consultFilter.test.ts` ; `FixtureFormDialog` (geste : poser un amical).
 
 **Contrôle visuel (`switch`)** : formulaire « Ajouter un match » ; panneau de placement d'un amical de la fédération ; filtre de consultation par nature ; confirmation de suppression d'une équipe qui n'a que des amicaux.
+
+**PR 4a livrée le 2026-11-27** sur `lot/conception`, non déployée.
+
+**Écarts au plan, tels que livrés (PR 4a)**
+- (1) `CompetitionClassifier::classify` et `::reclassOf` sont statiques. `FriendlyCompetitions` gagne `engageIn(Competition $friendly, string $teamId)` et `ensureDefault(string $clubId, string $seasonId): string`, hors du contrat annoncé.
+- (2) Toutes les écritures de « Amicaux » (compétition d'office, engagement) sont des `INSERT … ON CONFLICT DO NOTHING` suivis d'une relecture, pas seulement `engageInDefault`.
+- (3) `Fixture::$competitionId` reste `?string` en PHP, avec un `@phpstan-ignore` : la colonne est `NOT NULL` en base (`Version20261204120000`), l'entité n'est pas retypée.
+- (4) Côté écran, `competitionType` (sur `Fixture`) et `defaultFriendly` (sur `Competition`) sont optionnels dans les types TS.
+- (5) La conversion de la migration : un championnat que son libellé classe en brassage devient brassage. Une compétition déjà nommée « Amicaux » reste championnat, et une « Amicaux » d'office distincte naît pour la saison.
+- (6) `FbiDivisionSignature::isFriendlyCode` (`Service/Basketball/FbiDivisionSignature.php:79`, premier mot « amical » par préfixe) n'est pas touchée : sa règle diverge du classifieur, et « Amicaux » n'y est pas reconnu. Divergence écrite, non corrigée.
+- (7) Une équipe inconnue est refusée 422 à la création et à la modification d'un match (`assertTeamInScope`) ; la création de « Amicaux » ne lit que `_club_id` et `_season_id`.
+- (8) Le rattachement fédéral (`FfbbRencontreReconciler`) est élargi aux matchs rangés dans « Amicaux » d'office (`isFriendlyRow`). Le pont de suggestion de l'appariement exclut les compétitions amicales. `EntryDeadlineOutlook` ignore les compétitions amicales. `ACCESS_WINDOW_LOST` n'est pas retouché.
+- (9) `TeamEngagementGuard::teamIdsHoldingAFixture` est ajoutée sans appelant. Le formulaire de match (`createFixture`) envoie encore `competitionId` nul par défaut ; le serveur le range dans « Amicaux ».
+- (10) Demande au moteur : la référence 20 (« Amicaux » née à la bascule) est exclue du renumérotage de `EngineRequestSocleNetDecorTrait` ; références 1 à 21 à l'octet, sauf la 17 qui change comme annoncé.
+- (11) `CompetitionNatureMigrationTest` est ajouté au step bloquant de `ci.yml` et à `docs/testing/blocking-tests.md`.
+- (12) Un scénario Behat, `la-boucle-de-travail-du-gestionnaire.feature:19`, a rougi une fois au Behat complet (décor dépendant du placement du solveur d'entraînement, rail non touché par la PR) ; vert rejoué seul, et vert aux runs complets précédent et suivant. À surveiller : ne pas conclure « flaky » sans `make ci-releve`.
+- (13) Non joués : Q9 au contrôle visuel (aucun fichier d'import disponible) ; les e2e. Captures dans `captures/lot7-pr4a/` (ignoré par git).
 
 ### PR 4b · « La coupe a sa règle » (`neo`, backend et écrans)
 
