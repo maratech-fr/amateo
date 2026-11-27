@@ -605,6 +605,26 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * Une coupe reste un vrai match pour le gymnase (lot 7, PR 4b) : sortie de la fenêtre de ligue et du système, elle
+     * ne sort pas des accès match. Posée un samedi où le gymnase n'ouvre qu'un lundi, elle est refusée comme un
+     * championnat, avec le même message. Angle voisin : {@see testChangingTheCompetitionIsGuardedAgain} (le refus
+     * rejoué quand un match posé change vers une coupe) ; jumeau de bout en bout :
+     * `features/placement-des-matchs.feature`, scénario de l'ouverture datée (la coupe du mercredi refusée sans
+     * ouverture).
+     */
+    public function testACupPlacedOutOfMatchAccessIsRefusedLikeAnyCompetitionMatch(): void
+    {
+        $this->persistVenue();
+        $cup = $this->competitionFor(self::TEAM_ID, 'Coupe du Rhône', CompetitionType::CUP);
+        $this->persistMatchWindow(1, '18:00', '22:00');
+
+        $this->post($this->competitionBody($cup->getId(), '2026-11-07', '16:30'));
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Gymnase Matéo n\'a pas d\'accès match le samedi 7 novembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
     public function testChangingTheCompetitionIsGuardedAgain(): void
     {
         [$id, $body] = $this->placedOutOfAccess();
