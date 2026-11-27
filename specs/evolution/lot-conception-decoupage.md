@@ -334,6 +334,9 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 9 · Les règles
 
+- **Plan d'exécution** : [`lot-conception-9-les-regles.md`](lot-conception-9-les-regles.md) (version finale, plan écrit et
+  validé par le fondateur le 2026-11-27 avec ses décisions 1 à 6, §10 du plan ; six PR). **Statut : plan écrit et validé,
+  rien n'est construit.** Ordre : PR 1 dès qu'une place se libère ; PR 2 à 6 après le lot 7 et la PR 7 du lot 5, avant le lot 6.
 - **Contenu** (§26, tableau du relevé)
   - Une seule forme pour une règle d'entraînement et une règle de match, deux familles conservées.
   - Un seul vocabulaire d'intensité.
@@ -348,6 +351,9 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 10 · Entrées, sorties, envois, signalements
 
+- **Plan d'exécution** : [`lot-conception-10-entrees-sorties-envois-signalements.md`](lot-conception-10-entrees-sorties-envois-signalements.md)
+  (plan écrit et validé par le fondateur le 2026-11-27 avec ses décisions Q1 à Q3, §12 du plan ; cinq PR : 1, 2, 3a, 3b, 4).
+  **Statut : plan écrit et validé, rien n'est construit.** La PR 1 attend la mesure du PDF ; la PR 3b attend les PR 4 à 7 du lot 5.
 - **Contenu**
   - Un seul chemin pour tout export, sous réserve de la mesure du lot 0 (§21).
   - Un seul déroulé et un seul contrôle d'entrée pour tout import (§22).
@@ -384,15 +390,17 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 est livré sur `lot/conception`, non déployé** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention ; le module matchs qui porte le socle et le régime de démonstration déclaré une fois) ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
-est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est livré sur `lot/conception`, non déployé** (plan validé le 2026-11-22 ; six PR : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée ; le socle a son plan de saison ; les équipes d'un plan, une ligne par plan et par équipe ; les gymnases d'une période ; les règles appliquées et la nature sur le plan ; un constructeur de la demande au moteur et une copie de naissance) ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. **Le lot 7 est en cours** (plan validé le 2026-11-23 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet des matchs, références 16 à 19 et vues des matchs enregistrées ; une seule liste des types de conflit) : il s'exécute après le lot 4, livré, et après les PR 1 à 3 du lot 5. **Le lot 5 est en cours** (plan écrit et validé le 2026-11-24 ; sept PR : PR 1 à 3, puis le lot 7, puis PR 4 à 7 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet ; le froid se déclare, une version copie tout le froid). Les plans des lots 1, 2, 3, 4, 5, 7 et 8 sont dans
+est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est livré sur `lot/conception`, non déployé** (plan validé le 2026-11-22 ; six PR : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée ; le socle a son plan de saison ; les équipes d'un plan, une ligne par plan et par équipe ; les gymnases d'une période ; les règles appliquées et la nature sur le plan ; un constructeur de la demande au moteur et une copie de naissance) ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. **Le lot 7 est en cours** (plan validé le 2026-11-23 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet des matchs, références 16 à 19 et vues des matchs enregistrées ; une seule liste des types de conflit) : il s'exécute après le lot 4, livré, et après les PR 1 à 3 du lot 5. **Le lot 5 est en cours** (plan écrit et validé le 2026-11-24 ; sept PR : PR 1 à 3, puis le lot 7, puis PR 4 à 7 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet ; le froid se déclare, une version copie tout le froid). Les plans des lots 1, 2, 3, 4, 5, 7, 8, 9 et 10 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
 [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md),
 [`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md),
 [`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md),
 [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md),
-[`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md) et
-[`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md) ; les autres lots n'ont pas de
-plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
+[`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md),
+[`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md),
+[`lot-conception-9-les-regles.md`](lot-conception-9-les-regles.md) et
+[`lot-conception-10-entrees-sorties-envois-signalements.md`](lot-conception-10-entrees-sorties-envois-signalements.md)
+(les lots 9 et 10 : plans écrits et validés le 2026-11-27, rien de construit) ; le lot 6 n'a pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
 code. Une seule PR est ouverte à la fois sur `lot/conception` (les lots 1 et 2 modifient ce fichier et l'état des lieux).
 
 **Jalons de la mise en production unique** (décision du fondateur, 2026-11-21) : (1) copie de production n° 1, avant le
