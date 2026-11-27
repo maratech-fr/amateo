@@ -215,6 +215,10 @@ trait EngineRequestSocleNetDecorTrait
     /**
      * Remplace chaque identifiant né de la bascule (la saison suivante et les lignes qui la portent, sauf
      * ses plans) par un identifiant fixe, dans toutes les colonnes `uuid` et `json` des tables du club.
+     *
+     * Hors renumérotation : « Amicaux », la compétition d'office que la bascule fait naître (lot 7, PR 4a). La
+     * demande au moteur ne porte aucun identifiant de compétition ; la numéroter décalerait d'un cran tous les
+     * identifiants fixés après elle, et la référence 20 changerait pour un décalage, jamais pour un sens.
      */
     private function fixTransitionIds(string $nextSeasonId): void
     {
@@ -228,7 +232,7 @@ trait EngineRequestSocleNetDecorTrait
         $pending = [];
         foreach ($tables as $table) {
             $rows = $connection->fetchAllKeyValue(
-                \sprintf('SELECT id::text, (to_jsonb(t) - \'id\' - \'created_at\' - \'updated_at\' - \'version\')::text FROM public.%s t WHERE season_id = :s', $connection->quoteSingleIdentifier((string) $table)),
+                \sprintf('SELECT id::text, (to_jsonb(t) - \'id\' - \'created_at\' - \'updated_at\' - \'version\')::text FROM public.%s t WHERE season_id = :s%s', $connection->quoteSingleIdentifier((string) $table), 'competition' === $table ? ' AND NOT t.default_friendly' : ''),
                 ['s' => $nextSeasonId],
             );
             if ([] !== $rows) {
