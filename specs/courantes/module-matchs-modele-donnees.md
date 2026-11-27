@@ -82,7 +82,7 @@ vigueur, il n'a rien à comparer.
   `modified` calculé SERVEUR par clé naturelle vs le seed. **Copie VIDE = zéro règle fédérale** :
   aucun HARD ligue au placement (§3), un seul diagnostic INFO `league_envelope_empty` pour tout le
   club (jamais un par équipe) ; une pose manuelle hors fenêtre reste PERMISE et SIGNALÉE (§5), le
-  radar continue de porter `LEAGUE_WINDOW_VIOLATION` sur une copie non vide.
+  radar continue de porter `LEAGUE_WINDOW_VIOLATION` sur une copie non vide, pour un championnat ou un brassage seulement : une coupe n'a pas de fenêtre de ligue (règle : `module-matchs-radar-et-placement.md` § Coupes).
 - **`MatchConstraint`** (table `match_constraint`, P4-272 ③+④+⑤) : une RÈGLE DE MATCH — `scope`
   `ConstraintScope` tranche la FORME (`CLUB`, `TEAM` et `COACH` sont saisis ; `FACILITY` seul reste
   refusé — une règle inerte serait illisible), `ruleType` `ConstraintRuleType`, `daysOfWeek` (ISO
