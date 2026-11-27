@@ -9,7 +9,7 @@ Tu produis une **édition d'audit** comparable aux éditions précédentes stock
 
 ## Étape 0 — Préparation
 
-1. Lis `CLAUDE.md`, puis la **dernière édition** dans `specs/audit/AUDIT-*.md` (la plus récente par date de nom de fichier). Récupère son registre de findings.
+1. Lis la **dernière édition** dans `specs/audit/AUDIT-*.md` (la plus récente par date de nom de fichier). Récupère son registre de findings.
 2. Note : SHA HEAD (`git rev-parse --short HEAD`), date du jour, modèle utilisé (ton ID de modèle exact).
 3. Vérifie l'état de la stack : `docker compose ps`. Remplis le **tableau de couverture** (voir format de sortie) — chaque axe est `couvert` / `partiel` / `non couvert (raison)`. Un axe non couvert ne donne PAS de note.
 
@@ -34,7 +34,7 @@ Lance 5 agents d'analyse en parallèle (lecture seule, aucun test destructif) :
 - **Perf (si stack up)** : lancer `backend/scripts/with-sandbox.sh make -C backend behat` en mode play (feature `generation-du-planning-de-saison.feature`) et relever le wall-time. Depuis le dépôt principal, ce script suspend le mode play du fondateur le temps de la commande : l'annoncer au fondateur AVANT, jamais pendant une de ses passes de tests. Sinon marquer l'axe `non couvert`.
 - **UX** : traité à part en **Étape 2 ter** (axes additifs cohérence / simplicité / inclusivité).
 
-## Étape 2 bis — Chasse aux angles morts (OBLIGATOIRE)
+## Étape 2 bis — Chasse aux angles morts
 
 Chaque édition doit **chercher ce que l'édition précédente n'a pas regardé**. Liste les axes non couverts ou partiels de l'édition précédente : couvre-en au moins un de plus si l'environnement le permet (stack up → perf ; navigateur → UX). Puis pose-toi la question : « quel angle mort aucune édition n'a encore ouvert ? » (exemples de candidats : tests de charge API, migration de données entre versions, comportement offline/latence, i18n, coûts d'infra à N clubs, onboarding d'un 2e développeur, restauration après corruption). Ajoute au moins un axe candidat au tableau de couverture — même marqué `non couvert`, il devient visible et redevable.
 
@@ -66,7 +66,7 @@ Charge cognitive pour le gestionnaire lambda :
 
 > La notation de ces axes est **extrêmement sévère** (barre = app **simple d'utilisation ET robuste en tout point**) : plafonds durcis, score général = le plus bas des sous-axes — voir Étape 4. Un défaut critique confirmé (couleur seule sur flux critique, flux-clé infaisable au clavier, contraste AA échoué sur texte principal, jargon bloquant) **plafonne son sous-axe à 40**.
 
-## Étape 2 quater — Alignement contraintes 3 couches (OBLIGATOIRE)
+## Étape 2 quater — Alignement contraintes 3 couches
 
 Le motif « contrainte saisie ≠ contrainte honorée » (ENG-10/11/12/13/16) est **la** faiblesse récurrente du produit. Cette étape le traque **systématiquement** (findings préfixe `ALIGN-`), au-delà de l'agent Engine bout-en-bout.
 
@@ -84,7 +84,7 @@ Pour **chaque ligne** de la table d'alignement (chaque clé de `config` + chaque
 
 **Vérification** : les scissions confirmées se re-vérifient à la main (Étape 3). Le verrou automatique existant (`constraint_matrix.py` + test) ne couvre QUE l'offre wizard↔engine des cellules **offertes** — il ne voit ni la couche backend ni les angles morts ; ne pas s'y fier pour cette étape.
 
-## Étape 2 quinquies — Cybersécurité : surface d'attaque & protections (OBLIGATOIRE)
+## Étape 2 quinquies — Cybersécurité : surface d'attaque & protections
 
 Axe **dédié et systématique** : « l'app est-elle protégée contre les attaques ? ». La sécurité était jusqu'ici éparse (tenant/RLS en Backend, supply-chain/secrets/Mercure en Étape 2) ; ici on la traque **vecteur par vecteur**, du point de vue d'un **attaquant** (anonyme OU utilisateur authentifié malveillant). **Non destructif** : lecture de code + config uniquement — **aucun test offensif actif** (pas de fuzzing, pas de brute-force réel, pas d'exploit). Findings préfixe **`SEC-`**.
 
@@ -153,20 +153,15 @@ s'il est lisible) et la fiche privée `~/.claude/agents/seraphin.md` (si présen
 Pas de note `/100` : l'axe se rend en **registre `AGT-`** (IDs stables, comme les autres préfixes) et
 une ligne au tableau de couverture. Pas de rétro-notation : les éditions antérieures sont `non couvert`.
 
-## Étape 3 — Vérification contradictoire (OBLIGATOIRE)
+## Étape 3 — Vérification contradictoire
 
 Chaque finding **critique ou élevé** doit être contre-vérifié à la main avant publication : lire les fichiers/lignes cités, chercher la preuve inverse. Issues possibles : `confirmé` / `réfuté` / `non vérifié`. Un finding réfuté reste dans le rapport, barré, avec la preuve de réfutation — c'est ce qui rend l'audit digne de confiance. Ne publie JAMAIS un finding critique non vérifié sans le marquer `non vérifié`.
 
 ⚠ **Un verdict de PORTÉE (« quasi mort », « dead code », « le hit est toujours trouvé PAR X ») engage à
 vérifier TOUS les chemins d'appel de la fonction, pas seulement celui qui a fait remarquer le défaut —
-même sur un finding en dessous du seuil critique/élevé ci-dessus.** Cas mesuré : l'édition du
-2026-09-18 a jugé le repli `?? $name` de `OpponentLocationResolver::locateCity()` (finding BCK-26)
-« quasi mort (le hit est trouvé PAR le nom) » — vrai du seul canal NOM (`resolveOrganismeByName`,
-où l'appariement se fait justement sur `nom`, donc toujours présent sur ce chemin), faux du canal
-CODE (`resolveOrganismeByCode`, atteint par le canal API rencontres), dont le hit fédéral peut
-n'avoir aucun `nom`. La gravité Faible restait juste, mais l'affirmation de portée était fausse —
-un chemin réellement exerçable, pas résiduel. Correctif et trace : `9b64c461` / lot 9,
-`specs/courantes/etat-des-lieux.md` §3 (2026-09-23).
+même sur un finding en dessous du seuil critique/élevé ci-dessus.** Exemple : un repli jugé « quasi
+mort » parce que le canal NOM trouve toujours le nom, alors qu'un canal CODE atteint la même fonction
+avec un hit sans nom.
 
 ## Étape 4 — Notation
 

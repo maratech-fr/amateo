@@ -238,7 +238,7 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
    la part de test du diff, par `make ci-mesure PART=origin/<base>`) +
    **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
-7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
+7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` est systématique**
    si la PR touche un item de cette **liste fermée** : auth · memberships · code FFBB / identité
    club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données ·
    intégration externe sortante (FFBB, IGN, télémétrie) · **isolation entre clubs** (tenant/RLS,
@@ -320,7 +320,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
    refusée, jamais redirigée vers le principal. Détail : `backend/docs/commands.md` ; rôle des agents :
    `.claude/agents/neo.md` §Worktree.
 6. ⚠ **Agents : une commande simple par appel Bash, `rtk` sur les lectures longues.** L'isolement du
-   worktree refuse ce qu'il ne sait pas vérifier (~120 refus au lot du 2026-11-02) : jamais `git push`
+   worktree refuse ce qu'il ne sait pas vérifier : jamais `git push`
    et `make` dans la même ligne, ni variable (`W=$PWD`, `$C exec …`), `$(…)`, `cd` calculé, script écrit
    dans la commande (`python3 - <<EOF` → Edit/Write), `sh`/`bash` chaîné. Chemin absolu en clair, un
    seul geste, un filtre de sortie au plus ; un refus se corrige en simplifiant, jamais en contournant.
