@@ -88,6 +88,27 @@ final class CompetitionUniquenessTest extends WebTestCase
         self::assertArrayNotHasKey('teamId', $members[0], 'l\'équipe vit sur l\'engagement');
     }
 
+    /**
+     * Promesse (lot 7, PR 3b, fin de C30) : `POST /api/competitions` refuse 422 l'équipe du club qui n'est pas de la
+     * saison résolue — une compétition de cette saison n'engage jamais l'équipe d'une autre saison. Le pendant
+     * « autre club » est `MatchTenantIsolationTest::testCreatingACompetitionForAnotherClubsTeamIsRefused`.
+     */
+    public function testATeamOfAnotherSeasonOfTheClubIsRefused(): void
+    {
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today')) - 1;
+        $past = (new Season)->setClubId($this->club->getId())->setName((string) $year)->setStartDate(new DateTimeImmutable($year . '-08-01'))
+            ->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'))->setStatus(SeasonStatus::ARCHIVED)->setTransitionData([]);
+        $this->em->persist($past);
+        $this->em->flush();
+        $team = $this->persistTeam('U15 passée', $past);
+
+        $this->postCompetition($team, 'Championnat U15');
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Équipe inconnue pour ce club et cette saison.', $this->responseData()['violations'][0]['message'] ?? null);
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$team]), 'aucun engagement de l\'équipe d\'une autre saison');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -119,8 +140,9 @@ final class CompetitionUniquenessTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
     }
 
-    private function persistTeam(string $name): string
+    private function persistTeam(string $name, ?Season $season = null): string
     {
+        $season ??= $this->season;
         $this->scopeGucToClub($this->club->getId());
         $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
         if (null === $sport) {
@@ -130,7 +152,7 @@ final class CompetitionUniquenessTest extends WebTestCase
         }
         $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName($name . ' ' . uniqid('', true));
         $this->em->persist($category);
-        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($season->getId())->setSportCategoryId($category->getId())
             ->setPriorityTierId(3)->setName($name)->setIsActive(true);
         $this->em->persist($team);
         $this->em->flush();
