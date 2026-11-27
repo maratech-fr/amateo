@@ -45,7 +45,6 @@ vi.mock("@/features/planning/api", async (orig) => ({
 
 import * as api from "./api";
 import { useWizardStore } from "./store";
-import { WIZARD_TEXTS } from "./texts";
 import { WizardPage } from "./WizardLayout";
 
 vi.mock("./api", async (orig) => ({

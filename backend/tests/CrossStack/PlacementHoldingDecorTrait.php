@@ -178,7 +178,7 @@ trait PlacementHoldingDecorTrait
         }
         $person = (new Person)->setClubId($this->club->getId())->setFirstName('Coach')->setLastName(substr($coachId, 0, 8));
         $this->em->persist($person);
-        $coach = (new Coach($person))
+        $coach = new Coach($person)
             ->setId($coachId)
             ->setClubId($this->club->getId())
             ->setSeasonId($this->season->getId())
