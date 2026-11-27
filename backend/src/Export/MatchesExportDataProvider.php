@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Export;
 
 use App\Entity\Club;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Place;
 use App\Entity\Season;
@@ -14,8 +13,8 @@ use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FriendlyCompetitions;
 use App\Repository\FixtureRepository;
-use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\ClubDay;
 use App\Service\OpponentTravelProjection;
 use App\Storage\LogoStorage;
@@ -39,7 +38,7 @@ final readonly class MatchesExportDataProvider
         private EntityManagerInterface $entityManager,
         private FixtureRepository $fixtureRepository,
         private OpponentTravelProjection $travelProjection,
-        private FbiDivisionSignature $divisionSignature,
+        private FriendlyCompetitions $friendlyCompetitions,
         private ClubDay $clubDay,
         private LogoStorage $logoStorage,
         private PlaceDirectory $placeDirectory,
@@ -55,7 +54,7 @@ final readonly class MatchesExportDataProvider
         $seasonId = $season->getId();
 
         $fixtures = $this->fixtureRepository->findBySeasonBetween($seasonId, $from, $to, $team?->getId());
-        $friendlyCompetitionIds = $this->friendlyCompetitionIds($seasonId);
+        $friendlyCompetitionIds = $this->friendlyCompetitions->friendlyIdsOf($seasonId);
         $venues = $this->venuesById($clubId, $seasonId);
         $venuePlaces = $this->placeDirectory->forVenues($venues);
         $linkedPlaces = $this->travelProjection->linkedPlaceByFixtureId($fixtures);
@@ -81,8 +80,7 @@ final readonly class MatchesExportDataProvider
                 if ($homeOnly && 'home' !== $where) {
                     continue;
                 }
-                $competitionId = $fixture->getCompetitionId();
-                $friendly = null === $competitionId || isset($friendlyCompetitionIds[$competitionId]);
+                $friendly = isset($friendlyCompetitionIds[(string) $fixture->getCompetitionId()]);
                 $place = match ($where) {
                     'home' => $this->homePlace($fixture, $venues, $venuePlaces),
                     'away' => $this->awayPlace($linkedPlaces[$fixture->getId()] ?? null, $travels[$fixture->getId()]['oneWayMinutes'] ?? null),
@@ -250,22 +248,6 @@ final readonly class MatchesExportDataProvider
             ?: FrenchNameOrder::compare($a->getName(), $b->getName()));
 
         return $teams;
-    }
-
-    /** @return array<string, true> */
-    private function friendlyCompetitionIds(string $seasonId): array
-    {
-        /** @var list<Competition> $competitions */
-        $competitions = $this->entityManager->getRepository(Competition::class)->findBy(['seasonId' => $seasonId]);
-
-        $ids = [];
-        foreach ($competitions as $competition) {
-            if ($this->divisionSignature->isFriendlyCode($competition->getName())) {
-                $ids[$competition->getId()] = true;
-            }
-        }
-
-        return $ids;
     }
 
     /** @return array<string, Venue> */

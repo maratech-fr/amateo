@@ -358,27 +358,6 @@ final class ConflictTruthContext extends BaseContext
         }
     }
 
-    /**
-     * @param list<string> $types
-     *
-     * @return list<string> les types parmi `$types` que le radar porte sur ce match
-     */
-    private function conflictTypesOf(string $fixtureId, array $types): array
-    {
-        $found = [];
-        foreach ($this->conflicts as $conflict) {
-            if (!\is_array($conflict) || !\in_array($conflict['type'] ?? null, $types, true)) {
-                continue;
-            }
-            $fixtureBlock = $conflict['fixture'] ?? null;
-            if (\is_array($fixtureBlock) && ($fixtureBlock['fixtureId'] ?? null) === $fixtureId) {
-                $found[] = (string) $conflict['type'];
-            }
-        }
-
-        return $found;
-    }
-
     #[Given('une fenêtre de ligue étroite le samedi matin cadre cette équipe')]
     public function uneFenetreDeLigueEtroiteLeSamedi(): void
     {
@@ -982,6 +961,27 @@ final class ConflictTruthContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * @param list<string> $types
+     *
+     * @return list<string> les types parmi `$types` que le radar porte sur ce match
+     */
+    private function conflictTypesOf(string $fixtureId, array $types): array
+    {
+        $found = [];
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || !\in_array($conflict['type'] ?? null, $types, true)) {
+                continue;
+            }
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            if (\is_array($fixtureBlock) && ($fixtureBlock['fixtureId'] ?? null) === $fixtureId) {
+                $found[] = (string) $conflict['type'];
+            }
+        }
+
+        return $found;
     }
 
     private function assertCoachUnavailableSeverity(int $expected, string $colour): void

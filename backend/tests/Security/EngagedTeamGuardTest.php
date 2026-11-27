@@ -81,6 +81,19 @@ final class EngagedTeamGuardTest extends WebTestCase
 
     private KernelBrowser $client;
 
+    /** @return array<string, array{0: callable(Fixture): void}> */
+    public static function knownToTheFederation(): array
+    {
+        $now = new DateTimeImmutable;
+
+        return [
+            'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
+            'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
+            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::SUBMITTED, $now); }],
+            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::VALIDATED, $now); }],
+        ];
+    }
+
     /**
      * ADR — périmètre engagé : une équipe qui joue est inscrite auprès de la
      * fédération. On ne la supprime plus (ses matchs partiraient avec elle via
@@ -299,19 +312,6 @@ final class EngagedTeamGuardTest extends WebTestCase
 
         $this->request('DELETE', \sprintf('/api/teams/%s', $team->getId()));
         self::assertResponseStatusCodeSame(409, 'l\'équipe reste engagée');
-    }
-
-    /** @return array<string, array{0: callable(Fixture): void}> */
-    public static function knownToTheFederation(): array
-    {
-        $now = new DateTimeImmutable;
-
-        return [
-            'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
-            'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
-            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::SUBMITTED, $now); }],
-            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::VALIDATED, $now); }],
-        ];
     }
 
     /**

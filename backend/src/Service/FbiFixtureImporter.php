@@ -12,7 +12,6 @@ use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
-use App\Enum\CompetitionType;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -20,6 +19,7 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Exception\ImportRejectedException;
+use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
 use App\Matches\EngagementView;
 use App\Service\Basketball\FfbbRencontreReconciler;
@@ -1668,8 +1668,8 @@ final class FbiFixtureImporter
      * the resolver key; the canonical FFBB name stays in ffbbCompetitionName —
      * refs/expectation/poule are reused, never duplicated). The name never brings
      * a team into another team's competition: a division known for another team
-     * only gives a new competition for this one. Type inferred from the name
-     * (« Brassage »).
+     * only gives a new competition for this one. Nature written at creation by
+     * {@see CompetitionClassifier} (« Amical … », « Coupe … », « Brassage … »).
      *
      * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}> $mappings
      *
@@ -1716,8 +1716,12 @@ final class FbiFixtureImporter
             if (null !== $mappingCompetitionId) {
                 $byId = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
                 // Honoured ONLY for the same team the manager chose — a drifted
-                // suggestion must not hijack another team's pairing.
-                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $team->getId())) {
+                // suggestion must not hijack another team's pairing. Never across the
+                // friendly boundary (lot 7, PR 4a): an existing competition never becomes
+                // friendly nor stops being one — the division follows its own label.
+                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $team->getId())
+                    && $byId->getCompetitionType()->isFriendly() === CompetitionClassifier::classify($name)->isFriendly()
+                ) {
                     $existing = $byId;
                     if ($existing->getName() !== $name) {
                         $existing->setName($name);
@@ -1739,12 +1743,7 @@ final class FbiFixtureImporter
                 continue;
             }
 
-            $competition = $this->competitionRegistry->create(
-                $club->getId(),
-                $team->getSeasonId(),
-                $name,
-                str_contains($this->normalizeLabel($name), 'brassage') ? CompetitionType::BRASSAGE : CompetitionType::CHAMPIONSHIP,
-            );
+            $competition = $this->competitionRegistry->create($club->getId(), $team->getSeasonId(), $name, CompetitionClassifier::classify($name));
             $this->competitionRegistry->engage($competition, $team->getId(), $label);
             $chosen[$chosenKey] = [$competition, $team->getId()];
             $dirty = true;

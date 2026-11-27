@@ -13,7 +13,7 @@ import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import type { ReadState } from "@/shared/lib/readState";
 
 import type { Conflict, Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow } from "./api";
-import { isInEnvelope, isoWeekday } from "./lib/envelope";
+import { isFriendlyFixture, isInEnvelope, isoWeekday } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { applicableWindows, dateInsideClosure, hasWeeklyAccess, matchVenueIds, proposedOpeningRange, venueAccessError } from "./lib/matchAccess";
@@ -176,7 +176,7 @@ export function PlacementPanel({
   // sur une lecture en cours / en échec).
   // Y restent toujours le gymnase du match (jamais remplacé en silence) et ceux qu'une ouverture
   // accueille ce jour-là.
-  const isFriendly = null === fixture.competitionId;
+  const isFriendly = isFriendlyFixture(fixture);
   const adopted = hasWeeklyAccess(matchWindows);
   const isHoliday = holidays.includes(fixture.matchDate);
   const matchIds = matchVenueIds(matchWindows);
@@ -222,7 +222,7 @@ export function PlacementPanel({
   const validated = "VALIDATED" === fixture.status;
   const locked = placed && "SOLVER" !== fixture.placementSource;
 
-  // Un amical (competitionId null) n'obéit à aucune enveloppe ligue ni à aucun
+  // Un amical (compétition amicale) n'obéit à aucune enveloppe ligue ni à aucun
   // créneau de match (P4-193, fondateur 2026-09-10) : son placement est LIBRE. Le
   // gymnase indisponible reste le seul refus dur — pour tout le monde.
   const hasKickoff = "" !== kickoff;

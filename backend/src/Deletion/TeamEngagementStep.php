@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace App\Deletion;
 
+use App\Entity\Competition;
 use App\Entity\Engagement;
+use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
 use App\Service\Basketball\VenueLabelNormalizer;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Les engagements de l'équipe supprimée partent (après ses matchs, que la clé du match vers l'engagement
- * attend), puis chaque compétition restée sans engagement ni match ({@see CompetitionRegistry::pruneEmpty}).
- * Le compte annoncé est celui des engagements : une compétition vidée est l'engagement annoncé, pas une
- * ligne de plus.
+ * attend), puis chaque compétition restée sans engagement ni match ({@see CompetitionRegistry::pruneEmpty},
+ * « Amicaux » exceptée). Le compte annoncé est celui des engagements dans une compétition NON amicale : une
+ * compétition vidée est l'engagement annoncé, pas une ligne de plus, et un engagement dans une compétition
+ * amicale n'est pas un engagement en compétition.
  */
 final readonly class TeamEngagementStep implements CascadeStep
 {
@@ -32,9 +35,11 @@ final readonly class TeamEngagementStep implements CascadeStep
             ->where('e.teamId = :teamId')
             ->andWhere('e.clubId = :clubId')
             ->andWhere('e.seasonId = :seasonId')
+            ->andWhere('e.competitionId NOT IN (SELECT c.id FROM ' . Competition::class . ' c WHERE c.seasonId = :seasonId AND c.competitionType = :friendly)')
             ->setParameter('teamId', $target->id)
             ->setParameter('clubId', $target->clubId)
             ->setParameter('seasonId', $target->seasonId)
+            ->setParameter('friendly', CompetitionType::FRIENDLY)
             ->getQuery()
             ->getSingleScalarResult();
     }

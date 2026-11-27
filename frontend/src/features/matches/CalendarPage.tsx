@@ -28,7 +28,7 @@ import { FixtureFormDialog } from "./FixtureFormDialog";
 import { conflictFixtureIds, findFocusedConflict } from "./lib/conflictFocus";
 import { CONFLICT_FAMILIES } from "./lib/conflictLabels";
 import { dateOf, DEFAULT_KINDS, familiesPresent, KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
-import { isInEnvelope, resolveEnvelope } from "./lib/envelope";
+import { isFriendlyFixture, isInEnvelope, resolveEnvelope } from "./lib/envelope";
 import { depositDaysAgo, relativeDepositLabel } from "./lib/fbiFreshness";
 import { defaultExportRange, phaseDateBounds } from "./lib/exportRange";
 import { datelessConflicts } from "./lib/loopSteps";
@@ -72,6 +72,7 @@ import {
   useVenues,
 } from "./queries";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 import { MATCHES_EXPORT_TEXTS } from "./texts/export";
 import { HiddenMatchesWeekNotice } from "./UnpairedVenueLabelsBanner";
 import { WeekCounters } from "./WeekCounters";
@@ -312,7 +313,7 @@ export function CalendarPage() {
   const outOfEnvelope = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const fixture of allFixtures) {
-      if (!isPlacedOnGrid(fixture) || null === fixture.kickoffTime || null === fixture.competitionId) {
+      if (!isPlacedOnGrid(fixture) || null === fixture.kickoffTime || isFriendlyFixture(fixture)) {
         continue;
       }
       const envelope = resolveEnvelope(fixture, resolvedTeamWindows, windows, placementGuards.holidays);
@@ -514,7 +515,7 @@ export function CalendarPage() {
     );
   }
 
-  // FRT-40 — sans la liste des compétitions, le formulaire ne propose que « Amical » : un match
+  // FRT-40 — sans la liste des compétitions, le formulaire ne propose que « Amicaux » : un match
   // créé là serait AMICAL par défaut à l'insu du gestionnaire. On ne vide pas l'écran (les trois
   // lectures fondatrices ont réussi) mais on DÉSACTIVE la création et on le dit. Le serveur reste
   // seul juge du type réel.
@@ -625,12 +626,12 @@ export function CalendarPage() {
       {/* « Validé ligue » en lot : rattrapage des championnats commencés (gestionnaire seul). */}
       {canManage ? <LeagueValidationBanner /> : null}
 
-      {/* FRT-40 — compétitions illisibles : la création est désactivée (un match serait « Amical »
-          par défaut), on l'explique et on offre de réessayer. */}
+      {/* FRT-40 — compétitions illisibles : la création est désactivée (le formulaire ne
+          proposerait que « Amicaux »), on l'explique et on offre de réessayer. */}
       {competitionsFailed ? (
         <NoticeBanner tone="destructive" role="alert">
           <div className="flex flex-wrap items-center gap-2">
-            <span>Les compétitions n'ont pas pu être chargées — la création d'un match est momentanément indisponible (il serait créé « Amical » par défaut).</span>
+            <span>{MATCHES_TEXTS.competitionsLoadError}</span>
             <Button type="button" variant="ghost" size="sm" onClick={() => void competitions.refetch()}>
               Réessayer
             </Button>

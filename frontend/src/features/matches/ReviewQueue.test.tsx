@@ -25,12 +25,13 @@ vi.mock("@/shared/session/queries", async (importOriginal) => ({
 
 const team = { id: "team-1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 } as unknown as Team;
 const venue = { id: "venue-1", name: "Alpha", color: null, externalLabels: [] } as unknown as Venue;
-// Domicile AMICAL futur (competitionId null ⇒ amical, hors défauts) : « Replacer » disponible.
+// Domicile AMICAL futur (compétition amicale ⇒ amical, hors défauts) : « Replacer » disponible.
 const homeAmical = {
   id: "fx-1",
   teamId: "team-1",
   seasonId: "s",
   competitionId: null,
+  competitionType: "FRIENDLY",
   matchDate: "2030-01-05",
   homeAway: "HOME",
   opponentLabel: "Adv",

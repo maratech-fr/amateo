@@ -18,7 +18,10 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  * niveau ; elle peut être déplacée ou changer de créneau ». Le planning de la saison
  * s'ajuste (rarement) ; le périmètre engagé, non.
  *
- * Engagée = elle porte AU MOINS UN match, quel que soit son statut. Décision fondateur :
+ * Engagée = elle porte AU MOINS UN match d'une compétition NON amicale, quel que soit son statut
+ * (lot 7, PR 4a, Q3) : championnat, coupe, brassage. Un amical, posé à la main ou venu de la
+ * fédération, n'engage pas. Un match dont la compétition est introuvable engage : le doute
+ * protège (pas de jointure interne). Décision fondateur d'origine :
  * « si import FBI pour les matchs, l'équipe est engagée d'office. Une correspondance pour
  * les matchs implique que l'équipe est engagée pour la fédération. Même si le statut est
  * UNPLACED, même si le match n'est pas placé. À partir du moment où l'on valide la
@@ -43,12 +46,15 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 final class TeamEngagementGuard
 {
+    /** « Le match n'est pas d'une compétition amicale » — alias `f` du match. */
+    private const string NOT_FRIENDLY = 'NOT EXISTS (SELECT 1 FROM competition c WHERE c.id = f.competition_id AND c.competition_type = \'FRIENDLY\')';
+
     public function __construct(private readonly EntityManagerInterface $entityManager) {}
 
     public function isEngaged(string $teamId): bool
     {
         return (bool) $this->entityManager->getConnection()->fetchOne(
-            'SELECT 1 FROM fixture WHERE team_id = :tid LIMIT 1',
+            'SELECT 1 FROM fixture f WHERE f.team_id = :tid AND ' . self::NOT_FRIENDLY . ' LIMIT 1',
             ['tid' => $teamId],
         );
     }
@@ -75,9 +81,35 @@ final class TeamEngagementGuard
             return [];
         }
 
+        return $this->teamIdsOf('SELECT DISTINCT f.team_id FROM fixture f WHERE f.team_id IN (:tids) AND ' . self::NOT_FRIENDLY, $teamIds);
+    }
+
+    /**
+     * Les équipes parmi `$teamIds` qui portent un match, amical compris.
+     *
+     * @param list<string> $teamIds
+     *
+     * @return array<string, true>
+     */
+    public function teamIdsHoldingAFixture(array $teamIds): array
+    {
+        if ([] === $teamIds) {
+            return [];
+        }
+
+        return $this->teamIdsOf('SELECT DISTINCT team_id FROM fixture WHERE team_id IN (:tids)', $teamIds);
+    }
+
+    /**
+     * @param list<string> $teamIds
+     *
+     * @return array<string, true>
+     */
+    private function teamIdsOf(string $sql, array $teamIds): array
+    {
         /** @var list<string> $rows */
         $rows = $this->entityManager->getConnection()->fetchFirstColumn(
-            'SELECT DISTINCT team_id FROM fixture WHERE team_id IN (:tids)',
+            $sql,
             ['tids' => $teamIds],
             ['tids' => ArrayParameterType::STRING],
         );

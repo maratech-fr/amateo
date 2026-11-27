@@ -65,11 +65,10 @@ final class CascadePlan
             // Un diagnostic est un constat du solveur sur une génération passée : il ne
             // survit pas à son sujet, et l'annoncer n'aiderait personne à décider.
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'teamId', null),
-            // Module matchs. ⚠ Depuis la garde du périmètre engagé, ces deux étapes ne
-            // suppriment plus rien PAR L'API — un seul match, même UNPLACED, rend l'équipe
-            // indélébile (`TeamStateProcessor::cascadeBeforeDelete` refuse AVANT d'arriver
-            // ici). On les garde en filet : si la règle d'engagement se relâche un jour,
-            // les matchs partiront avec l'équipe au lieu de pendre sur un team_id mort.
+            // Module matchs. Depuis la PR 4a du lot 7, seul un match d'une compétition NON amicale engage
+            // l'équipe (`TeamEngagementGuard`, refus AVANT d'arriver ici) : une équipe qui n'a que des amicaux
+            // arrive ici, et ses amicaux partent pour de bon — leurs entrées « à corriger dans FBI » d'abord.
+            new TeamFixtureCorrectionStep,
             new DeleteByFieldStep(Fixture::class, 'teamId', new ImpactLabel('team_fixture', 'match', 'matchs')),
             // Lot 7, PR 3b — l'engagement de l'équipe part après ses matchs (la clé du match vers l'engagement les
             // attend), puis la compétition vidée, sans engagement ni match.

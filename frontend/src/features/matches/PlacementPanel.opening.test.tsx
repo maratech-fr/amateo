@@ -152,7 +152,7 @@ describe("PlacementPanel — le raccourci d'ouverture (D5)", () => {
   });
 
   it("jamais pour un amical, seulement averti", () => {
-    render(panel({ fixture: fixture({ competitionId: null }) }));
+    render(panel({ fixture: fixture({ competitionId: null, competitionType: "FRIENDLY" }) }));
     expect(openAction()).toBeNull();
     expect(placeButton()).toBeEnabled();
   });

@@ -13,7 +13,6 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Repository\SharedCompetitionDeadlineRepository;
-use App\Service\Basketball\FbiDivisionSignature;
 use App\State\Processor\FixtureStateProcessor;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,10 +35,8 @@ use Symfony\Component\Clock\ClockInterface;
  * Tant qu'aucune des deux conditions n'est remplie (échéance future, dates provisoires
  * d'une nouvelle vague), on ne propose RIEN pour ce championnat.
  *
- * Les amicaux sont HORS du lot : un domicile sans compétition ne mûrit sous aucune
- * échéance, et un championnat dont le LIBELLÉ est un amical (« Amical PNF » typé
- * CHAMPIONSHIP côté import) l'est tout autant — reconnu par la maison unique
- * {@see FbiDivisionSignature::isFriendlyCode}. Ces amicaux passés se valident seuls
+ * Les amicaux sont HORS du lot : un match d'une compétition AMICALE (« Amicaux », « Amical
+ * PNF », lot 7 PR 4a) ne mûrit sous aucune échéance. Ces amicaux passés se valident seuls
  * ({@see FriendlyAutoValidator}), jamais par ce lot.
  */
 final class LeagueValidationOutlook
@@ -47,7 +44,6 @@ final class LeagueValidationOutlook
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
-        private readonly FbiDivisionSignature $divisionSignature,
         private readonly ClockInterface $clock,
         private readonly TenantDoctrineScope $tenantDoctrineScope,
         private readonly LoggerInterface $logger,
@@ -289,7 +285,7 @@ final class LeagueValidationOutlook
             $shared = null !== $ffbbCompetitionId ? ($sharedByFfbbId[$ffbbCompetitionId] ?? null) : null;
             [$effective, $source] = CompetitionDeadlineResolver::resolve($competition, $shared);
 
-            $friendly = $this->divisionSignature->isFriendlyCode($competition->getName());
+            $friendly = $competition->getCompetitionType()->isFriendly();
             $first = $minMatchDate[$competition->getId()] ?? null;
 
             $matured = false;

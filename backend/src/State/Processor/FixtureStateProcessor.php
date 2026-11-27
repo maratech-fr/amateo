@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\ClubPublicHolidays;
 use App\Service\ConflictRadarLoader;
@@ -39,6 +40,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
 
     private CompetitionRegistry $competitionRegistry;
 
+    private FriendlyCompetitions $friendlyCompetitions;
+
     private ClockInterface $clock;
 
     private VenueAliasResolver $venueAliasResolver;
@@ -53,6 +56,12 @@ class FixtureStateProcessor extends AbstractStateProcessor
     public function setCompetitionRegistry(CompetitionRegistry $competitionRegistry): void
     {
         $this->competitionRegistry = $competitionRegistry;
+    }
+
+    #[Required]
+    public function setFriendlyCompetitions(FriendlyCompetitions $friendlyCompetitions): void
+    {
+        $this->friendlyCompetitions = $friendlyCompetitions;
     }
 
     #[Required]
@@ -119,10 +128,13 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
         }
-        // competitionId nullable → friendly; explicit '' clears it.
-        $competitionId = '' === $input->competitionId ? null : $input->competitionId;
-        $this->assertCompetitionInScope($competitionId);
-        $entity->setCompetitionId($competitionId);
+        // Lot 7, PR 4a (C55) — à la création, une compétition absente, nulle ou vide range le match dans « Amicaux ».
+        if (null === $input->competitionId || '' === $input->competitionId) {
+            $entity->setCompetitionId($this->defaultFriendlyFor($entity));
+        } else {
+            $this->assertCompetitionInScope($input->competitionId);
+            $entity->setCompetitionId($input->competitionId);
+        }
         $this->assertTeamEngaged($entity);
         if (null !== $input->matchDate) {
             $entity->setMatchDate(new DateTimeImmutable($input->matchDate));
@@ -174,10 +186,15 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null !== $input->teamId) {
             $entity->setTeamId($input->teamId);
         }
-        if (null !== $input->competitionId) {
-            $competitionId = '' === $input->competitionId ? null : $input->competitionId;
-            $this->assertCompetitionInScope($competitionId);
-            $entity->setCompetitionId($competitionId);
+        // Lot 7, PR 4a (C55) — en modification, une compétition absente ou nulle laisse le match où il est ; seule
+        // une chaîne vide explicite le range dans « Amicaux ».
+        if ('' === $input->competitionId) {
+            $this->assertMayBecomeFriendly($entity, $competitionBefore, $statusBefore, null);
+            $entity->setCompetitionId($this->defaultFriendlyFor($entity));
+        } elseif (null !== $input->competitionId) {
+            $this->assertCompetitionInScope($input->competitionId);
+            $this->assertMayBecomeFriendly($entity, $competitionBefore, $statusBefore, $input->competitionId);
+            $entity->setCompetitionId($input->competitionId);
         }
         // L'équipe et la compétition RETENUES (renvoyées ou laissées telles quelles) désignent un engagement.
         $this->assertTeamEngaged($entity);
@@ -258,7 +275,8 @@ class FixtureStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
-        $output = FixtureResource::fromEntity($entity);
+        $competitionId = $entity->getCompetitionId();
+        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId));
         // D6 — même proposition floue que le provider (second appelant de fromEntity).
         if (FixtureHomeAway::HOME === $entity->getHomeAway() && null === $entity->getVenueId() && null !== $entity->getFbiVenueLabel()) {
             $output->suggestedVenueId = $this->venueAliasResolver->suggest($entity->getFbiVenueLabel());
@@ -274,7 +292,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
      *  1bis. couvert par une FERMETURE du calendrier (`venue_closed`) à sa date → refus TOUJOURS
      *     (amical compris, P4-300 D4). Le FAIT brut (config, repli legacy) vient de la maison
      *     unique `PlanVenueClosures`, jamais de la composition `PlanVenue` ;
-     *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 ligne d'accès
+     *  2. de COMPÉTITION (nature non amicale), quand le club déclare ≥ 1 ligne d'accès
      *     NON datée, et seulement à une vraie pose ($checkAccess) : aucune plage applicable à
      *     cette date (ouvertures datées ∪ férié ou jour de semaine) ou coup d'envoi hors de ces
      *     plages → refus ; un amical reste libre (le solveur ne le pose plus, le radar signale).
@@ -317,7 +335,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         }
 
         // (2) accès match — COMPÉTITION seulement ; un amical est libre hors créneau.
-        if (!$checkAccess || null === $entity->getCompetitionId()) {
+        if (!$checkAccess || $this->friendlyCompetitions->isFriendly($entity)) {
             return;
         }
         /** @var list<VenueMatchWindow> $matchWindows */
@@ -400,33 +418,77 @@ class FixtureStateProcessor extends AbstractStateProcessor
      * is tenant+season-filter aware (enabled per-request), so a foreign, deleted
      * or nonexistent id resolves to null → 422 rather than a dangling reference.
      */
-    private function assertCompetitionInScope(?string $competitionId): void
+    private function assertCompetitionInScope(string $competitionId): void
     {
-        if (null === $competitionId) {
-            return;
-        }
         if (null === $this->entityManager->find(Competition::class, $competitionId)) {
             throw new UnprocessableEntityHttpException('Compétition inconnue pour ce club et cette saison.');
         }
     }
 
     /**
-     * Un match de compétition exige que son équipe y soit engagée (lot 7, PR 3b) : refus 422, jamais le 500
-     * de la clé du match vers l'engagement. Un match sans compétition (amical) n'est pas contrôlé.
+     * « Amicaux » de la saison du match, son équipe engagée au passage (écriture immédiate, C42). Club et saison sont
+     * ceux du match (le match existant) ou de la requête (le match neuf) : jamais ceux d'un autre club (RLS).
+     */
+    private function defaultFriendlyFor(Fixture $fixture): string
+    {
+        $request = $this->requestStack->getCurrentRequest();
+        $clubId = $request?->attributes->get('_club_id');
+        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $clubId = $this->entityManager->contains($fixture) ? $fixture->getClubId() : (\is_string($clubId) ? $clubId : null);
+        $seasonId = $this->entityManager->contains($fixture) ? $fixture->getSeasonId() : $this->resolveSeasonId($clubId, \is_string($seasonId) ? $seasonId : null);
+        if (null === $clubId || null === $seasonId) {
+            $this->refuse('Aucune saison en cours : créez d\'abord la saison.');
+        }
+
+        return $this->friendlyCompetitions->engageInDefault($clubId, $seasonId, $fixture->getTeamId())->getId();
+    }
+
+    /**
+     * Q9 — un match connu de la fédération (numéro FBI, rencontre fédérale) ou déjà saisi ou validé ne CHANGE pas de
+     * compétition vers une compétition amicale. On compare la compétition d'avant et celle demandée, jamais la seule
+     * valeur reçue : renvoyer la compétition qu'il a déjà n'est jamais refusé. `$target` null = « Amicaux ».
+     */
+    private function assertMayBecomeFriendly(Fixture $fixture, ?string $competitionBefore, FixtureStatus $statusBefore, ?string $target): void
+    {
+        $before = null === $competitionBefore ? null : $this->entityManager->find(Competition::class, $competitionBefore);
+        if (null === $target) {
+            if ($before instanceof Competition && $before->isDefaultFriendly()) {
+                return;
+            }
+        } else {
+            $competition = $this->entityManager->find(Competition::class, $target);
+            if ($target === $competitionBefore || !$competition instanceof Competition || !$competition->getCompetitionType()->isFriendly()) {
+                return;
+            }
+        }
+        $known = null !== $fixture->getExternalRef()
+            || null !== $fixture->getFfbbRencontreId()
+            || \in_array($statusBefore, [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true);
+        if ($known) {
+            $this->refuse('Ce match est connu de la fédération : il reste dans sa compétition.');
+        }
+    }
+
+    /**
+     * Un match exige que son équipe soit engagée dans sa compétition (lot 7, PR 3b) : refus 422, jamais le 500
+     * de la clé du match vers l'engagement. Une compétition amicale engage l'équipe au passage (PR 4a) : le refus
+     * ne vaut que pour une compétition non amicale.
      */
     private function assertTeamEngaged(Fixture $fixture): void
     {
-        $competitionId = $fixture->getCompetitionId();
-        if (null === $competitionId) {
-            return;
-        }
+        $competitionId = (string) $fixture->getCompetitionId();
         $competition = $this->entityManager->find(Competition::class, $competitionId);
         if ($competition instanceof Competition && $this->competitionRegistry->isEngaged($competition, $fixture->getTeamId())) {
             return;
         }
+        if ($competition instanceof Competition && $competition->getCompetitionType()->isFriendly()) {
+            $this->friendlyCompetitions->engageIn($competition, $fixture->getTeamId());
+
+            return;
+        }
         $team = $this->entityManager->find(Team::class, $fixture->getTeamId());
         $this->refuse(\sprintf(
-            'L\'équipe %s n\'est pas engagée dans « %s ». Choisissez une de ses compétitions, ou aucune pour un amical.',
+            'L\'équipe %s n\'est pas engagée dans « %s ». Choisissez une de ses compétitions, ou « Amicaux ».',
             $team instanceof Team ? $team->getName() : $fixture->getTeamId(),
             $competition instanceof Competition ? $competition->getName() : $competitionId,
         ));

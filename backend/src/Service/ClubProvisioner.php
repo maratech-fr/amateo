@@ -11,6 +11,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Enum\ClubRole;
 use App\Enum\SeasonStatus;
+use App\Matches\FriendlyCompetitions;
 use App\Repository\SportRepository;
 use App\Service\Basketball\CategoryCatalog;
 use DateTimeImmutable;
@@ -40,6 +41,7 @@ final class ClubProvisioner
         private readonly DefaultConstraintSeeder $defaultConstraintSeeder,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
+        private readonly FriendlyCompetitions $friendlyCompetitions,
     ) {}
 
     public function createClub(string $clubName, string $ara): Club
@@ -103,6 +105,8 @@ final class ClubProvisioner
         // ADR-0002 Lot A: the onboarded club's season starts with its empty
         // SEASON plan (flushed with the rest of the seed by the caller).
         $this->schedulePlanProvisioner->ensureSeasonPlan($season);
+        // Lot 7, PR 4a — « Amicaux », la compétition d'office de la saison, naît avec elle.
+        $this->friendlyCompetitions->ensureDefault($club->getId(), $season->getId());
 
         // P4-272 ① — la copie club de l'enveloppe ligue naît avec la saison
         // (recopie de la ligue effective) : le placement lit désormais CETTE

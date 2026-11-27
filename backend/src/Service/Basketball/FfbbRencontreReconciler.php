@@ -13,7 +13,9 @@ use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use App\Service\FbiFixtureImporter;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -52,6 +54,7 @@ final class FfbbRencontreReconciler
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
         private readonly CompetitionRegistry $competitionRegistry,
+        private readonly FriendlyCompetitions $friendlyCompetitions,
     ) {}
 
     /**
@@ -300,14 +303,17 @@ final class FfbbRencontreReconciler
         $matchDate = $row['matchDate'];
         // A paired championship / a resolved-or-created CUP materialises the
         // fixture's competitionId; an amical (label says so, or no competitionFfbbId)
-        // stays null = friendly (Fixture contract).
-        $competition = $this->resolveOrCreateCompetition($row, $teamId, $clubId, $seasonId, $context, $createdByKey);
+        // lands in the friendly competition of its label. Only the pathological
+        // clamped-name collision of resolveOrCreateCompetition leaves it without one:
+        // the season's « Amicaux » then holds it (a fixture always has a competition).
+        $competition = $this->resolveOrCreateCompetition($row, $teamId, $clubId, $seasonId, $context, $createdByKey)
+            ?? $this->friendlyCompetitions->engageInDefault($clubId, $seasonId, $teamId);
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId($competition instanceof Competition ? $competition->getId() : null);
+        $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate($matchDate);
         $fixture->setHomeAway($row['homeAway'] instanceof FixtureHomeAway ? $row['homeAway'] : FixtureHomeAway::HOME);
         // P4-199 — le suffixe FFBB « (n) » est retiré du libellé adverse à la
@@ -485,9 +491,10 @@ final class FfbbRencontreReconciler
         $competitionName = \is_string($row['competitionName'] ?? null) ? $row['competitionName'] : '';
         // R1 — amical = le libellé le dit (token exact « amical »), OU aucune réf de
         // compétition fédérale. ⚠ un amical réel PORTE un competitionFfbbId : « non
-        // apparié » ne suffit jamais, c'est le LIBELLÉ qui tranche.
+        // apparié » ne suffit jamais, c'est le LIBELLÉ qui tranche. Lot 7, PR 4a : il entre
+        // dans la compétition amicale de son libellé (« AMICAL PNM »), jamais dans « Amicaux ».
         if (null === $competitionFfbbId || $this->isFriendlyLabel($competitionName)) {
-            return null;
+            return $this->friendlyCompetitionOf($teamId, $clubId, $seasonId, $competitionName, $createdByKey);
         }
 
         // (1) — (ffbbId, teamId) : la carte du run d'abord (deux rencontres de la
@@ -525,11 +532,34 @@ final class FfbbRencontreReconciler
             return $createdByKey[$key] = $competition;
         }
 
-        // (3) — création : coupe, name clampé (colonne 180), réf posée, journées null.
-        // Compétition puis engagement, dans l'ordre des persist (le match suit) : un flush.
-        $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::CUP);
+        // (3) — création : nature du libellé, coupe par défaut, name clampé (colonne 180),
+        // réf posée, journées null. Compétition puis engagement, dans l'ordre des persist
+        // (le match suit) : un flush.
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionClassifier::classify($name, CompetitionType::CUP));
         $competition->setFfbbCompetitionId($competitionFfbbId);
         $this->competitionRegistry->engage($competition, $teamId);
+
+        return $createdByKey[$key] = $competition;
+    }
+
+    /**
+     * La compétition amicale d'un amical de la fédération, pour son équipe : celle de l'équipe qui porte déjà ce nom
+     * (comparaison de la porte), sinon une neuve, amicale, sans réf fédérale (un amical n'est jamais apparié).
+     *
+     * @param array<string, Competition> $createdByKey
+     */
+    private function friendlyCompetitionOf(string $teamId, string $clubId, string $seasonId, string $competitionName, array &$createdByKey): Competition
+    {
+        $name = mb_substr('' === trim($competitionName) ? 'Amical' : $competitionName, 0, 180);
+        $key = json_encode([null, $teamId, $name], \JSON_THROW_ON_ERROR);
+        if (isset($createdByKey[$key])) {
+            return $createdByKey[$key];
+        }
+        $competition = $this->competitionRegistry->findForTeam($teamId, $name);
+        if (!$competition instanceof Competition) {
+            $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::FRIENDLY);
+            $this->competitionRegistry->engage($competition, $teamId);
+        }
 
         return $createdByKey[$key] = $competition;
     }

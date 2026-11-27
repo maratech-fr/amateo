@@ -189,12 +189,13 @@ final readonly class CompetitionRegistry
 
     /**
      * Supprime les compétitions de la saison qui n'ont plus ni engagement ni match (écrit en base, après le flush
-     * des suppressions qui les ont vidées). Rend le nombre de compétitions supprimées.
+     * des suppressions qui les ont vidées), jamais « Amicaux », la compétition d'office. Rend le nombre de
+     * compétitions supprimées.
      */
     public function pruneEmpty(string $seasonId): int
     {
         return (int) $this->entityManager->createQuery(
-            'DELETE FROM ' . Competition::class . ' c WHERE c.seasonId = :seasonId'
+            'DELETE FROM ' . Competition::class . ' c WHERE c.seasonId = :seasonId AND c.defaultFriendly = false'
             . ' AND c.id NOT IN (SELECT e.competitionId FROM ' . Engagement::class . ' e WHERE e.seasonId = :seasonId)'
             . ' AND c.id NOT IN (SELECT f.competitionId FROM ' . Fixture::class . ' f WHERE f.seasonId = :seasonId AND f.competitionId IS NOT NULL)',
         )->setParameter('seasonId', $seasonId)->execute();

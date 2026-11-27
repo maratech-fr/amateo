@@ -19,6 +19,7 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\FixtureInput;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureUnplacedReason;
 use App\State\Processor\FixtureStateProcessor;
@@ -102,6 +103,11 @@ class FixtureResource
 
     #[Groups(['read'])]
     public ?string $competitionId = null;
+
+    /** The nature of the match's competition: CHAMPIONSHIP · CUP · BRASSAGE · FRIENDLY (a friendly). */
+    #[ApiProperty(openapiContext: ['enum' => ['CHAMPIONSHIP', 'CUP', 'BRASSAGE', 'FRIENDLY']])]
+    #[Groups(['read'])]
+    public ?string $competitionType = null;
 
     /** Y-m-d. */
     #[ApiProperty(openapiContext: ['format' => 'date'])]
@@ -229,7 +235,7 @@ class FixtureResource
     #[Groups(['read'])]
     public ?array $awayTravel = null;
 
-    public static function fromEntity(Fixture $entity): self
+    public static function fromEntity(Fixture $entity, ?Competition $competition): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -239,6 +245,7 @@ class FixtureResource
         $dto->teamId = $entity->getTeamId();
         $dto->seasonId = $entity->getSeasonId();
         $dto->competitionId = $entity->getCompetitionId();
+        $dto->competitionType = $competition?->getCompetitionType()->value;
         $dto->matchDate = $entity->getMatchDate()->format('Y-m-d');
         $dto->homeAway = $entity->getHomeAway()->value;
         $dto->opponentLabel = $entity->getOpponentLabel();

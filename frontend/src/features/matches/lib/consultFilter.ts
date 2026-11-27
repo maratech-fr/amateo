@@ -44,18 +44,17 @@ const KIND_BY_COMPETITION_TYPE: Record<string, Kind> = {
   CHAMPIONSHIP: "championnat",
   CUP: "coupe",
   BRASSAGE: "brassage",
+  FRIENDLY: "amical",
 };
 
 /**
- * Type de compétition d'une rencontre. `competitionId === null` (`Fixture`) = un
- * amical ; sinon selon `Competition.competitionType`.
+ * Type de compétition d'une rencontre : la nature servie sur le match (`competitionType`, lot 7
+ * PR 4a), sinon celle de sa compétition dans la liste. Un amical de la fédération n'est pas
+ * forcément dans la liste : la nature du match décide.
  */
 export function competitionKind(fixture: Fixture, competitionsById: Map<string, Competition>): Kind {
-  if (null === fixture.competitionId) {
-    return "amical";
-  }
-  const competition = competitionsById.get(fixture.competitionId);
-  return (undefined === competition ? undefined : KIND_BY_COMPETITION_TYPE[competition.competitionType]) ?? "championnat";
+  const nature = fixture.competitionType ?? (null === fixture.competitionId ? undefined : competitionsById.get(fixture.competitionId)?.competitionType);
+  return (undefined === nature ? undefined : KIND_BY_COMPETITION_TYPE[nature]) ?? "championnat";
 }
 
 /** fixtureIds référencés par un conflit (côtés match), même patron que `matchFilter.ts`. */

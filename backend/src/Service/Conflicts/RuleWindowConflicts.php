@@ -31,10 +31,11 @@ final class RuleWindowConflicts
      * @param list<Fixture>                              $fixtures
      * @param array<string, list<LeagueWindowInterface>> $envelope
      * @param list<string>                               $publicHolidays dates fériées (Y-m-d) — un match férié n'est jamais hors fenêtre de ligue (PR2)
+     * @param array<string, true>                        $friendlyIds    les compétitions amicales
      *
      * @return list<array<string, mixed>>
      */
-    public function leagueWindowViolations(array $fixtures, array $envelope, array $publicHolidays = []): array
+    public function leagueWindowViolations(array $fixtures, array $envelope, array $publicHolidays = [], array $friendlyIds = []): array
     {
         $conflicts = [];
         foreach ($fixtures as $fixture) {
@@ -48,11 +49,11 @@ final class RuleWindowConflicts
             if (\in_array($fixture->getMatchDate()->format('Y-m-d'), $publicHolidays, true)) {
                 continue;
             }
-            // Un amical (competitionId null) n'obéit à aucune enveloppe de ligue
+            // Un amical (compétition amicale) n'obéit à aucune enveloppe de ligue
             // FFBB : il ne peut donc jamais être « hors fenêtre autorisée par la
             // ligue » (décision fondateur, 2026-09-08, P4-190). Les autres
             // familles (VENUE_OVERLAP, MATCH_MATCH…) continuent de s'appliquer.
-            if (null === $fixture->getCompetitionId()) {
+            if (isset($friendlyIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             $windows = $envelope[$fixture->getTeamId()] ?? [];
@@ -90,10 +91,11 @@ final class RuleWindowConflicts
      *
      * @param list<Fixture>                                                                                          $fixtures
      * @param list<array{ruleType: string, daysOfWeek: list<int>, kickoffMin: string|null, kickoffMax: string|null}> $clubRules
+     * @param array<string, true>                                                                                    $friendlyIds les compétitions amicales
      *
      * @return list<array<string, mixed>>
      */
-    public function clubRuleViolations(array $fixtures, array $clubRules): array
+    public function clubRuleViolations(array $fixtures, array $clubRules, array $friendlyIds = []): array
     {
         $hard = array_values(array_filter($clubRules, static fn (array $rule): bool => 'HARD' === $rule['ruleType']));
         if ([] === $hard) {
@@ -106,9 +108,9 @@ final class RuleWindowConflicts
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway() || !$kickoffTime instanceof DateTimeImmutable) {
                 continue;
             }
-            // Amical (competitionId null) : exempté de toute règle de match (comme
+            // Amical (compétition amicale) : exempté de toute règle de match (comme
             // l'enveloppe ligue) — il se joue quand le club veut.
-            if (null === $fixture->getCompetitionId()) {
+            if (isset($friendlyIds[(string) $fixture->getCompetitionId()])) {
                 continue;
             }
             $day = (int) $fixture->getMatchDate()->format('N');

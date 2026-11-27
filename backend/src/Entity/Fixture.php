@@ -21,7 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
  * A single dated match (« match » is a PHP keyword → Fixture). The manager
  * places HOME fixtures (venue + kickoff) to answer the league; AWAY fixtures
  * are imposed and only counted (their kickoff is estimated). Season-scoped,
- * tenant-owned. A null competitionId = a friendly (spec gestion-matchs §9).
+ * tenant-owned. Every fixture has a competition; its nature says whether it is a friendly.
  *
  * The opponent is a plain label here — the enriched global opponent directory
  * (coords, travel) is palier B.
@@ -74,13 +74,15 @@ class Fixture implements TenantOwnedInterface
     private string $teamId;
 
     /**
-     * Null = friendly (no FFBB competition/phase). With the team, it designates the team's
-     * engagement in that competition (composite key `(competition_id, team_id, club_id)` →
-     * `engagement`, `ON DELETE RESTRICT`, posed by hand in migration).
+     * Required in base since lot 7 PR 4a: a friendly lives in a FRIENDLY competition (« Amicaux » by
+     * default). With the team, it designates the team's engagement in that competition (composite key
+     * `(competition_id, team_id, club_id)` → `engagement`, `ON DELETE RESTRICT`, posed by hand in
+     * migration). Null only on a fixture not yet written: the base refuses to write it so.
      */
-    #[ORM\Column(type: 'guid', nullable: true)]
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(Competition::class, OnDelete::DELETE)]
     #[RefersTo(Engagement::class, OnDelete::DELETE)]
+    // @phpstan-ignore doctrine.columnType (null avant la première écriture seulement ; la colonne NOT NULL refuse le reste)
     private ?string $competitionId = null;
 
     #[ORM\Column(type: 'date_immutable')]

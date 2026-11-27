@@ -32,6 +32,10 @@ export const MATCHES_TEXTS = {
   teamVenueForbiddenTitle: "Gymnase interdit à l'équipe",
   awayNoFootprintTitle: "Extérieur sans heure ni habitude",
   friendlyOnMatchSlotTitle: "Amical sur un créneau de match",
+  /** Formulaire de match : la compétition d'office des amicaux, première option du sélecteur. */
+  friendlyCompetitionOption: "Amicaux",
+  fixtureCompetitionLabel: "Compétition",
+  competitionsLoadError: "Les compétitions n'ont pas pu être chargées — la création d'un match est momentanément indisponible.",
   teamLevelMissingTitle: "Niveau non renseigné",
   newChip: "Nouveau",
   homeSide: "domicile",

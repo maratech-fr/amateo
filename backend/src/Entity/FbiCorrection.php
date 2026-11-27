@@ -67,7 +67,7 @@ class FbiCorrection implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
-    #[RefersTo(Fixture::class, OnDelete::KEEP, 'un match ne part qu\'avec son équipe, ce que la garde du périmètre engagé refuse : l\'entrée part avec la saison')]
+    #[RefersTo(Fixture::class, OnDelete::DELETE)]
     private string $fixtureId;
 
     #[ORM\Column(length: 20, enumType: FbiCorrectionField::class)]

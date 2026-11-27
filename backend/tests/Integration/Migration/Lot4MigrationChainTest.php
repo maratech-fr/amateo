@@ -80,7 +80,7 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * Lot 5, PR 3 « Charger : une seule définition » : suppression de la table des photos `schedule_structure_snapshot`,
      * sans retour (testTheChainDropsThePhotoTable).
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000', 'DoctrineMigrations\Version20261201120000', 'DoctrineMigrations\Version20261202120000', 'DoctrineMigrations\Version20261203120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000', 'DoctrineMigrations\Version20261201120000', 'DoctrineMigrations\Version20261202120000', 'DoctrineMigrations\Version20261203120000', 'DoctrineMigrations\Version20261204120000'];
 
     /**
      * Les contraintes permanentes du décor des références 12 et 13 (`EngineRequestDecorTrait`,

@@ -20,7 +20,7 @@ export { isoWeekday };
  * hors fenêtre : il l'AVERTIT (via `isInEnvelope`, `EnvelopeHint`), le backend DIAGNOSTIQUE
  * après coup (radar), et le solveur garde la ligue en HARD. Ils DIVERGENT par conception sur
  * (a) l'exemption AMICAL — le front assouplit un amical (`PlacementPanel` : `!isFriendly`), le
- * backend saute les `competitionId` null (`leagueWindowViolations`) — et (b) la résolution
+ * backend saute les matchs d'une compétition amicale (`leagueWindowViolations`) — et (b) la résolution
  * équipe↔fenêtre, déjà serveur (`resolvedTeamWindows`, servie depuis la COPIE club). Ils
  * partagent CE prédicat d'appartenance, la seule algèbre qui peut dériver en silence :
  * intervalle FERMÉ `[kickoffMin, kickoffMax]` (les deux bornes incluses), filtré sur le JOUR.
@@ -33,6 +33,21 @@ export function kickoffInsideLeagueWindow(
 ): boolean {
   const min = timeToMinutes(kickoff);
   return windows.some((w) => w.dayOfWeek === day && min >= timeToMinutes(w.kickoffMin) && min <= timeToMinutes(w.kickoffMax));
+}
+
+/**
+ * ⚠️ MIROIR DÉCLARÉ (régime 2) — un amical est un match d'une compétition AMICALE : la nature
+ * servie sur le match (`fixture.competitionType`), jamais un `competitionId` nul ni un libellé.
+ * Même question que `App\Enum\CompetitionType::isFriendly` (backend). Cas partagés
+ * `leagueEnvelope.parity.json` (`natureCases`), gardés par `LeagueEnvelopeMirrorParityTest`.
+ */
+export function isFriendlyFixture(fixture: Fixture): boolean {
+  return "FRIENDLY" === fixture.competitionType;
+}
+
+/** Une coupe : la nature servie sur le match (même miroir, mêmes cas que {@link isFriendlyFixture}). */
+export function isCupFixture(fixture: Fixture): boolean {
+  return "CUP" === fixture.competitionType;
 }
 
 export interface EnvelopeResult {

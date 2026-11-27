@@ -15,6 +15,8 @@ export interface Competition {
   id: string;
   name: string;
   competitionType: string;
+  /** « Amicaux », la compétition d'office de la saison : un match posé sans compétition y est rangé. */
+  defaultFriendly?: boolean;
   /** Les équipes engagées — une pour une compétition de division. */
   engagements: CompetitionEngagement[];
   /** FFBB pairing refs (P1-4 PR F) — read-only, written by the pairing confirm. */

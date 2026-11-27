@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\State\Provider;
 
 use App\ApiResource\FixtureResource;
+use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Repository\FixtureRepository;
@@ -79,7 +80,8 @@ class FixtureStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
-        $output = FixtureResource::fromEntity($entity);
+        $competitionId = $entity->getCompetitionId();
+        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId));
         // Grain équipe (P2-54) : la clé d'équipe = le libellé adverse NORMALISÉ, calculée
         // SERVEUR (foyer unique) et servie, pour que le front joigne le trajet par équipe
         // sans jamais re-normaliser un libellé.

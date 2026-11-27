@@ -57,6 +57,10 @@ class CompetitionResource
     #[Groups(['read'])]
     public string $competitionType = '';
 
+    /** « Amicaux », the season's default friendly competition: a match set without a competition lands there. */
+    #[Groups(['read'])]
+    public bool $defaultFriendly = false;
+
     /** Y-m-d. */
     #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
@@ -126,6 +130,7 @@ class CompetitionResource
         $dto->seasonId = $entity->getSeasonId();
         $dto->name = $entity->getName();
         $dto->competitionType = $entity->getCompetitionType()->value;
+        $dto->defaultFriendly = $entity->isDefaultFriendly();
         $dto->startDate = $entity->getStartDate()?->format('Y-m-d');
         $dto->endDate = $entity->getEndDate()?->format('Y-m-d');
         $dto->engagements = array_map(static fn (EngagementView $engagement): array => [
