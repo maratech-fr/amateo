@@ -53,27 +53,24 @@ final class ConflictsToCoachesContext extends BaseContext
         $this->mailpitBase = rtrim((string) (getenv('BEHAT_MAILPIT_BASE') ?: 'http://mailpit:8025'), '/');
     }
 
-    #[Given('un petit club dont le planning de saison est en vigueur')]
-    public function unPetitClubAvecSocle(): void
+    /**
+     * Le club et ses liens de coach, posés AVANT la validation du planning de saison : un coach principal ou un
+     * coach-joueur ne compte pour le radar qu'une fois validé (lot 5, ligne 27 du plan).
+     */
+    #[Given('/^un petit club où Karim, avec une adresse, coache (?P<teams>.+)$/u')]
+    public function unPetitClubOuKarimCoache(string $teams): void
     {
         $this->buildSmallClub();
-        $this->generateAndValidateSmallClubSocle();
         // Un samedi à venir, assez loin pour rester « à venir » toute la durée du scénario.
         $this->saturday = new DateTimeImmutable('today')->modify('+7 days')->modify('next saturday')->format('Y-m-d');
-    }
-
-    #[Given('Karim, avec une adresse, coache U15F1 et U13F1, qui jouent à l\'extérieur le même samedi à 15h30 et à 16h')]
-    public function karimCoacheDeuxEquipesQuiJouentEnMemeTemps(): void
-    {
         $this->karimEmail = 'karim-' . strtolower($this->smallClubAra) . '@smoke.fr';
         $this->karimId = $this->newCoach('Karim', 'Benali', $this->karimEmail);
-        $this->mainCoach('U15F1', $this->karimId);
-        $this->mainCoach('U13F1', $this->karimId);
-        $this->u15f1MatchId = $this->awayMatch('U15F1', $this->saturday, '15:30');
-        $this->awayMatch('U13F1', $this->saturday, '16:00');
+        foreach (preg_split('/, | et /u', $teams) ?: [] as $team) {
+            $this->mainCoach($team, $this->karimId);
+        }
     }
 
-    #[Given('Emma, sans adresse, coache U17F1 qui joue à l\'extérieur ce samedi à 16h, et joue elle-même avec U15F1')]
+    #[Given('Emma, sans adresse, y coache U17F1 et joue elle-même avec U15F1')]
     public function emmaSansAdresseCoacheEtJoue(): void
     {
         $this->emmaId = $this->newCoach('Emma', 'Durand', null);
@@ -82,6 +79,24 @@ final class ConflictsToCoachesContext extends BaseContext
         if (!\in_array($joined['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('Emma n\'a pas pu rejoindre U15F1 comme joueuse (HTTP %d)', $joined['status']));
         }
+    }
+
+    #[Given('le planning de saison de ce club est en vigueur')]
+    public function lePlanningDeSaisonEstEnVigueur(): void
+    {
+        $this->generateAndValidateSmallClubSocle();
+    }
+
+    #[Given('U15F1 et U13F1 jouent à l\'extérieur le même samedi à 15h30 et à 16h')]
+    public function u15f1EtU13f1JouentEnMemeTemps(): void
+    {
+        $this->u15f1MatchId = $this->awayMatch('U15F1', $this->saturday, '15:30');
+        $this->awayMatch('U13F1', $this->saturday, '16:00');
+    }
+
+    #[Given('U17F1 joue à l\'extérieur ce samedi à 16h')]
+    public function u17f1JoueCeSamedi(): void
+    {
         $this->awayMatch('U17F1', $this->saturday, '16:00');
 
         // Témoin positif du décor : l'écran voit bien Karim ET Emma en double ce samedi — sinon
@@ -192,10 +207,10 @@ final class ConflictsToCoachesContext extends BaseContext
         }
     }
 
+    /** Le lien de Karim à U11M1 est du décor (validé) ; ce qui est nouveau, c'est le match. */
     #[When('U11M1, aussi coachée par Karim, joue à l\'extérieur ce samedi à 16h')]
     public function u11m1AussiCoacheeParKarimJoue(): void
     {
-        $this->mainCoach('U11M1', $this->karimId);
         $this->awayMatch('U11M1', $this->saturday, '16:00');
 
         // Témoin du décor : Karim tient U15F1, le premier coup d'envoi (15h30) ; ses conflits sont

@@ -6,13 +6,17 @@ Fonctionnalité: Les conflits partent aux coachs
   avait reçu une liste et n'a plus de conflit reçoit un e-mail le disant — c'est la promesse
   « il ne pourra pas être surpris ». Par défaut, un nouvel envoi ne repart qu'aux coachs qui ont
   un conflit nouveau ou modifié, avec leur liste complète et les nouveautés marquées ; « Tout
-  renvoyer » renvoie chaque liste. Le décor est un petit club jetable bâti par l'API ; les
-  e-mails sont lus dans le webmail de test, comme le coach les reçoit.
+  renvoyer » renvoie chaque liste. Le décor est un petit club jetable bâti par l'API ; ses liens
+  de coach sont posés avant la validation du planning de saison, puisqu'un coach principal ou un
+  coach-joueur ne compte qu'une fois validé. Les e-mails sont lus dans le webmail de test, comme
+  le coach les reçoit.
 
   Scénario: Le gestionnaire prévient les coachs, puis leur dit quand c'est fini
-    Étant donné un petit club dont le planning de saison est en vigueur
-    Et Karim, avec une adresse, coache U15F1 et U13F1, qui jouent à l'extérieur le même samedi à 15h30 et à 16h
-    Et Emma, sans adresse, coache U17F1 qui joue à l'extérieur ce samedi à 16h, et joue elle-même avec U15F1
+    Étant donné un petit club où Karim, avec une adresse, coache U15F1 et U13F1
+    Et Emma, sans adresse, y coache U17F1 et joue elle-même avec U15F1
+    Et le planning de saison de ce club est en vigueur
+    Et U15F1 et U13F1 jouent à l'extérieur le même samedi à 15h30 et à 16h
+    Et U17F1 joue à l'extérieur ce samedi à 16h
     Quand le gestionnaire envoie les conflits aux coachs
     Alors Karim reçoit un e-mail qui liste ses 2 conflits de personne
     Et Emma est nommée comme coach sans adresse, et la ligne d'envoi compte 1 e-mail envoyé par le gestionnaire
@@ -22,8 +26,9 @@ Fonctionnalité: Les conflits partent aux coachs
     Et un nouvel envoi est refusé, faute de conflit à envoyer ou de coach à prévenir
 
   Scénario: Un deuxième envoi ne repart qu'avec le nouveau
-    Étant donné un petit club dont le planning de saison est en vigueur
-    Et Karim, avec une adresse, coache U15F1 et U13F1, qui jouent à l'extérieur le même samedi à 15h30 et à 16h
+    Étant donné un petit club où Karim, avec une adresse, coache U15F1, U13F1 et U11M1
+    Et le planning de saison de ce club est en vigueur
+    Et U15F1 et U13F1 jouent à l'extérieur le même samedi à 15h30 et à 16h
     Quand le gestionnaire envoie les conflits aux coachs
     Alors Karim reçoit un e-mail qui liste son conflit, sans marque de nouveauté
     Quand U11M1, aussi coachée par Karim, joue à l'extérieur ce samedi à 16h
