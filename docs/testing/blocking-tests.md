@@ -503,6 +503,12 @@ génération terminée la déplacent, et seule la version que le plan pointe se 
 NULL` sur la colonne ou sur l'ancre de `StructureAnchor`, déclaration nullable hors de la frontière de l'API ;
 chaque forme est éprouvée sur un extrait positif et une forme propre passe. Chute attendue si une recherche
 du socle redevient « plan nul », qui rendrait une liste vide sans erreur) ·
+`Architecture/InForceDoorTest` (axes *planning lifecycle* et *generation pipeline*, lot conception 5 PR 4 — la
+porte `App\Plans\InForce` existe avec son contrat, et les lecteurs de l'en vigueur que le plan nomme [radar,
+placement des matchs, conflits de personnes, demande et règles d'une période, naissance d'un plan, lignes des
+plans, les sept lectures du pointeur] ne lisent ni le pointeur du socle ni une famille froide hors d'elle ; les
+familles se lisent sur les déclarations `#[Family]`, chaque forme est éprouvée sur un extrait positif et une forme
+propre passe. Chute attendue si un lecteur nommé relit le pointeur ou une famille froide en direct) ·
 `Security/PlanCompositionTenantIsolationTest` (axe *tenant isolation* et test d'abus, lot conception 4 PR 3a —
 les équipes d'un plan ne traversent jamais la frontière d'un club : `/api/team_period_overrides` refuse l'équipe
 ou le plan d'un autre club sans rien écrire, les réglages d'un autre club ne se lisent pas ; en base, `plan_team`
