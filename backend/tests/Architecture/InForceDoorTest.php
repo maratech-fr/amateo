@@ -153,6 +153,7 @@ final class InForceDoorTest extends TestCase
         yield 'pointeur par la porte' => ['return [$this->inForce->socleVersionId($s)];', self::SOCLE];
         yield 'aiguillage par famille' => ["switch (\$f) {\n    case VenueTrainingSlot::class:\n        break;\n}\nreturn [];", self::BORN];
         yield 'règles datées' => ['return $this->constraintRepository->findBy([\'calendarEntryId\' => $ids, \'clubId\' => $c]);', self::SOCLE];
+        yield 'toutes les règles datées' => ['return $this->em->createQuery(\'SELECT c FROM \' . Constraint::class . \' c WHERE c.calendarEntryId IS NOT NULL\')->getResult();', self::SOCLE];
         yield 'famille libre' => ['return $this->em->getRepository(Coach::class)->findBy([]);', self::SOCLE];
         yield 'lignes d\'un plan hors de l\'ensemble' => ['return $this->connection->fetchAllAssociative(\'SELECT team_id FROM plan_team WHERE season_id = :s\');', self::SOCLE];
         yield 'famille hors de l\'ensemble' => ['return $this->em->getRepository(Team::class)->findBy([]);', self::BORN];
@@ -621,7 +622,7 @@ final class InForceDoorTest extends TestCase
         $current = [];
         $flush = static function (array $indexes) use (&$byToken, $tokens): void {
             $text = implode(' ', array_map(static fn (int $k): string => $tokens[$k][1], $indexes));
-            $hasNull = 1 === preg_match('/\bIS\s+(?:NOT\s+)?NULL\b/i', $text);
+            $hasNull = 1 === preg_match('/\bIS\s+NULL\b/i', $text);
             foreach ($indexes as $k) {
                 if (\T_STRING === $tokens[$k][0] && 'null' === strtolower($tokens[$k][1])) {
                     $hasNull = true;
