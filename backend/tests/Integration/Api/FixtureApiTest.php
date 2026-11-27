@@ -28,6 +28,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
+use App\Matches\FederalFollowUp;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
@@ -35,6 +36,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -56,6 +58,7 @@ final class FixtureApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const TEAM_ID = '11111111-1111-4111-8111-111111111111';
@@ -275,7 +278,7 @@ final class FixtureApiTest extends WebTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($placed['id']);
         self::assertNotNull($reloaded);
         self::assertSame('22222222-2222-4222-8222-222222222222', $reloaded->getVenueId(), 'la salle n\'a pas été vidée');
-        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le statut n\'a pas bougé');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloaded, $this->em), 'le statut n\'a pas bougé');
     }
 
     public function testCreatingWithSolverSourceIsRejected(): void
@@ -577,7 +580,7 @@ final class FixtureApiTest extends WebTestCase
         [$id, $body] = $this->placedOutOfAccess();
         $fixture = $this->em->find(Fixture::class, $id);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::VALIDATED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::VALIDATED, new DateTimeImmutable, $this->em);
         $this->em->flush();
 
         $this->putFixture($id, $body);
@@ -670,7 +673,7 @@ final class FixtureApiTest extends WebTestCase
         [$id, $body] = $this->placedOutOfAccess();
         $fixture = $this->em->find(Fixture::class, $id);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $this->em->flush();
 
         $this->putFixture($id, $body);
@@ -831,6 +834,120 @@ final class FixtureApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         self::assertSame('L\'équipe U13 F n\'est pas engagée dans « Championnat U15 ». Choisissez une de ses compétitions, ou « Amicaux ».', $this->firstViolation());
         self::assertSame($u15, $this->em->getConnection()->fetchOne('SELECT team_id FROM fixture WHERE id = ?', [$id]), 'le match garde son équipe');
+    }
+
+    /**
+     * Abus (lot 7, PR 6b, ligne 33 du plan) : un match que la fédération ne suit pas — un amical posé à la main, rangé
+     * dans « Amicaux » — s'arrête à « Placé » : « saisi » et « validé » sont refusés 422 au texte du plan, le match
+     * reste servi « Placé » et non suivi. Témoin : le même geste sur un match d'un championnat FBI passe, servi suivi.
+     */
+    #[TestWith(['SUBMITTED'])]
+    #[TestWith(['VALIDATED'])]
+    public function testAMatchNotTrackedByTheFederationStopsAtPlaced(string $stage): void
+    {
+        $placed = $this->createPlaced('2026-12-13');
+        $this->putFixture($placed['id'], ['status' => $stage] + $placed);
+
+        self::assertResponseStatusCodeSame(422, \sprintf('« %s » sur un match non suivi', $stage));
+        self::assertSame('Ce match n\'est pas suivi par la fédération : il s\'arrête à « Placé ».', $this->firstViolation());
+        $this->client->request('GET', '/api/fixtures/' . $placed['id'], [], [], $this->authHeaders());
+        self::assertResponseIsSuccessful();
+        self::assertSame(['status' => 'PLACED', 'fbiTracked' => false], array_intersect_key($this->responseData(), ['status' => true, 'fbiTracked' => true]), 'le match reste « Placé », non suivi');
+
+        $this->scopeGucToClub($this->club->getId());
+        $championnat = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat FBI');
+        $away = ['teamId' => self::TEAM_ID, 'competitionId' => $championnat->getId(), 'matchDate' => '2026-12-12', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire', 'kickoffTime' => '15:00'];
+        $created = $this->post($away);
+        self::assertResponseStatusCodeSame(201);
+        self::assertTrue($created['fbiTracked'] ?? null, 'témoin : un match d\'une compétition FBI est servi suivi');
+        $this->putFixture((string) $created['id'], ['status' => $stage] + $away);
+        self::assertResponseStatusCodeSame(200, 'témoin : le même geste sur un match suivi passe : ' . $this->client->getResponse()->getContent());
+        self::assertSame($stage, $this->responseData()['status'] ?? null);
+    }
+
+    /**
+     * Lot 7, PR 6b : la porte elle-même n'écrit jamais « saisi » ni « validé » sur un match non suivi. Chaque appelant
+     * garde en amont (le refus 422 ci-dessus, `FriendlyAutoValidator`, `LeagueValidationOutlook`) : seul ce test atteint
+     * la porte. Sans elle, un écrivain qui oublierait sa garde poserait un suivi fantôme, servi dès que la compétition
+     * deviendrait FBI. Témoin : la même écriture sur un match suivi pose sa ligne.
+     */
+    public function testTheDoorWritesNoEnteredStateOnAnUntrackedMatch(): void
+    {
+        $placed = $this->createPlaced('2026-12-13');
+        $this->scopeGucToClub($this->club->getId());
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $fixture = $em->find(Fixture::class, $placed['id']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertFalse($followUp->isTracked($fixture), 'témoin : l\'amical posé à la main n\'est pas suivi');
+
+        $followUp->markSubmitted($fixture, new DateTimeImmutable);
+        $followUp->markValidated($fixture, new DateTimeImmutable);
+        $em->flush();
+
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$placed['id']]), 'aucune ligne de suivi écrite');
+        self::assertSame(FixtureStatus::PLACED, $followUp->stageOf($fixture), 'il reste « Placé »');
+
+        $championnat = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat FBI');
+        $tracked = $this->post(['teamId' => self::TEAM_ID, 'competitionId' => $championnat->getId(), 'matchDate' => '2026-12-12', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire', 'kickoffTime' => '15:00']);
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($this->club->getId());
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $trackedFixture = $em->find(Fixture::class, (string) $tracked['id']);
+        self::assertInstanceOf(Fixture::class, $trackedFixture);
+        $followUp->markValidated($trackedFixture, new DateTimeImmutable);
+        $em->flush();
+        self::assertSame(['VALIDATED'], $em->getConnection()->fetchFirstColumn('SELECT state FROM fixture_federal_tracking WHERE fixture_id = ?', [(string) $tracked['id']]), 'témoin : sur un match suivi, la porte écrit');
+    }
+
+    /**
+     * Abus (lot 7, PR 6b, ligne 33 du plan) : un match déjà saisi dans FBI ne quitte pas sa compétition FBI pour une
+     * compétition hors FBI (créée par `POST /api/competitions`, servie de source `MANUAL`) — 422 au texte du plan, le
+     * match reste dans sa compétition et « saisi ». Témoin : un match encore à saisir de la même compétition y passe,
+     * et n'y est plus suivi. La garde compare la compétition d'avant et celle demandée : renvoyer la sienne passe.
+     */
+    public function testAMatchEnteredInFbiNeverLeavesItsCompetitionForOneOutsideFbi(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $championnat = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat FBI');
+        $away = ['teamId' => self::TEAM_ID, 'competitionId' => $championnat->getId(), 'matchDate' => '2026-12-12', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire', 'kickoffTime' => '15:00'];
+        $entered = (string) $this->post($away)['id'];
+        self::assertResponseStatusCodeSame(201);
+        $this->putFixture($entered, ['status' => 'SUBMITTED'] + $away);
+        self::assertResponseStatusCodeSame(200, 'témoin : le match est saisi dans FBI');
+        $this->putFixture($entered, ['status' => 'SUBMITTED'] + $away);
+        self::assertResponseStatusCodeSame(200, 'renvoyer sa propre compétition n\'est jamais refusé');
+
+        $this->client->request('POST', '/api/competitions', [], [], $this->authHeaders() + ['CONTENT_TYPE' => 'application/json'], json_encode(['name' => 'Tournoi du club', 'competitionType' => 'CHAMPIONSHIP', 'teamId' => self::TEAM_ID], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $manual = $this->responseData();
+        self::assertSame('MANUAL', $manual['source'] ?? null, 'une compétition créée à la main est servie hors FBI');
+
+        // Sans renvoyer le stade d'abord : seule cette garde parle (le refus « non suivi » ne juge qu'un stade demandé).
+        $this->putFixture($entered, ['competitionId' => (string) $manual['id']] + $away);
+        self::assertResponseStatusCodeSame(422, 'le changement de compétition seul est refusé');
+        self::assertSame('Ce match est déjà saisi dans FBI : il ne peut pas quitter sa compétition.', $this->firstViolation());
+
+        $this->putFixture($entered, ['status' => 'SUBMITTED', 'competitionId' => (string) $manual['id']] + $away);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Ce match est déjà saisi dans FBI : il ne peut pas quitter sa compétition.', $this->firstViolation());
+        $this->client->request('GET', '/api/fixtures/' . $entered, [], [], $this->authHeaders());
+        self::assertSame(['competitionId' => $championnat->getId(), 'status' => 'SUBMITTED'], array_intersect_key($this->responseData(), ['competitionId' => true, 'status' => true]), 'le match reste dans sa compétition, saisi');
+
+        $toEnter = (string) $this->post(['matchDate' => '2026-12-19', 'opponentLabel' => 'Second adversaire'] + $away)['id'];
+        self::assertResponseStatusCodeSame(201);
+        $this->putFixture($toEnter, ['competitionId' => (string) $manual['id'], 'matchDate' => '2026-12-19', 'opponentLabel' => 'Second adversaire'] + $away);
+        self::assertResponseStatusCodeSame(200, 'témoin : un match encore à saisir change de compétition : ' . $this->client->getResponse()->getContent());
+        self::assertFalse($this->responseData()['fbiTracked'] ?? null, 'hors FBI, il n\'est plus suivi');
+
+        $this->client->request('GET', '/api/competitions', [], [], $this->authHeaders());
+        self::assertResponseIsSuccessful();
+        $list = $this->responseData();
+        $sources = array_column(\is_array($list['member'] ?? null) ? $list['member'] : $list, 'source', 'id');
+        self::assertSame('FBI', $sources[$championnat->getId()] ?? null, 'la liste des compétitions sert la source FBI');
+        self::assertSame('MANUAL', $sources[(string) $manual['id']] ?? null, 'et la source MANUAL');
     }
 
     protected function setUp(): void
@@ -1145,7 +1262,9 @@ final class FixtureApiTest extends WebTestCase
 
     private function createCompetition(): string
     {
-        $competition = $this->competitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
+        // Un championnat de la fédération : ses matchs sont suivis (« Marquer saisi », « validé »).
+        $this->scopeGucToClub($this->club->getId());
+        $competition = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
 
         return $competition->getId();
     }

@@ -16,6 +16,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -30,6 +31,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -57,6 +59,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -112,7 +115,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $withDeviation = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-18', '2020-09-10');
         $withDeviation->setVenueId($venue->getId());
         $withDeviation->setKickoffTime(new DateTimeImmutable('15:30'));
-        $withDeviation->putPendingDeviation(['field' => 'date', 'appValue' => '2099-03-18', 'sourceValue' => '2099-03-25', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-10-01T00:00:00+00:00', 'autoApplied' => false]);
+        $this->putPendingDeviationOn($withDeviation, ['field' => 'date', 'appValue' => '2099-03-18', 'sourceValue' => '2099-03-25', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-10-01T00:00:00+00:00', 'autoApplied' => false], $this->em);
         $this->em->flush();
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
@@ -137,6 +140,35 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
      * balayée, ni nommée à traiter, ni signalée sans échéance. La verrouiller en ancre fixe
      * au moment où il faut pouvoir la bouger serait le piège que ce lot ferme.
      */
+    /**
+     * Lot 7, PR 6b : un championnat créé à la main (hors FBI) n'est jamais « validé ligue » — échu, son domicile daté
+     * n'est ni balayé, ni proposé, ni nommé à traiter, et reste « à placer ». Témoin : le même domicile d'un championnat
+     * FBI échu est balayé.
+     */
+    public function testAHandMadeChampionshipIsNeverLeagueValidated(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14');
+        $handMadeId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-15', source: CompetitionSource::MANUAL)->getId();
+
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(1, $data['swept'] ?? -1, 'seul le domicile du championnat FBI est balayé');
+        self::assertSame(0, $data['totalValidatable'], 'rien d\'autre n\'est proposé');
+        self::assertNotContains($handMadeId, array_column($data['toTreat'], 'fixtureId'), 'le domicile hors FBI n\'est pas nommé à traiter');
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $fresh = $this->em->find(Fixture::class, $handMadeId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em), 'il reste « à placer »');
+        self::assertNull($fresh->getPlacementSource(), 'aucune ancre posée');
+    }
+
     public function testAFutureDeadlineCompetitionIsProposedNowhere(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
@@ -160,7 +192,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $freshFuture = $this->em->find(Fixture::class, $futureId);
         self::assertInstanceOf(Fixture::class, $freshFuture);
-        self::assertSame(FixtureStatus::UNPLACED, $freshFuture->getStatus(), 'un championnat non commencé reste mobile');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($freshFuture, $this->em), 'un championnat non commencé reste mobile');
     }
 
     /**
@@ -280,7 +312,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $fresh = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $fresh);
-        self::assertSame(FixtureStatus::UNPLACED, $fresh->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em));
     }
 
     /**
@@ -298,8 +330,8 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         // HOME amical passé, d'une compétition AMICALE de la fédération (« Amical M » ; la nature décide, lot 7 PR 4a).
         $home = $this->createFixture($clubId, $seasonId, $team->getId(), '2020-09-19', null, 'Amical M', CompetitionType::FRIENDLY);
         $homeId = $home->getId();
-        // AWAY amical passé, dans « Amicaux ».
-        $awayId = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::AWAY)->getId();
+        // AWAY amical passé, d'une compétition amicale de la fédération.
+        $awayId = $this->federationFriendly($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::AWAY)->getId();
 
         // Une simple LECTURE par un gestionnaire déclenche le balayage.
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
@@ -312,13 +344,47 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $freshHome = $this->em->find(Fixture::class, $homeId);
         self::assertInstanceOf(Fixture::class, $freshHome);
-        self::assertSame(FixtureStatus::VALIDATED, $freshHome->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($freshHome, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $freshHome->getPlacementSource());
 
         $freshAway = $this->em->find(Fixture::class, $awayId);
         self::assertInstanceOf(Fixture::class, $freshAway);
-        self::assertSame(FixtureStatus::VALIDATED, $freshAway->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($freshAway, $this->em));
         self::assertNull($freshAway->getPlacementSource(), 'un extérieur garde sa source intacte (jamais MANUAL)');
+    }
+
+    /**
+     * Lot 7, PR 6b : un amical posé à la main, rangé dans la vraie « Amicaux » (hors FBI), n'est jamais balayé une fois
+     * passé — `swept` ne le compte pas et il garde son stade. Jumeau de bout en bout : le scénario « Un amical posé à la
+     * main s'arrête à « Placé » » (`un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature`), qui lit le
+     * stade ; ici le compte, que la porte (sans effet sur un match non suivi) ne protège pas.
+     */
+    public function testAPastHandMadeFriendlyInAmicauxIsNeverSwept(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $fixture = new Fixture;
+        $fixture->setClubId($clubId);
+        $fixture->setSeasonId($seasonId);
+        $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId));
+        $fixture->setMatchDate(new DateTimeImmutable('2020-09-19'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel('Amical à la main');
+        $this->em->persist($fixture);
+        $this->em->flush();
+        $fixtureId = $fixture->getId();
+
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(0, $data['swept'] ?? -1, 'un amical hors FBI n\'est jamais balayé');
+        $this->em->clear();
+        $fresh = $this->em->find(Fixture::class, $fixtureId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em), 'il garde son stade');
     }
 
     /**
@@ -331,9 +397,9 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
 
-        $futureId = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2099-03-14', FixtureHomeAway::HOME)->getId();
-        $deviated = $this->friendlyInAmicaux($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::HOME);
-        $deviated->putPendingDeviation(['field' => 'date', 'appValue' => '2020-09-19', 'sourceValue' => '2020-09-26', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-10-01T00:00:00+00:00', 'autoApplied' => false]);
+        $futureId = $this->federationFriendly($clubId, $seasonId, $team->getId(), '2099-03-14', FixtureHomeAway::HOME)->getId();
+        $deviated = $this->federationFriendly($clubId, $seasonId, $team->getId(), '2020-09-19', FixtureHomeAway::HOME);
+        $this->putPendingDeviationOn($deviated, ['field' => 'date', 'appValue' => '2020-09-19', 'sourceValue' => '2020-09-26', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-10-01T00:00:00+00:00', 'autoApplied' => false], $this->em);
         $this->em->flush();
         $deviatedId = $deviated->getId();
 
@@ -343,10 +409,10 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $freshFuture = $this->em->find(Fixture::class, $futureId);
         self::assertInstanceOf(Fixture::class, $freshFuture);
-        self::assertSame(FixtureStatus::UNPLACED, $freshFuture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($freshFuture, $this->em));
         $freshDeviated = $this->em->find(Fixture::class, $deviatedId);
         self::assertInstanceOf(Fixture::class, $freshDeviated);
-        self::assertSame(FixtureStatus::UNPLACED, $freshDeviated->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($freshDeviated, $this->em));
     }
 
     /**
@@ -369,11 +435,11 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertSame(1, $data['swept'] ?? -1);
 
         $this->em->refresh($eligible);
-        self::assertSame(FixtureStatus::VALIDATED, $eligible->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($eligible, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $eligible->getPlacementSource());
 
         $this->em->refresh($untouched);
-        self::assertSame(FixtureStatus::UNPLACED, $untouched->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($untouched, $this->em));
 
         // Rejouable : le prédicat exclut VALIDATED, une seconde lecture ne trouve rien.
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
@@ -405,10 +471,10 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $freshMatured = $this->em->find(Fixture::class, $maturedId);
         self::assertInstanceOf(Fixture::class, $freshMatured);
-        self::assertSame(FixtureStatus::VALIDATED, $freshMatured->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($freshMatured, $this->em));
         $freshFuture = $this->em->find(Fixture::class, $futureId);
         self::assertInstanceOf(Fixture::class, $freshFuture);
-        self::assertSame(FixtureStatus::UNPLACED, $freshFuture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($freshFuture, $this->em));
     }
 
     /**
@@ -431,7 +497,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $this->em->refresh($anchor);
-        self::assertSame(FixtureStatus::VALIDATED, $anchor->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($anchor, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $anchor->getPlacementSource());
 
         // La charge utile envoyée au solveur porte cette rencontre en kind=FIXED.
@@ -465,7 +531,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertSame(FixturePlacementSource::MANUAL, $freshAnchor->getPlacementSource());
         $freshOther = $this->em->find(Fixture::class, $otherId);
         self::assertInstanceOf(Fixture::class, $freshOther);
-        self::assertSame(FixtureStatus::PLACED, $freshOther->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($freshOther, $this->em));
         $kickoff = $freshOther->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
         self::assertLessThanOrEqual('19:00', $kickoff);
@@ -501,7 +567,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $fixture = $this->em->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::VALIDATED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fixture, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $fixture->getPlacementSource());
 
         // (3) L'incohérence n'est pas tue : le radar la signale (ACCESS_WINDOW_LOST).
@@ -562,9 +628,9 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
      * past). Pass a future `$competitionDeadline` to build the danger case (a validatable
      * fixture whose championship deadline has NOT passed yet).
      */
-    private function eligible(string $clubId, string $seasonId, string $teamId, string $venueId, string $date, string $kickoff = '15:30', ?string $competitionDeadline = '2020-09-10'): Fixture
+    private function eligible(string $clubId, string $seasonId, string $teamId, string $venueId, string $date, string $kickoff = '15:30', ?string $competitionDeadline = '2020-09-10', CompetitionSource $source = CompetitionSource::FBI): Fixture
     {
-        $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, $competitionDeadline);
+        $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, $competitionDeadline, source: $source);
         $fixture->setVenueId($venueId);
         $fixture->setKickoffTime(new DateTimeImmutable($kickoff));
         $this->em->flush();
@@ -578,7 +644,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->clear();
         $fresh = $this->em->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fresh);
-        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fresh, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $fresh->getPlacementSource());
     }
 
@@ -725,14 +791,14 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null, CompetitionType $type = CompetitionType::CHAMPIONSHIP): Fixture
+    private function createFixture(string $clubId, string $seasonId, string $teamId, string $date, ?string $competitionDeadline = null, ?string $competitionName = null, CompetitionType $type = CompetitionType::CHAMPIONSHIP, CompetitionSource $source = CompetitionSource::FBI): Fixture
     {
         // Match de COMPÉTITION : un domicile sans compétition sortirait du payload de
         // placement (les amicaux ne sont plus confiés au solveur, P4-193). Chaque
         // rencontre porte SA compétition (jetable) — dont l'échéance de saisie pilote
         // désormais la validation ligue. `competitionName` et `type` posent le cas d'une
         // compétition amicale, ou d'un championnat libellé « Amical X ».
-        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), $type, static fn ($c) => $c->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
+        $competition = $this->competitionFor($teamId, $competitionName ?? 'D2-' . uniqid('', true), $type, static fn ($c) => $c->setSource($source)->setEntryDeadline(null === $competitionDeadline ? null : new DateTimeImmutable($competitionDeadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
@@ -748,14 +814,18 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         return $fixture;
     }
 
-    /** Un amical de « Amicaux » (l'ancien « sans compétition »), domicile ou extérieur, à une date donnée. */
-    private function friendlyInAmicaux(string $clubId, string $seasonId, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
+    /**
+     * Un amical d'une compétition amicale de la fédération (suivi, source FBI), domicile ou extérieur, à une date donnée.
+     * Depuis la PR 6b du lot 7, l'amical de « Amicaux » n'est plus suivi : voir
+     * {@see self::testAPastHandMadeFriendlyInAmicauxIsNeverSwept}.
+     */
+    private function federationFriendly(string $clubId, string $seasonId, string $teamId, string $date, FixtureHomeAway $homeAway): Fixture
     {
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
+        $fixture->setCompetitionId($this->fbiFriendlyCompetitionIdFor($teamId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Amical Adv');

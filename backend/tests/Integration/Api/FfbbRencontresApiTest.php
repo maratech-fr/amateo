@@ -18,6 +18,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -25,12 +26,14 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FfbbHttpClientStub;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -61,6 +64,7 @@ final class FfbbRencontresApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -148,7 +152,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame($team->getId(), $fixture->getTeamId());
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
         // A freshly created rencontre is « à traiter » (PR-3a).
         self::assertSame(FixtureReviewState::NEW, $fixture->getReviewState());
         self::assertNull($fixture->getReviewedAt());
@@ -171,6 +175,32 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(0, $again['created'], 'a rencontre already created is never re-created');
     }
 
+    /**
+     * Lot 7, PR 6b : un amical de la fédération dont le libellé porte le nom « Amicaux » n'entre jamais dans la compétition
+     * d'office de ce nom (MANUAL, non suivie) où l'équipe est engagée — il naît dans une compétition amicale FBI, suivi.
+     */
+    public function testAFederalFriendlyLabelledAmicauxNeverLandsInTheDefaultFriendly(): void
+    {
+        [$token, , $clubId] = $this->register('FRAMX');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $seasonId = $this->seasonOf($clubId)->getId();
+        $amicaux = $this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId);
+        FfbbHttpClientStub::$amicalCompetition = ['nom' => 'Amicaux'];
+
+        $created = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
+        self::assertSame(1, $created['created'], 'témoin : la rencontre est créée');
+
+        $connection = $this->scoped($clubId);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertNotSame($amicaux, $fixture->getCompetitionId(), 'l\'amical fédéral n\'est pas rangé dans « Amicaux »');
+        $competition = $connection->fetchAssociative('SELECT competition_type, source FROM competition WHERE id = ?', [$fixture->getCompetitionId()]);
+        self::assertSame(['competition_type' => CompetitionType::FRIENDLY->value, 'source' => 'FBI'], $competition, 'sa compétition est amicale et de source FBI');
+        self::assertTrue(self::getContainer()->get(FederalFollowUp::class)->isTracked($fixture), 'le match est suivi par la fédération (fbiTracked)');
+    }
+
     public function testApplyCreatesAPastRencontreAlreadyTreated(): void
     {
         // P4-199 décision 1 (canal API) — une rencontre dont la date est PASSÉE
@@ -191,7 +221,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame(FixtureReviewState::REVIEWED, $fixture->getReviewState(), 'une rencontre passée naît traitée');
         self::assertNotNull($fixture->getReviewedAt());
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'traitée ne veut pas dire placée');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em), 'traitée ne veut pas dire placée');
     }
 
     public function testApplyCreatesACupCompetitionForAnUnpairedCoupeRencontre(): void
@@ -272,7 +302,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $existing = $this->buildFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::COUPE_OPPONENT_1, FixtureHomeAway::HOME);
         $existing->setFfbbRencontreId(FfbbHttpClientStub::RENCONTRE_COUPE_1_ID);
-        $existing->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($existing, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $this->em->persist($existing);
         $this->em->flush();
         $existingId = $existing->getId();
@@ -287,7 +317,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertInstanceOf(Fixture::class, $reloaded);
         $competition = $this->em->getRepository(Competition::class)->find((string) $reloaded->getCompetitionId());
         self::assertSame(CompetitionType::CUP, $competition?->getCompetitionType(), 'the cup is retroactively attached to the matched fixture');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'the status is untouched');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'the status is untouched');
         self::assertSame($dateBefore, $reloaded->getMatchDate()->format('Y-m-d'), 'the date is untouched');
         self::assertSame(FixtureReviewState::NEW, $reloaded->getReviewState(), 'no treatment induced');
     }
@@ -306,7 +336,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $existing = $this->buildFixture($clubId, $season->getId(), $team->getId(), $this->rencontreDate(), FfbbHttpClientStub::CHAMP_OPPONENT, FixtureHomeAway::AWAY);
         $existing->setFfbbRencontreId(FfbbHttpClientStub::RENCONTRE_CHAMP_ID);
-        $existing->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($existing, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $existing->setReviewState(FixtureReviewState::NEW);
         $this->em->persist($existing);
         $this->em->flush();
@@ -320,7 +350,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertInstanceOf(Fixture::class, $reloaded);
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState(), 'un extérieur resté NEW est rattrapé au passage API');
         self::assertNotNull($reloaded->getReviewedAt());
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'rattraper le traitement ne place pas');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'rattraper le traitement ne place pas');
     }
 
     public function testACoupeWithAnAlreadyPairedCompetitionReusesItUnchanged(): void
@@ -343,6 +373,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'the already-paired competition is reused, never duplicated');
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
         self::assertSame($competitionId, $fixture?->getCompetitionId());
+        self::assertSame('FBI', $this->scoped($clubId)->fetchOne('SELECT source FROM competition WHERE id = ?', [$competitionId]), 'lot 7, PR 6b : la compétition créée à la main où le canal API range un match devient FBI');
     }
 
     /**
@@ -366,6 +397,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame([$twin->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune seconde compétition de ce nom pour l\'équipe');
         self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$twin->getId()]), 'sa référence fédérale est reposée');
         self::assertSame($twin->getId(), $connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]), 'le match entre dans la compétition ré-adoptée');
+        self::assertSame('FBI', $connection->fetchOne('SELECT source FROM competition WHERE id = ?', [$twin->getId()]), 'lot 7, PR 6b : la compétition ré-adoptée, créée à la main, devient FBI');
     }
 
     /**
@@ -423,7 +455,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime(18, 0));
         $this->em->flush();
         $fixtureId = $fixture->getId();
@@ -447,7 +479,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $reloaded?->getKickoffTime()?->format('H:i'));
         // take_file resolved the last écart → the fixture is treated (REVIEWED, D5).
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
-        self::assertSame([], $reloaded?->getPendingDeviations());
+        self::assertSame([], $this->pendingDeviationsOf($reloaded, $this->em));
     }
 
     public function testApplyWithoutDecisionMarksThePlacedHomeOutOfSync(): void
@@ -461,7 +493,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
         self::assertInstanceOf(Fixture::class, $fixture);
         // Place at a kickoff DIFFERENT from the API's → a divergence, then treat it.
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime(18, 0));
         $this->em->flush();
         $fixtureId = $fixture->getId();
@@ -476,7 +508,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
         self::assertSame('18:00', $reloaded?->getKickoffTime()?->format('H:i'), 'no decision never writes the source value');
-        $entry = $reloaded?->getPendingDeviation('kickoff');
+        $entry = $this->pendingDeviationOf($reloaded, 'kickoff', $this->em);
         self::assertNotNull($entry);
         self::assertSame('FFBB_API', $entry['channel']);
         self::assertSame(FfbbHttpClientStub::AMICAL_KICKOFF, $entry['sourceValue']);
@@ -500,7 +532,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame($venueId, $fixture->getVenueId(), 'l\'alias confirmé rattache le gymnase à la création');
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'jamais placé d\'office');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em), 'jamais placé d\'office');
     }
 
     public function testApplyAttachesTheVenueOfAnExistingUnplacedHomeWithoutTouchingDateOrStatus(): void
@@ -525,7 +557,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
         self::assertSame($venueId, $reloaded?->getVenueId(), 'le gymnase est rattaché depuis l\'alias');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded?->getStatus(), 'le statut ne bouge pas');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'le statut ne bouge pas');
         self::assertSame($dateBefore, $reloaded?->getMatchDate()->format('Y-m-d'), 'la date ne bouge pas');
         self::assertSame(FixtureReviewState::NEW, $reloaded?->getReviewState(), 'aucun traitement induit');
     }
@@ -565,7 +597,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
         self::assertSame($appVenueId, $reloaded?->getVenueId(), 'aucune décision ne déplace le gymnase');
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
-        $entry = $reloaded?->getPendingDeviation('venue');
+        $entry = $this->pendingDeviationOf($reloaded, 'venue', $this->em);
         self::assertNotNull($entry);
         self::assertSame('FFBB_API', $entry['channel']);
         self::assertSame('GYMNASE STUB', $entry['sourceValue']);
@@ -625,7 +657,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($existingId);
         self::assertSame($cosec2, $reloaded?->getVenueId(), 'le gymnase choisi inline est posé');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded?->getStatus(), 'apparier ne place jamais');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'apparier ne place jamais');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
         $venue = $this->em->getRepository(Venue::class)->find($cosec2);
         self::assertContains('gymnase stub', $venue?->getExternalLabels() ?? [], 'le libellé source est rattaché en alias');
@@ -714,7 +746,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertSame($champDate->modify('+7 days')->format('Y-m-d'), $reloaded?->getMatchDate()->format('Y-m-d'), 'la date de l\'appli est intacte');
-        self::assertSame(FixtureStatus::VALIDATED, $reloaded?->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($reloaded, $this->em));
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
     }
 
@@ -880,6 +912,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         // Relâche toute horloge épinglée (Redis partagé, non transactionnel) — sinon
         // elle fuirait sur les tests suivants.
         self::getContainer()->get(DevClockStore::class)->set(null);
+        FfbbHttpClientStub::$amicalCompetition = null;
         parent::tearDown();
     }
 
@@ -969,7 +1002,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     private function pairTeamToStubCompetition(string $clubId, string $seasonId, string $teamId): void
     {
         $this->scopeGucToClub($clubId);
-        $this->competitionFor($teamId, 'Pré test masculine', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID));
+        $this->competitionFor($teamId, 'Pré test masculine', CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI)->setFfbbCompetitionId(FfbbHttpClientStub::COMPETITION_ID));
     }
 
     private function replaceTeamFixtures(string $clubId, string $teamId): void
@@ -985,7 +1018,7 @@ final class FfbbRencontresApiTest extends WebTestCase
     {
         $this->scopeGucToClub($clubId);
         $fixture = $this->buildFixture($clubId, $seasonId, $teamId, $date, $opponent, $home ? FixtureHomeAway::HOME : FixtureHomeAway::AWAY);
-        $fixture->setStatus($status, new DateTimeImmutable);
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         if (null !== $kickoff) {
             [$h, $m] = array_map('intval', explode(':', $kickoff));
             $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime($h, $m));
@@ -1038,10 +1071,10 @@ final class FfbbRencontresApiTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertSame($champDate->format('Y-m-d'), $reloaded?->getMatchDate()->format('Y-m-d'), 'la date de la fédération est écrite');
-        self::assertSame($status, $reloaded?->getStatus(), 'statut conservé');
+        self::assertSame($status, $this->stageOfFixture($reloaded, $this->em), 'statut conservé');
         self::assertSame($venueId, $reloaded?->getVenueId(), 'gymnase conservé');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
-        self::assertTrue($reloaded?->getPendingDeviation('date')['autoApplied'] ?? false, 'bandeau « la fédération a déplacé ce match »');
+        self::assertTrue($this->pendingDeviationOf($reloaded, 'date', $this->em)['autoApplied'] ?? false, 'bandeau « la fédération a déplacé ce match »');
     }
 
     /** Le championnat du stub apparié à l'équipe ; rend son id. */
@@ -1062,6 +1095,8 @@ final class FfbbRencontresApiTest extends WebTestCase
     {
         $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, FfbbHttpClientStub::CHAMP_OPPONENT, true, $status, FfbbHttpClientStub::CHAMP_KICKOFF);
         $fixture->setCompetitionId($competitionId);
+        // Lot 7, PR 6b : « saisi » et « validé » s'écrivent dans le championnat apparié (FBI), pas dans « Amicaux ».
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         $fixture->setVenueId($this->venueWithAlias($clubId, $seasonId, 'Gymnase App', ['gymnase stub']));
         $this->em->flush();
 

@@ -17,6 +17,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -32,6 +33,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -58,6 +60,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -226,7 +229,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
         $saturday = $this->em->find(Fixture::class, $saturdayId);
         self::assertInstanceOf(Fixture::class, $saturday);
-        self::assertSame(FixtureStatus::PLACED, $saturday->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($saturday, $this->em));
         self::assertSame(FixturePlacementSource::SOLVER, $saturday->getPlacementSource());
         self::assertSame($venue->getId(), $saturday->getVenueId());
         $kickoff = $saturday->getKickoffTime()?->format('H:i');
@@ -236,7 +239,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
         $sunday = $this->em->find(Fixture::class, $sundayId);
         self::assertInstanceOf(Fixture::class, $sunday);
-        self::assertSame(FixtureStatus::UNPLACED, $sunday->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($sunday, $this->em));
     }
 
     public function testAManualAnchorIsNeverRewritten(): void
@@ -247,7 +250,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $venue = $this->createVenue($clubId, $seasonId);
         $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
         $anchor = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
-        $anchor->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($anchor, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $anchor->setPlacementSource(FixturePlacementSource::MANUAL);
         $anchor->setVenueId($venue->getId());
         $anchor->setKickoffTime(new DateTimeImmutable('20:30'));
@@ -265,7 +268,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
         $other = $this->em->find(Fixture::class, $otherId);
         self::assertInstanceOf(Fixture::class, $other);
-        self::assertSame(FixtureStatus::PLACED, $other->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($other, $this->em));
         $kickoff = $other->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
         self::assertLessThanOrEqual('19:00', $kickoff);
@@ -301,7 +304,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $fresh = $this->em->find(Fixture::class, $homeId);
         self::assertInstanceOf(Fixture::class, $fresh);
-        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus(), 'le guichet de placement balaie avant de placer');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fresh, $this->em), 'le guichet de placement balaie avant de placer');
         self::assertSame(FixturePlacementSource::MANUAL, $fresh->getPlacementSource());
         self::assertSame('20:30', $fresh->getKickoffTime()?->format('H:i'), 'l\'heure fédérale est conservée');
 
@@ -353,7 +356,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $fresh = $this->em->find(Fixture::class, $homeId);
         self::assertInstanceOf(Fixture::class, $fresh);
-        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus(), 'à la date simulée, le championnat a commencé : le guichet balaie');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fresh, $this->em), 'à la date simulée, le championnat a commencé : le guichet balaie');
         self::assertSame($simulated->format('Y-m-d'), $fresh->getReviewedAt()?->format('Y-m-d'), 'la rencontre balayée est datée du jour du club de démonstration, pas du jour réel');
     }
 
@@ -706,7 +709,7 @@ final class PlaceMatchesControllerTest extends WebTestCase
 
     private function createFixture(string $clubId, string $seasonId, string $teamId, string $date): Fixture
     {
-        $competition = $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

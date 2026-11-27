@@ -170,8 +170,8 @@ le layout — la nav des onglets reste inchangée.
   `lib/urlState.ts` `decodeFbiParam`/`applyFbiToParams`). `FbiEntryList` (maison unique de l'écran) :
   deux sections empilées, **« À corriger dans FBI » en premier** (l'appli fait foi, une ligne par
   match groupée par rencontre, gras = valeur Amateo à taper, FBI en sourdine jamais barré, « vu
-  dans FBI le … » tant que rien n'a bougé) puis **« À saisir »** (domiciles PLACED, mention « FBI
-  affiche … » depuis `Fixture.fbiEcho` sur une ligne contredite) ; une famille vide est masquée, les
+  dans FBI le … » tant que rien n'a bougé) puis **« À saisir »** (domiciles PLACED d'une compétition suivie par la fédération — `fbiTracked`, jamais un amical posé à la main —, mention « FBI
+  affiche … » depuis le mémo `fbiEcho` du suivi fédéral sur une ligne contredite) ; une famille vide est masquée, les
   deux vides → « Rien à faire dans FBI. ». Cocher « Corrigé dans FBI » (`POST …/close`, sans
   confirmation) ou « saisi » grise la ligne et offre « Annuler » (`POST …/reopen`) jusqu'à la
   fermeture de la modale (`Set`/`Map` local, remis à zéro à l'unmount — patron d'undo sans toast) ;

@@ -41,6 +41,7 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -51,6 +52,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\DriverException;
@@ -78,6 +80,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -129,7 +132,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertNotNull($fixture);
         self::assertSame($clubA->getId(), $fixture->getClubId());
         self::assertSame($seasonA->getId(), $fixture->getSeasonId());
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
     }
 
     public function testCompetitionCollectionIsScoped(): void
@@ -171,6 +174,29 @@ final class MatchTenantIsolationTest extends WebTestCase
             . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?, \'2026-10-04\', \'AWAY\', \'Adversaire\', \'UNPLACED\', \'NEW\')',
             [$clubA->getId(), $seasonA->getId(), $teamB->getId(), $competitionB->getId()],
         )), 'un match du club A ne désigne jamais un engagement du club B');
+    }
+
+    /**
+     * Lot 7, PR 6b : le suivi fédéral d'un match ne traverse jamais deux clubs. La base refuse une ligne de suivi du
+     * club A qui désigne le match du club B (clé composée `(fixture_id, club_id)`), même sous la RLS du club qui écrit ;
+     * la ligne de suivi du club B est invisible sous le club A (RLS). Témoins : le suivi du match du club passe, et le
+     * club B voit le sien.
+     */
+    public function testTheFederalTrackingOfAMatchNeverCrossesClubs(): void
+    {
+        [$clubA] = $this->createClubUser('fta');
+        [$clubB] = $this->createClubUser('ftb');
+        $fixtureA = $this->createFixture($clubA, 'Adversaire A');
+        $fixtureB = $this->createFixture($clubB, 'Adversaire B');
+
+        self::assertSame('23503', $this->sqlStateOf(fn (): int|string => $this->insertTracking($clubA, $fixtureB)), 'un suivi du club A ne désigne jamais le match du club B');
+        self::assertNull($this->sqlStateOf(fn (): int|string => $this->insertTracking($clubA, $fixtureA)), 'témoin : le suivi du match du club passe');
+
+        $this->insertTracking($clubB, $fixtureB);
+        $this->scopeGucToClub($clubA->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$fixtureB->getId()]), 'le club A ne lit pas le suivi du club B');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$fixtureB->getId()]), 'témoin : le club B lit le sien');
     }
 
     /**
@@ -1364,7 +1390,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $this->scopeGucToClub($clubB->getId());
         $row = $em->getConnection()->fetchAssociative(
-            'SELECT review_state, match_date, pending_deviations FROM fixture WHERE id = ?',
+            'SELECT f.review_state, f.match_date, COALESCE(t.pending_deviations::text, \'[]\') AS pending_deviations FROM fixture f LEFT JOIN fixture_federal_tracking t ON t.fixture_id = f.id WHERE f.id = ?',
             [$foreign->getId()],
         );
         self::assertIsArray($row);
@@ -1439,7 +1465,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         // Lecture BRUTE sous le scope de B (la connexion dama partagée est scopée club).
         $this->scopeGucToClub($clubB->getId());
         $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
-        $row = $connection->fetchAssociative('SELECT status, placement_source FROM fixture WHERE id = ?', [$foreignId]);
+        $row = $connection->fetchAssociative('SELECT CASE WHEN t.state IN (\'SUBMITTED\', \'VALIDATED\') THEN t.state ELSE f.status END AS status, f.placement_source FROM fixture f LEFT JOIN fixture_federal_tracking t ON t.fixture_id = f.id WHERE f.id = ?', [$foreignId]);
         self::assertIsArray($row);
         self::assertSame('UNPLACED', $row['status'], 'la lecture de A ne valide jamais la rencontre de B');
         self::assertNull($row['placement_source'], 'aucune source de placement posée cross-club');
@@ -1474,8 +1500,8 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture = $this->createFixture($club, $opponent);
         $this->scopeGucToClub($club->getId());
         $fixture->setVenueId('22222222-2222-4222-8222-222222222222');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
-        $fixture->putPendingDeviation([
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
+        new FederalFollowUp($this->em)->deviations($fixture)->put([
             'field' => 'date',
             'appValue' => '2026-10-04',
             'sourceValue' => '2026-10-11',
@@ -1702,7 +1728,8 @@ final class MatchTenantIsolationTest extends WebTestCase
     {
         $this->scopeGucToClub($club->getId());
 
-        return $this->competitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
+        // Un championnat de la fédération (lot 7, PR 6b) : ses matchs sont suivis, « validé ligue » compris.
+        return $this->fbiCompetitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
     }
 
     /** Un engagement écrit en SQL brut, sous la RLS du club posé : seule la base peut alors refuser. */
@@ -1713,6 +1740,18 @@ final class MatchTenantIsolationTest extends WebTestCase
         return $this->em->getConnection()->executeStatement(
             'INSERT INTO engagement (id, version, created_at, updated_at, club_id, season_id, competition_id, team_id) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?)',
             [$club->getId(), $season->getId(), $competitionId, $teamId],
+        );
+    }
+
+    /** Une ligne de suivi fédéral « à saisir » écrite au nom du club, sous sa RLS, pour le match désigné. */
+    private function insertTracking(Club $club, Fixture $fixture): int|string
+    {
+        $this->scopeGucToClub($club->getId());
+
+        return $this->em->getConnection()->executeStatement(
+            'INSERT INTO fixture_federal_tracking (fixture_id, club_id, season_id, version, created_at, updated_at, state, pending_deviations, fbi_echo, kept_venue_label)'
+            . ' VALUES (?, ?, ?, 1, now(), now(), \'TO_ENTER\', \'[]\', NULL, NULL)',
+            [$fixture->getId(), $club->getId(), $fixture->getSeasonId()],
         );
     }
 

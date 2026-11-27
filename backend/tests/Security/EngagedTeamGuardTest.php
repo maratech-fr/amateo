@@ -21,6 +21,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FixtureVenueLossMarker;
@@ -29,6 +30,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -61,6 +63,7 @@ final class EngagedTeamGuardTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -89,8 +92,9 @@ final class EngagedTeamGuardTest extends WebTestCase
         return [
             'importé (numéro FBI)' => [static function (Fixture $fixture): void { $fixture->setExternalRef('FBI-4A-1'); }],
             'venu du canal API (rencontre fédérale)' => [static function (Fixture $fixture): void { $fixture->setFfbbRencontreId('renc-4a-1'); }],
-            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::SUBMITTED, $now); }],
-            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { $fixture->setStatus(FixtureStatus::VALIDATED, $now); }],
+            // Lot 7, PR 6b : « saisi » et « validé » s'écrivent par la porte du suivi fédéral, plus sur la ligne du match.
+            'créé à la main puis saisi' => [static function (Fixture $fixture) use ($now): void { self::getContainer()->get(FederalFollowUp::class)->markSubmitted($fixture, $now); }],
+            'créé à la main puis validé' => [static function (Fixture $fixture) use ($now): void { self::getContainer()->get(FederalFollowUp::class)->markValidated($fixture, $now); }],
         ];
     }
 
@@ -264,7 +268,6 @@ final class EngagedTeamGuardTest extends WebTestCase
                 $fixture->setMatchDate(new DateTimeImmutable('2026-03-14'));
                 $fixture->setHomeAway(FixtureHomeAway::AWAY);
                 $fixture->setOpponentLabel('AS Voisins');
-                $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
                 $adminEm->persist($fixture);
             }
             $adminEm->flush();
@@ -298,6 +301,13 @@ final class EngagedTeamGuardTest extends WebTestCase
         $fixture = $this->fixture($team, FixtureStatus::UNPLACED, FixtureHomeAway::AWAY);
         $championshipId = (string) $fixture->getCompetitionId();
         $this->scopeGucToClub($this->club->getId());
+        // Lot 7, PR 6b : un match connu de la fédération est d'une compétition FBI ; le refus se rejoue après la
+        // conversion, l'état « saisi » ou « validé » lu dans le suivi fédéral et non plus sur la ligne du match.
+        self::assertSame(1, $this->em->getConnection()->executeStatement('UPDATE competition SET source = \'FBI\' WHERE id = ?', [$championshipId]));
+        // L'identité en mémoire relit la source écrite en SQL (même geste que `fbiCompetitionFor`).
+        $championship = $this->em->find(Competition::class, $championshipId);
+        self::assertInstanceOf(Competition::class, $championship);
+        $this->em->refresh($championship);
         $known($fixture);
         $this->em->flush();
         $friendlyId = $this->postCompetition(['name' => 'AMICAL PNM', 'competitionType' => 'FRIENDLY', 'teamId' => $team->getId()]);
@@ -577,7 +587,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $marked = $this->em->getRepository(Fixture::class)->find($fixture->getId());
         self::assertNotNull($marked, 'le match dépointé existe toujours');
-        self::assertSame(FixtureStatus::UNPLACED, $marked->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($marked, $this->em));
         self::assertSame(FixtureUnplacedReason::VENUE_LOST, $marked->getUnplacedReason());
 
         $client->loginUser($this->user);
@@ -818,7 +828,11 @@ final class EngagedTeamGuardTest extends WebTestCase
      */
     private function fixture(Team $team, FixtureStatus $status, FixtureHomeAway $homeAway = FixtureHomeAway::HOME, CompetitionType $nature = CompetitionType::CHAMPIONSHIP): Fixture
     {
-        $competition = $this->competitionFor($team->getId(), \sprintf('%s %s', $nature->value, uniqid('', true)), $nature);
+        $this->scopeGucToClub($this->club->getId());
+        // Lot 7, PR 6b : « saisi » et « validé » n'existent que pour un match suivi, d'une compétition FBI.
+        $competition = \in_array($status, [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+            ? $this->fbiCompetitionFor($team->getId(), \sprintf('%s %s', $nature->value, uniqid('', true)), $nature)
+            : $this->competitionFor($team->getId(), \sprintf('%s %s', $nature->value, uniqid('', true)), $nature);
         $this->scopeGucToClub($this->club->getId());
         $fixture = new Fixture;
         $fixture->setClubId($this->club->getId());
@@ -828,7 +842,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-03-14'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('AS Voisins');
-        $fixture->setStatus($status, new DateTimeImmutable);
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -888,7 +902,7 @@ final class EngagedTeamGuardTest extends WebTestCase
             'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
             'homeAway' => $fixture->getHomeAway()->value,
             'opponentLabel' => $fixture->getOpponentLabel(),
-            'status' => $fixture->getStatus()->value,
+            'status' => self::getContainer()->get(FederalFollowUp::class)->stageOf($fixture)->value,
         ];
     }
 

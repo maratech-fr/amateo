@@ -327,7 +327,8 @@ export function PlacementPanel({
           </div>
         ) : (
           <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-            {placed ? (
+            {/* Lot 7, PR 6b : un match que la fédération ne suit pas (`fbiTracked: false`) s'arrête à « Placé ». */}
+            {placed && false !== fixture.fbiTracked ? (
               <Button variant="outline" size="sm" disabled={busy} className="border-success/40 text-success hover:bg-success/10" onClick={onSubmit}>
                 <Check className="size-3.5" />
                 {MATCHES_TEXTS.panelMarkSubmitted}

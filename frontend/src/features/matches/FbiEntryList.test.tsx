@@ -11,7 +11,7 @@ const teams = new Map<string, Team>([
 ].map((t) => [t.id, t as Team]));
 const venues = new Map<string, Venue>([["v1", { id: "v1", name: "Gymnase Alpha", color: null, externalLabels: [] }]]);
 
-const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null };
+const base = { seasonId: "s", competitionId: null, homeAway: "HOME" as const, fbiVenueLabel: null, placementSource: "MANUAL" as const, unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null, fbiEcho: null, fbiTracked: true };
 
 function fx(over: Partial<Fixture>): Fixture {
   return { ...base, id: "fx", teamId: "tA", matchDate: "2026-10-03", opponentLabel: "Voisins", status: "PLACED", venueId: "v1", kickoffTime: "16:00", externalRef: "12", ...over };
@@ -126,6 +126,15 @@ describe("FbiEntryList — « FBI — à faire »", () => {
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirmer" }));
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: "fxB1" }));
     expect(onCorrected).not.toHaveBeenCalled();
+  });
+
+  // Lot 7, PR 6b : un match que la fédération ne suit pas (servi `fbiTracked: false`, un amical posé à la main)
+  // s'arrête à « Placé » — il n'est jamais « à saisir dans FBI », un match suivi placé l'est toujours.
+  it("un domicile placé non suivi par la fédération n'est pas « à saisir »", () => {
+    renderList([fx({ id: "fxB1", teamId: "tB", opponentLabel: "Rivaux" }), fx({ id: "amical", opponentLabel: "Amical du club", fbiTracked: false })], []);
+    expect(screen.getByRole("heading", { name: /À saisir · 1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Marquer saisi.*Rivaux/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Marquer saisi.*Amical du club/ })).not.toBeInTheDocument();
   });
 
   it("cocher une ligne « à saisir » PLACÉE = onSubmit", async () => {

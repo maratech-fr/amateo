@@ -6,6 +6,7 @@ namespace App\Matches;
 
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
@@ -91,10 +92,10 @@ final readonly class FriendlyCompetitions
     {
         $connection = $this->entityManager->getConnection();
         $connection->executeStatement(
-            'INSERT INTO competition (id, version, created_at, updated_at, club_id, season_id, name, competition_type, default_friendly)'
-            . ' VALUES (gen_random_uuid(), 1, now(), now(), :club, :season, :name, :friendly, true)'
+            'INSERT INTO competition (id, version, created_at, updated_at, club_id, season_id, name, competition_type, source, default_friendly)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), :club, :season, :name, :friendly, :manual, true)'
             . ' ON CONFLICT (club_id, season_id) WHERE default_friendly = true DO NOTHING',
-            ['club' => $clubId, 'season' => $seasonId, 'name' => self::DEFAULT_NAME, 'friendly' => CompetitionType::FRIENDLY->value],
+            ['club' => $clubId, 'season' => $seasonId, 'name' => self::DEFAULT_NAME, 'friendly' => CompetitionType::FRIENDLY->value, 'manual' => CompetitionSource::MANUAL->value],
         );
         $id = $connection->fetchOne('SELECT id FROM competition WHERE club_id = :club AND season_id = :season AND default_friendly', ['club' => $clubId, 'season' => $seasonId]);
         if (!\is_string($id)) {

@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace App\Deletion;
 
 use App\Entity\Coach;
+use App\Entity\Competition;
+use App\Entity\FederalTracking;
 use App\Entity\Fixture;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Enum\FixtureStatus;
+use App\Enum\CompetitionSource;
+use App\Enum\FederalState;
+use App\Enum\PlacementStatus;
 use App\Service\DisablesTenantFilters;
 use App\Service\TeamEngagementGuard;
 use Doctrine\ORM\EntityManagerInterface;
@@ -31,6 +35,13 @@ use Doctrine\ORM\EntityManagerInterface;
 final readonly class DeletionImpactCounter
 {
     use DisablesTenantFilters;
+
+    /**
+     * Le match `e` est saisi ou validé dans FBI : sa ligne de suivi le dit et sa compétition est de source FBI — le
+     * même stade que `FederalFollowUp::stageOf`, en DQL.
+     */
+    private const string ENTERED_IN_FBI = 'EXISTS (SELECT 1 FROM ' . FederalTracking::class . ' t, ' . Competition::class . ' c'
+        . ' WHERE t.fixtureId = e.id AND c.id = e.competitionId AND c.source = :fbi AND t.state IN (:entered))';
 
     public function __construct(
         private EntityManagerInterface $entityManager,
@@ -187,7 +198,7 @@ final readonly class DeletionImpactCounter
     }
 
     /**
-     * P4-270 — les matchs DÉJÀ PLACÉS dans ce gymnase (statut PLACED/SUBMITTED/VALIDATED : ceux
+     * P4-270 — les matchs DÉJÀ PLACÉS dans ce gymnase (stade placé, saisi ou validé : ceux
      * qui portent une salle). Depuis PR4 « fermetures à la source » un seul suffit à RENDRE LE
      * GYMNASE INDÉLÉBILE ({@see self::forVenue} : `blocked`), un match à domicile sans salle étant
      * rendu impossible. Sur-ensemble de `declaredFixtures`. Même patron que
@@ -202,11 +213,13 @@ final readonly class DeletionImpactCounter
             ->where('e.venueId = :venueId')
             ->andWhere('e.clubId = :clubId')
             ->andWhere('e.seasonId = :seasonId')
-            ->andWhere('e.status IN (:placed)')
+            ->andWhere('(e.placement = :placed OR ' . self::ENTERED_IN_FBI . ')')
             ->setParameter('venueId', $target->id)
             ->setParameter('clubId', $target->clubId)
             ->setParameter('seasonId', $target->seasonId)
-            ->setParameter('placed', [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED])
+            ->setParameter('placed', PlacementStatus::PLACED)
+            ->setParameter('entered', [FederalState::SUBMITTED, FederalState::VALIDATED])
+            ->setParameter('fbi', CompetitionSource::FBI)
             ->getQuery()
             ->getSingleScalarResult();
     }
@@ -220,11 +233,12 @@ final readonly class DeletionImpactCounter
             ->where('e.venueId = :venueId')
             ->andWhere('e.clubId = :clubId')
             ->andWhere('e.seasonId = :seasonId')
-            ->andWhere('e.status IN (:declared)')
+            ->andWhere(self::ENTERED_IN_FBI)
             ->setParameter('venueId', $target->id)
             ->setParameter('clubId', $target->clubId)
             ->setParameter('seasonId', $target->seasonId)
-            ->setParameter('declared', [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED])
+            ->setParameter('entered', [FederalState::SUBMITTED, FederalState::VALIDATED])
+            ->setParameter('fbi', CompetitionSource::FBI)
             ->getQuery()
             ->getSingleScalarResult();
     }

@@ -32,13 +32,10 @@ use DateTimeImmutable;
  */
 final class VenueConflicts
 {
-    private readonly FederalFollowUp $followUp;
-
     public function __construct(
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
-    ) {
-        $this->followUp = new FederalFollowUp;
-    }
+        private readonly ?FederalFollowUp $followUp = null,
+    ) {}
 
     /**
      * Severity 1 — two fixtures on the SAME venue whose VENUE windows overlap.
@@ -120,7 +117,7 @@ final class VenueConflicts
                 'type' => ConflictType::TEAM_VENUE_FORBIDDEN->value,
                 'severity' => 3,
                 'venueId' => $venueId,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
         }
 
@@ -170,7 +167,7 @@ final class VenueConflicts
                 'type' => ConflictType::ACCESS_WINDOW_LOST->value,
                 'severity' => 4,
                 'venueId' => $venueId,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
                 'windows' => array_map(static fn (array $w): array => [
                     'dayOfWeek' => $w['dayOfWeek'],
                     'startTime' => $w['startTime'],
@@ -207,7 +204,7 @@ final class VenueConflicts
             $venueId = $fixture->getVenueId();
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway()
                 || null === $venueId
-                || !\in_array($this->followUp->stageOf($fixture), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+                || !\in_array(ConflictMoments::stageOf($fixture, $this->followUp), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
             ) {
                 continue;
             }
@@ -245,7 +242,7 @@ final class VenueConflicts
                 'type' => ConflictType::VENUE_TRAINING_OVERLAP->value,
                 'severity' => 5,
                 'venueId' => $venueId,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
                 'matchEnd' => $view['venueWindow']['end']->format('H:i'),
                 'trainings' => $trainings,
             ];
@@ -306,7 +303,7 @@ final class VenueConflicts
                         'homeAway' => $fixture->getHomeAway()->value,
                         'matchDate' => $date,
                         'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-                        'status' => $this->followUp->stageOf($fixture)->value,
+                        'status' => ConflictMoments::stageOf($fixture, $this->followUp)->value,
                     ],
                 ];
             }

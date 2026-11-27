@@ -1,5 +1,5 @@
 **262 paths** (`grep -c '"/api/' specs/courantes/openapi-snapshot.json`) · SHA-256
-`2e281035619864651718422d25bdc91ed49ece6a76c19fbea833863b73f15940` (`sha256sum` sur le fichier).
+`6507336384eeb9888eb4d082ece279f26fc7452635aab071682fe0062ab678ef` (`sha256sum` sur le fichier).
 
 Règle (skill `documentation-update`) : régénérer ce snapshot à chaque changement d'API (resource,
 controller custom, DTO exposé) et bumper ce stamp. **Le compte et l'empreinte annoncés en tête ne

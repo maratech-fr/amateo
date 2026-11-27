@@ -14,6 +14,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -24,6 +25,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,6 +49,7 @@ final class DeadlineOutlookTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -85,7 +88,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $afterMember = $this->em->find(Fixture::class, $validatableId);
         self::assertInstanceOf(Fixture::class, $afterMember);
-        self::assertSame(FixtureStatus::UNPLACED, $afterMember->getStatus(), 'un Membre ne fait jamais écrire la base');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($afterMember, $this->em), 'un Membre ne fait jamais écrire la base');
 
         // (2) Le gestionnaire lit : le domicile passe « Déjà dans FBI », plus rien à confirmer,
         // le sans-heure reste seul « à placer ».
@@ -100,7 +103,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $afterManager = $this->em->find(Fixture::class, $validatableId);
         self::assertInstanceOf(Fixture::class, $afterManager);
-        self::assertSame(FixtureStatus::VALIDATED, $afterManager->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($afterManager, $this->em));
         self::assertSame(FixturePlacementSource::MANUAL, $afterManager->getPlacementSource());
     }
 
@@ -118,7 +121,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $this->em->clear();
         $afterMember = $this->em->find(Fixture::class, $memberFixtureId);
         self::assertInstanceOf(Fixture::class, $afterMember);
-        self::assertSame(FixtureStatus::UNPLACED, $afterMember->getStatus(), 'un Membre ne fait jamais écrire la base');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($afterMember, $this->em), 'un Membre ne fait jamais écrire la base');
 
         // (2) Un gestionnaire lit : l'amical passé bascule VALIDATED, et la réponse le compte.
         $this->scopeGucToClub($clubId);
@@ -129,7 +132,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $this->em->clear();
         $afterManager = $this->em->find(Fixture::class, $memberFixtureId);
         self::assertInstanceOf(Fixture::class, $afterManager);
-        self::assertSame(FixtureStatus::VALIDATED, $afterManager->getStatus(), 'un gestionnaire déclenche le balayage des amicaux passés');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($afterManager, $this->em), 'un gestionnaire déclenche le balayage des amicaux passés');
     }
 
     protected function setUp(): void
@@ -141,7 +144,7 @@ final class DeadlineOutlookTest extends WebTestCase
 
     private function createMaturedCompetition(string $clubId, string $seasonId, string $teamId): Competition
     {
-        return $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
+        return $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI)->setEntryDeadline(new DateTimeImmutable('2020-09-10')));
     }
 
     private function homeFixture(string $clubId, string $seasonId, string $teamId, string $competitionId, string $date, ?string $venueId, ?string $kickoff): string
@@ -173,7 +176,7 @@ final class DeadlineOutlookTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
+        $fixture->setCompetitionId($this->fbiFriendlyCompetitionIdFor($teamId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Amical Adv');

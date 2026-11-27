@@ -7,6 +7,7 @@ namespace App\Matches;
 use App\Entity\Competition;
 use App\Entity\Engagement;
 use App\Entity\Fixture;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Service\Basketball\VenueLabelNormalizer;
 use Doctrine\ORM\EntityManagerInterface;
@@ -82,14 +83,18 @@ final readonly class CompetitionRegistry
         return $row instanceof Engagement ? $this->view($row) : null;
     }
 
-    /** Une compétition neuve de la saison, persistée, sans engagement : {@see engage} suit. */
-    public function create(string $clubId, string $seasonId, string $name, CompetitionType $type): Competition
+    /**
+     * Une compétition neuve de la saison, persistée, sans engagement : {@see engage} suit. Sa source dit si ses
+     * matchs sont suivis dans FBI : `FBI` pour l'import, l'appariement et le canal API, `MANUAL` pour la main du club.
+     */
+    public function create(string $clubId, string $seasonId, string $name, CompetitionType $type, CompetitionSource $source = CompetitionSource::MANUAL): Competition
     {
         $competition = new Competition;
         $competition->setClubId($clubId);
         $competition->setSeasonId($seasonId);
         $competition->setName($name);
         $competition->setCompetitionType($type);
+        $competition->setSource($source);
         $this->entityManager->persist($competition);
 
         return $competition;
@@ -171,7 +176,8 @@ final readonly class CompetitionRegistry
         $byCompetition = $this->engagementsByCompetition();
         $candidates = [];
         foreach ($this->entityManager->getRepository(Competition::class)->findAll() as $competition) {
-            if ($this->labelNormalizer->normalize($competition->getName()) === $divisionKey) {
+            // Jamais « Amicaux », la compétition d'office : un match de la fédération y entrerait non suivi.
+            if (!$competition->isDefaultFriendly() && $this->labelNormalizer->normalize($competition->getName()) === $divisionKey) {
                 array_push($candidates, ...$byCompetition[$competition->getId()] ?? []);
             }
         }

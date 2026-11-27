@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\Entity\Competition;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
 use App\Matches\FriendlyCompetitions;
@@ -45,6 +46,32 @@ trait CreatesCompetitionsTrait
         $em->flush();
 
         return $competition;
+    }
+
+    /**
+     * Une compétition de source FBI, comme l'import par fichier la crée (lot 7, PR 6b) : ses matchs sont suivis par la
+     * fédération. La source est posée en SQL après {@see competitionFor}, sous le club posé par l'appelant
+     * (`scopeGucToClub`) : le décor ne suppose rien de la signature de `CompetitionRegistry::create`.
+     */
+    private function fbiCompetitionFor(string $teamId, string $name, CompetitionType $type = CompetitionType::CHAMPIONSHIP): Competition
+    {
+        $competition = $this->competitionFor($teamId, $name, $type);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $updated = $em->getConnection()->executeStatement('UPDATE competition SET source = \'FBI\' WHERE id = ?', [$competition->getId()]);
+        Assert::assertSame(1, $updated, \sprintf('fbiCompetitionFor : la compétition %s n\'est pas visible sous le club posé', $competition->getId()));
+        // L'identité en mémoire relit la source écrite : un flush ultérieur ne la remet pas à sa valeur d'avant.
+        $em->refresh($competition);
+
+        return $competition;
+    }
+
+    /**
+     * Une compétition amicale de la fédération (« AMICAL PNM », source FBI) : ses matchs sont suivis, « à saisir » puis
+     * validés seuls une fois passés — le sens qu'avait un amical de « Amicaux » avant la PR 6b du lot 7.
+     */
+    private function fbiFriendlyCompetitionIdFor(string $teamId): string
+    {
+        return $this->competitionFor($teamId, 'AMICAL PNM ' . uniqid('', true), CompetitionType::FRIENDLY, static fn (Competition $c): Competition => $c->setSource(CompetitionSource::FBI))->getId();
     }
 
     /**

@@ -24,6 +24,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Integration\Service\ImportVenueRequiredTest;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -56,6 +57,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -231,7 +233,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $this->em->clear();
         $still = $this->em->find(Fixture::class, $placedId);
         self::assertInstanceOf(Fixture::class, $still);
-        self::assertSame(FixtureStatus::PLACED, $still->getStatus(), 'un domicile déjà placé reste placé');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($still, $this->em), 'un domicile déjà placé reste placé');
         self::assertSame($venue->getId(), $still->getVenueId(), 'un domicile déjà placé garde son gymnase');
         self::assertNull($still->getUnplacedReason(), 'un placé ne devient jamais neutre');
     }
@@ -343,7 +345,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setExternalRef('A11-DEV');
         $fixture->setVenueId($currentGym->getId());
         $fixture->setFbiVenueLabel('SALLE SOURCE INCONNUE');
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -528,7 +530,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setFbiVenueLabel($fbiLabel);
         $fixture->setVenueId($venueId);
         $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('now'));
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable('now'), $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 

@@ -125,6 +125,7 @@ final class MatchPlacementPayloadBuilder
         // qu'une ligne est réécrite — la même donnée doit donner la même demande au moteur.
         /** @var list<Fixture> $fixtures */
         $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([], ['id' => 'ASC']);
+        $this->followUp->prime($fixtures);
         /** @var list<Team> $teams */
         $teams = $this->entityManager->getRepository(Team::class)->findBy([], ['id' => 'ASC']);
         /** @var list<SportCategory> $categories */

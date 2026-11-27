@@ -9,6 +9,7 @@ use App\Entity\Fixture;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -16,6 +17,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use DateTimeImmutable;
@@ -166,21 +168,25 @@ trait EngineRequestMatchesNetDecorTrait
         ), 'témoin 17 : un amical de « Amicaux » non placé');
     }
 
-    /** Témoins de la référence 18 : un domicile validé sans gymnase, un extérieur saisi, un domicile saisi placé. */
+    /**
+     * Témoins de la référence 18 : un domicile validé sans gymnase, un extérieur saisi, un extérieur validé sans
+     * gymnase, un domicile saisi placé. Le stade est lu par la porte, comme l'API le sert (lot 7, PR 6b : « saisi » et
+     * « validé » ne vivent plus sur la ligne du match).
+     */
     private function assertMatchesNetFederalTrackingWitnesses(): void
     {
-        Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE home_away = \'HOME\' AND status = \'VALIDATED\' AND venue_id IS NULL',
-        ), 'témoin 18 : un domicile validé sans gymnase');
-        Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE home_away = \'AWAY\' AND status = \'SUBMITTED\'',
-        ), 'témoin 18 : un extérieur saisi');
-        Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE home_away = \'AWAY\' AND status = \'VALIDATED\' AND venue_id IS NULL',
-        ), 'témoin 18 : un extérieur validé sans gymnase');
-        Assert::assertSame(1, $this->netCount(
-            'SELECT COUNT(*) FROM fixture WHERE home_away = \'HOME\' AND status = \'SUBMITTED\' AND venue_id IS NOT NULL AND kickoff_time IS NOT NULL',
-        ), 'témoin 18 : un domicile saisi avec gymnase et heure');
+        $this->scopeGucToClub(self::ER_CLUB);
+        $followUp = static::getContainer()->get(FederalFollowUp::class);
+        $seen = [];
+        foreach ($this->erEm()->getRepository(Fixture::class)->findBy(['clubId' => self::ER_CLUB]) as $fixture) {
+            $placed = null !== $fixture->getVenueId() && $fixture->getKickoffTime() instanceof DateTimeImmutable;
+            $key = \sprintf('%s %s %s', $fixture->getHomeAway()->value, $followUp->stageOf($fixture)->value, $placed ? 'posé' : (null === $fixture->getVenueId() ? 'sans gymnase' : 'gymnase sans heure'));
+            $seen[$key] = ($seen[$key] ?? 0) + 1;
+        }
+        Assert::assertSame(1, $seen['HOME VALIDATED sans gymnase'] ?? 0, 'témoin 18 : un domicile validé sans gymnase');
+        Assert::assertSame(1, ($seen['AWAY SUBMITTED sans gymnase'] ?? 0) + ($seen['AWAY SUBMITTED posé'] ?? 0), 'témoin 18 : un extérieur saisi');
+        Assert::assertSame(1, $seen['AWAY VALIDATED sans gymnase'] ?? 0, 'témoin 18 : un extérieur validé sans gymnase');
+        Assert::assertSame(1, $seen['HOME SUBMITTED posé'] ?? 0, 'témoin 18 : un domicile saisi avec gymnase et heure');
     }
 
     /** Témoins de la référence 19 : un domicile de coupe non placé un mercredi pour chacune des deux équipes, un posé par le système. */
@@ -224,7 +230,7 @@ trait EngineRequestMatchesNetDecorTrait
     private function netCompetition(int $n, string $teamId, string $name, CompetitionType $type, ?string $fbiTeamLabel = null): void
     {
         $competition = (new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setName($name)->setCompetitionType($type);
+            ->setName($name)->setCompetitionType($type)->setSource(CompetitionSource::FBI);
         $this->erEm()->persist($competition);
         static::getContainer()->get(CompetitionRegistry::class)->engage($competition, $teamId, $fbiTeamLabel);
         $this->erEm()->flush();
@@ -256,7 +262,7 @@ trait EngineRequestMatchesNetDecorTrait
         $fixture->setKickoffTime(null === $kickoff ? null : new DateTimeImmutable($kickoff));
         $fixture->setExternalRef($externalRef);
         if (FixtureStatus::UNPLACED !== $status) {
-            $fixture->setStatus($status, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
+            static::getContainer()->get(FederalFollowUp::class)->moveTo($fixture, $status, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
         }
         $fixture->setPlacementSource($source);
         $this->erEm()->persist($fixture);

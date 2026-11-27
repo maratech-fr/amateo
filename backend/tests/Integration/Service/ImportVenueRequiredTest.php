@@ -28,6 +28,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -82,6 +83,7 @@ final class ImportVenueRequiredTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     /** Un samedi FUTUR : un championnat non commencé (aucune échéance, aucun match joué). */
@@ -152,7 +154,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'MAP-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame($venue->getId(), $fixture->getVenueId(), 'le domicile naît avec le gymnase apparié');
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'apparier ne place jamais la rencontre');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em), 'apparier ne place jamais la rencontre');
 
         $fresh = $this->em->find(Venue::class, $venue->getId());
         self::assertInstanceOf(Venue::class, $fresh);
@@ -181,7 +183,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'VAL-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::VALIDATED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fixture, $this->em));
     }
 
     /** L'import n'invente JAMAIS un gymnase : l'appariement rattache un gymnase EXISTANT, le compte ne bouge pas. */
@@ -290,7 +292,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'NEU-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
         self::assertSame(FixtureHomeAway::HOME, $fixture->getHomeAway(), 'un terrain neutre reste un domicile');
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
         self::assertNull($fixture->getVenueId(), 'un terrain neutre n\'a pas de gymnase du club');
         self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $fixture->getUnplacedReason());
         self::assertSame(FixtureReviewState::REVIEWED, $fixture->getReviewState(), 'un terrain neutre naît traité (rien à placer)');
@@ -320,7 +322,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $this->em->clear();
         $stillPlaced = $this->em->find(Fixture::class, $placedId);
         self::assertInstanceOf(Fixture::class, $stillPlaced);
-        self::assertSame(FixtureStatus::PLACED, $stillPlaced->getStatus(), 'un domicile déjà placé ne devient jamais neutre');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($stillPlaced, $this->em), 'un domicile déjà placé ne devient jamais neutre');
         self::assertSame($venue->getId(), $stillPlaced->getVenueId(), 'le placé garde son gymnase');
         self::assertNull($stillPlaced->getUnplacedReason());
 
@@ -578,7 +580,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $fixture->setFbiVenueLabel($fbiLabel);
         $fixture->setVenueId($venueId);
         $fixture->setKickoffTime(new DateTimeImmutable($kickoff));
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2026-09-16 10:00:00'));
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable('2026-09-16 10:00:00'), $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 

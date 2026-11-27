@@ -12,6 +12,7 @@ use App\Entity\OpponentVenueLink;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
@@ -31,6 +32,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -54,6 +56,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
 {
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const float SIEGE_LAT = 45.70;
@@ -97,7 +100,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
     public function testAnOpenFederalDeviationOverridesValidated(): void
     {
         $fixture = $this->homeMatch('A', '2026-11-14', '15:30', FixtureStatus::VALIDATED, $this->championship->getId());
-        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-08T10:00:00+01:00', 'autoApplied' => false]);
+        $this->putPendingDeviationOn($fixture, ['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-08T10:00:00+01:00', 'autoApplied' => false]);
         $this->em->flush();
 
         self::assertTrue($this->row('A')->toConfirm);
@@ -110,7 +113,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
     public function testAValueAlreadyAppliedFromFbiLeavesAValidatedHomeFirm(): void
     {
         $fixture = $this->homeMatch('A', '2026-11-14', '17:00', FixtureStatus::VALIDATED, $this->championship->getId());
-        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-08T10:00:00+01:00', 'autoApplied' => true]);
+        $this->putPendingDeviationOn($fixture, ['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-08T10:00:00+01:00', 'autoApplied' => true]);
         $this->em->flush();
 
         self::assertFalse($this->row('A')->toConfirm);
@@ -133,7 +136,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
      */
     public function testTheCompetitionNatureNotItsLabelMakesAFriendly(): void
     {
-        $friendly = $this->competitionFor($this->team->getId(), 'Amical PNF', CompetitionType::FRIENDLY);
+        $friendly = $this->competitionFor($this->team->getId(), 'Amical PNF', CompetitionType::FRIENDLY, static fn ($c) => $c->setSource(CompetitionSource::FBI));
         $this->homeMatch('A', '2026-11-14', '10:00', FixtureStatus::PLACED, $friendly->getId());
         $labelledFriendly = $this->competition('Amical RM3');
         $this->homeMatch('B', '2026-11-14', '12:00', FixtureStatus::PLACED, $labelledFriendly->getId());
@@ -155,7 +158,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
     public function testAPlayedMatchWithOpenDeviationIsFirm(): void
     {
         $fixture = $this->homeMatch('A', '2026-11-07', '15:30', FixtureStatus::VALIDATED, $this->championship->getId());
-        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
+        $this->putPendingDeviationOn($fixture, ['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
         $this->em->flush();
 
         self::assertFalse($this->row('A')->toConfirm);
@@ -164,7 +167,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
     public function testAPlayedMatchWithOpenDeviationAndNoKickoffKeepsTheMention(): void
     {
         $fixture = $this->homeMatch('A', '2026-11-07', null, FixtureStatus::UNPLACED, $this->championship->getId());
-        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => null, 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
+        $this->putPendingDeviationOn($fixture, ['field' => 'kickoff', 'appValue' => null, 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-06T10:00:00+01:00', 'autoApplied' => false]);
         $this->em->flush();
 
         self::assertTrue($this->row('A')->toConfirm);
@@ -630,7 +633,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         if (null !== $competitionId) {
             $fixture->setCompetitionId($competitionId); // sinon « Amicaux », posée par baseFixture
         }
-        $fixture->setStatus($status, new DateTimeImmutable('2026-11-01'));
+        $this->stageFixture($fixture, $status, new DateTimeImmutable('2026-11-01'));
         $this->em->flush();
 
         return $fixture;
@@ -696,7 +699,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
 
     private function competition(string $name): Competition
     {
-        return $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
+        return $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI));
     }
 
     private function venue(string $name, ?string $address): Venue

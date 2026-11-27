@@ -19,6 +19,7 @@ use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use App\Tests\WritesFbiExports;
@@ -43,6 +44,7 @@ final class ImportFixturesApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
     use WritesFbiExports;
@@ -604,7 +606,7 @@ final class ImportFixturesApiTest extends WebTestCase
     {
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture, 'imported fixture must exist');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $fixture->setVenueId('11111111-1111-4111-8111-111111111111');
         $this->em->flush();
 

@@ -65,17 +65,40 @@ Fonctionnalité: Un championnat commencé valide seul ses matchs à domicile
     Quand je dépose un fichier FBI avec un amical passé à « GYM BEHAT »
     Et un gestionnaire ouvre la vue « validé ligue »
     Alors l'amical passé est « validé ligue »
+    Et l'amical passé est suivi par la fédération
     Et aucune rencontre n'est validable « validé ligue »
 
-  Scénario: Un amical posé à la main est « à saisir » dans FBI, puis se valide seul une fois passé
-    Un amical créé à la main, sans compétition, puis placé compte aujourd'hui parmi les matchs à
-    saisir dans FBI comme un domicile de championnat ; une fois sa date passée, la lecture d'un
-    gestionnaire le fait passer « validé ligue » et il quitte ce compte.
+  Scénario: Un amical posé à la main s'arrête à « Placé » : jamais à saisir dans FBI, jamais validé seul
+    Un amical créé à la main, sans compétition, est rangé dans « Amicaux », une compétition que la
+    fédération ne connaît pas : il n'est pas suivi. Placé, il reste « Placé » et ne compte pas parmi
+    les matchs à saisir dans FBI ; sa date passée, la lecture d'un gestionnaire ne le valide pas.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »
     Quand je pose à la main un amical à domicile à « GYM BEHAT », sans compétition
-    Alors l'amical posé à la main compte parmi les matchs à saisir dans FBI
-    Quand la date de l'amical posé à la main est révolue
+    Alors le match posé à la main n'est pas suivi par la fédération
+    Et il ne compte pas parmi les matchs à saisir dans FBI
+    Quand la date du match posé à la main est révolue
     Et un gestionnaire ouvre la vue « validé ligue »
-    Alors l'amical posé à la main est « validé ligue »
-    Et il ne compte plus parmi les matchs à saisir dans FBI
+    Alors le match posé à la main est « Placé »
+    Et il ne compte pas parmi les matchs à saisir dans FBI
+
+  Scénario: Un match posé à la main dans un championnat FBI est suivi, et dé-placé il redevient à saisir
+    Un championnat venu du fichier FBI est suivi par la fédération, même pour un match que le
+    gestionnaire y crée à la main : placé, il est à saisir ; marqué « saisi », il quitte ce compte.
+    Remis « à placer », son suivi repart de « à saisir » : il n'est plus « saisi », et replacé il
+    compte de nouveau parmi les matchs à saisir dans FBI.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un domicile daté à « GYM BEHAT » et un domicile sans heure
+    Et je pose à la main un domicile à « GYM BEHAT » dans le championnat déposé
+    Alors le match posé à la main est suivi par la fédération
+    Et il compte parmi les matchs à saisir dans FBI
+    Quand je marque « saisi » le match posé à la main
+    Alors le match posé à la main est « saisi »
+    Et il ne compte pas parmi les matchs à saisir dans FBI
+    Quand je remets « à placer » le match posé à la main
+    Alors le match posé à la main est « à placer »
+    Quand je replace le match posé à la main à « GYM BEHAT »
+    Alors le match posé à la main est « Placé »
+    Et il compte parmi les matchs à saisir dans FBI

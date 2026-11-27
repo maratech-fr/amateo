@@ -44,6 +44,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -67,6 +68,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -292,7 +294,7 @@ final class CascadeDeleteApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertNotNull($fixture, 'le match survit');
         self::assertSame($venue->getId(), $fixture->getVenueId(), 'le match garde sa salle : zéro écriture');
-        self::assertSame(FixtureStatus::PLACED, $fixture->getStatus(), 'le match n\'est PAS repassé « à placer »');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($fixture, $this->em), 'le match n\'est PAS repassé « à placer »');
         self::assertNotNull($this->em->getRepository(VenueTrainingSlot::class)->find($slotId), 'le créneau du gymnase est intact');
     }
 
@@ -474,12 +476,12 @@ final class CascadeDeleteApiTest extends WebTestCase
         $club ??= $this->club;
         $season ??= $this->season;
 
-        return $this->persist((new Fixture)
+        return $this->persist($this->stageFixture((new Fixture)
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setTeamId('11111111-1111-4111-8111-111111111111')->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))
             ->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
-            ->setStatus($status, new DateTimeImmutable)->setVenueId($venueId));
+            ->setVenueId($venueId), $status, new DateTimeImmutable, $this->em));
     }
 
     /**

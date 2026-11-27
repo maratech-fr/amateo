@@ -4,32 +4,33 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Entity;
 
-use App\Entity\Fixture;
+use App\Entity\FederalTracking;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 
 /**
- * Les règles d'état portées par l'entité rencontre elle-même : le libellé de salle gardé, et ce qui
- * rend une rencontre arbitrable (donc hors de tout geste « marquer comme vu » en masse).
+ * Les règles d'état portées par le suivi fédéral d'une rencontre (sa ligne `fixture_federal_tracking` depuis le
+ * lot 7, PR 6b) : le libellé de salle gardé, et ce qui rend une rencontre arbitrable (donc hors de tout geste
+ * « marquer comme vu » en masse).
  */
 #[Group('unit')]
 final class FixtureTest extends TestCase
 {
     public function testKeptVenueLabelDefaultsToNull(): void
     {
-        self::assertNull(new Fixture()->getKeptVenueLabel());
+        self::assertNull($this->tracking()->getKeptVenueLabel());
     }
 
     public function testSettingANonNullVenueClearsTheKeptVenueLabel(): void
     {
         // « Garder l'appli » pose keptVenueLabel ; re-placer le match (salle non nulle)
         // éteint ce pense-bête — même maison que unplacedReason.
-        $fixture = new Fixture;
+        $fixture = $this->tracking();
         $fixture->setKeptVenueLabel('salle raphael de barros');
         self::assertSame('salle raphael de barros', $fixture->getKeptVenueLabel());
 
-        $fixture->setVenueId('11111111-1111-4111-8111-111111111111');
+        $fixture->followVenue('11111111-1111-4111-8111-111111111111');
         self::assertNull($fixture->getKeptVenueLabel(), 'poser une salle efface le libellé gardé');
     }
 
@@ -37,9 +38,9 @@ final class FixtureTest extends TestCase
     {
         // Un dépointage (venueId null) NE touche PAS l'idempotence : seul un
         // re-placement (venueId non null) l'éteint.
-        $fixture = new Fixture;
+        $fixture = $this->tracking();
         $fixture->setKeptVenueLabel('salle raphael de barros');
-        $fixture->setVenueId(null);
+        $fixture->followVenue(null);
         self::assertSame('salle raphael de barros', $fixture->getKeptVenueLabel());
     }
 
@@ -51,21 +52,21 @@ final class FixtureTest extends TestCase
      */
     public function testOnlyANonAutoAppliedEntryMakesTheFixtureArbitrable(): void
     {
-        $clean = new Fixture;
+        $clean = $this->tracking();
         self::assertFalse($clean->hasArbitrableDeviations(), 'sans entrée : rien à trancher');
         self::assertFalse($clean->hasPendingDeviations());
 
-        $autoOnly = new Fixture;
+        $autoOnly = $this->tracking();
         $autoOnly->putPendingDeviation($this->entry('date', true));
         $autoOnly->putPendingDeviation($this->entry('kickoff', true));
         self::assertFalse($autoOnly->hasArbitrableDeviations(), 'des valeurs appliquées d\'office ne s\'arbitrent pas');
         self::assertTrue($autoOnly->hasPendingDeviations(), 'hasPendingDeviations compte toujours une entrée appliquée d\'office');
 
-        $arbitrable = new Fixture;
+        $arbitrable = $this->tracking();
         $arbitrable->putPendingDeviation($this->entry('date', false));
         self::assertTrue($arbitrable->hasArbitrableDeviations(), 'un écart à trancher est arbitrable');
 
-        $mixed = new Fixture;
+        $mixed = $this->tracking();
         $mixed->putPendingDeviation($this->entry('date', true));
         $mixed->putPendingDeviation($this->entry('kickoff', false));
         self::assertTrue($mixed->hasArbitrableDeviations(), 'une entrée à trancher suffit, même à côté d\'une valeur appliquée d\'office');
@@ -81,11 +82,16 @@ final class FixtureTest extends TestCase
     {
         $entry = $this->entry('date', true);
         unset($entry['autoApplied']);
-        $fixture = new Fixture;
-        new ReflectionProperty(Fixture::class, 'pendingDeviations')->setValue($fixture, [$entry]);
+        $fixture = $this->tracking();
+        new ReflectionProperty(FederalTracking::class, 'pendingDeviations')->setValue($fixture, [$entry]);
 
         self::assertTrue($fixture->hasArbitrableDeviations(), 'sans la clé, l\'entrée reste à trancher');
         self::assertTrue($fixture->hasPendingDeviations());
+    }
+
+    private function tracking(): FederalTracking
+    {
+        return new FederalTracking('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc');
     }
 
     /**

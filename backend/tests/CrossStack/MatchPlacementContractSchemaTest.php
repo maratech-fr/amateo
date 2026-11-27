@@ -26,6 +26,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,6 +45,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MatchPlacementContractSchemaTest extends KernelTestCase
 {
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const ENGINE_URL = 'http://engine:8000/place-matches';
@@ -197,7 +199,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
         $em = self::getContainer()->get('doctrine.orm.entity_manager');
 
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId($venue->getId());
         $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
         $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
@@ -237,14 +239,14 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
 
         $friendlyUnplaced = $this->makeFixture($em, $club, $season, $teamId, '2026-10-10', FixtureHomeAway::HOME);
         $friendlyPlaced = $this->makeFixture($em, $club, $season, $teamId, '2026-10-17', FixtureHomeAway::HOME);
-        $friendlyPlaced->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($friendlyPlaced, FixtureStatus::PLACED, new DateTimeImmutable);
         $friendlyPlaced->setVenueId($venue->getId());
         $friendlyPlaced->setKickoffTime(new DateTimeImmutable('15:30'));
         $friendlyPlaced->setPlacementSource(FixturePlacementSource::MANUAL);
         $friendlyAway = $this->makeFixture($em, $club, $season, $teamId, '2026-10-24', FixtureHomeAway::AWAY);
         $federal = $this->federalFriendly($club, $season, $teamId);
         $federalBySolver = $this->makeFixture($em, $club, $season, $teamId, '2026-10-31', FixtureHomeAway::HOME, $federal);
-        $federalBySolver->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($federalBySolver, FixtureStatus::PLACED, new DateTimeImmutable);
         $federalBySolver->setVenueId($venue->getId());
         $federalBySolver->setKickoffTime(new DateTimeImmutable('15:30'));
         $federalBySolver->setPlacementSource(FixturePlacementSource::SOLVER);
@@ -331,7 +333,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
     {
         [, $fixture, $club, $season, $builder, $venue] = $this->buildFromSeededClub();
         $em = self::getContainer()->get('doctrine.orm.entity_manager');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setVenueId($venue->getId());
         $fixture->setKickoffTime(new DateTimeImmutable('10:00'));
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
@@ -358,7 +360,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertSame($venue->getId(), $match['importedVenueId'] ?? null);
         self::assertSame('15:10', $match['importedKickoff'] ?? null);
 
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
         $em->flush();
         $match = $builder->build($club, $season->getId())['payload']['matches'][0];
@@ -394,7 +396,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         self::assertArrayNotHasKey('importedKickoff', $match, 'gymnase sans heure');
 
         $fixture->setKickoffTime(new DateTimeImmutable('15:00'));
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
         $em->flush();
         $match = $builder->build($club, $season->getId())['payload']['matches'][0];

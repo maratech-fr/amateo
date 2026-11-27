@@ -9,6 +9,7 @@ use App\Entity\Competition;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Team;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -511,7 +512,8 @@ final class FfbbRencontreReconciler
         }
         foreach ($context['competitionByFfbbId'][$competitionFfbbId] ?? [] as $competition) {
             if ($this->competitionRegistry->isEngaged($competition, $teamId)) {
-                return $createdByKey[$key] = $competition;
+                // Lot 7, PR 6b — la fédération y range ses matchs : ils sont suivis dans FBI.
+                return $createdByKey[$key] = $competition->markFromFederation();
             }
         }
 
@@ -533,13 +535,13 @@ final class FfbbRencontreReconciler
             }
             $competition->setFfbbCompetitionId($competitionFfbbId);
 
-            return $createdByKey[$key] = $competition;
+            return $createdByKey[$key] = $competition->markFromFederation();
         }
 
         // (3) — création : nature du libellé, coupe par défaut, name clampé (colonne 180),
         // réf posée, journées null. Compétition puis engagement, dans l'ordre des persist
         // (le match suit) : un flush.
-        $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionClassifier::classify($name, CompetitionType::CUP));
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionClassifier::classify($name, CompetitionType::CUP), CompetitionSource::FBI);
         $competition->setFfbbCompetitionId($competitionFfbbId);
         $this->competitionRegistry->engage($competition, $teamId);
 
@@ -578,12 +580,13 @@ final class FfbbRencontreReconciler
             return $createdByKey[$key];
         }
         $competition = $this->competitionRegistry->findForTeam($teamId, $name);
-        if (!$competition instanceof Competition) {
-            $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::FRIENDLY);
+        // Jamais « Amicaux », la compétition d'office (lot 7, PR 6b) : l'amical de la fédération est suivi.
+        if (!$competition instanceof Competition || $competition->isDefaultFriendly()) {
+            $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::FRIENDLY, CompetitionSource::FBI);
             $this->competitionRegistry->engage($competition, $teamId);
         }
 
-        return $createdByKey[$key] = $competition;
+        return $createdByKey[$key] = $competition->markFromFederation();
     }
 
     /**

@@ -26,6 +26,7 @@ use App\Service\SeasonResolver;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -64,6 +65,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
 {
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -774,7 +776,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $fixture->setMatchDate($this->matchDay());
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
     }

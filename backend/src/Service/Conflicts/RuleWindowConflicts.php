@@ -9,6 +9,7 @@ use App\Entity\LeagueWindowInterface;
 use App\Enum\FixtureHomeAway;
 use App\Matches\ConflictType;
 use App\Matches\CupKickoffRule;
+use App\Matches\FederalFollowUp;
 use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
 
@@ -22,8 +23,10 @@ use DateTimeImmutable;
  * (consommés par le front, `ClubRuleCoherenceChecker` et les parités) et sont
  * appelés statiquement ici.
  */
-final class RuleWindowConflicts
+final readonly class RuleWindowConflicts
 {
+    public function __construct(private ?FederalFollowUp $followUp = null) {}
+
     /**
      * Severity 2 — a placed HOME fixture of a MAPPED team outside every resolved
      * league window (day or kickoff). Unmapped team ([] envelope) = silent, same
@@ -76,7 +79,7 @@ final class RuleWindowConflicts
                 'type' => ConflictType::LEAGUE_WINDOW_VIOLATION->value,
                 'severity' => 2,
                 'windows' => $windowArrays,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
         }
 
@@ -109,7 +112,7 @@ final class RuleWindowConflicts
                 'severity' => 3,
                 'kickoffMin' => CupKickoffRule::KICKOFF_MIN,
                 'kickoffMax' => CupKickoffRule::KICKOFF_MAX,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
         }
 
@@ -170,7 +173,7 @@ final class RuleWindowConflicts
                 'type' => ConflictType::CLUB_RULE_VIOLATION->value,
                 'severity' => 3,
                 'rules' => $violated,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
         }
 

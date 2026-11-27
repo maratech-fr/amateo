@@ -21,6 +21,7 @@ use App\Enum\TeamLevel;
 use App\Service\MatchPlacementResultApplier;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesCompetitionsTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class MatchPlacementResultApplierTest extends WebTestCase
 {
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -65,7 +67,7 @@ final class MatchPlacementResultApplierTest extends WebTestCase
 
         self::assertSame(['applied' => 0, 'skipped' => 1], $result);
         $reloaded = $this->reload($match);
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'le match placé à la main reste sans créneau');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'le match placé à la main reste sans créneau');
         self::assertNull($reloaded->getVenueId());
     }
 
@@ -75,7 +77,7 @@ final class MatchPlacementResultApplierTest extends WebTestCase
         $match = $this->homeFixture($type);
         $match->setVenueId($this->venue->getId());
         $match->setKickoffTime(new DateTimeImmutable('20:00'));
-        $match->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($match, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $match->setPlacementSource(FixturePlacementSource::SOLVER);
         $this->em->flush();
 
@@ -94,7 +96,7 @@ final class MatchPlacementResultApplierTest extends WebTestCase
 
         self::assertSame(['applied' => 1, 'skipped' => 0], $result);
         $reloaded = $this->reload($match);
-        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloaded, $this->em));
         self::assertSame('18:00', $reloaded->getKickoffTime()?->format('H:i'));
     }
 

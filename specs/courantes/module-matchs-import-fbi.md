@@ -245,7 +245,7 @@ faut EN PLUS que le championnat du candidat soit commencé.
 Un amical passé (domicile ET extérieur, compétition `FRIENDLY`) se valide TOUT SEUL,
 sans confirmation chiffrée : `App\Service\FriendlyAutoValidator::sweep` bascule `VALIDATED`
 (source `MANUAL` posée sur le domicile seulement, l'extérieur garde sa source) tout amical
-strictement passé, non déjà saisi (`SUBMITTED`/`VALIDATED` exclus) et sans écart en attente ;
+strictement passé, non déjà saisi (saisi ou validé exclus), sans écart en attente et SUIVI par la fédération (compétition de source FBI : un amical posé à la main n'est jamais validé, il s'arrête à « Placé ») ;
 idempotent, ne flushe que s'il y a eu un changement.
 
 **Les balayages (amicaux passés PUIS championnats commencés) sont des effets de bord d'une LECTURE,
@@ -353,18 +353,18 @@ n'importe quel match sans salle. Le cas sera revu plus tard si le besoin se conf
 
 ### Workflow de traitement — NEW / OUT_OF_SYNC / REVIEWED
 
-Deux axes distincts sur une `Fixture` : `status` (placement) et `reviewState` (a-t-elle été
+Deux axes distincts sur une `Fixture` : son stade (`status`) et `reviewState` (a-t-elle été
 EXAMINÉE). **`FixtureReviewState`** : `NEW` (jamais examinée) · `OUT_OF_SYNC` (déphasée, un écart
-pendant subsiste) · `REVIEWED` (traitée). `pendingDeviations` (JSON) porte les écarts ouverts, un
+pendant subsiste) · `REVIEWED` (traitée). `pendingDeviations` (JSON du suivi fédéral du match) porte les écarts ouverts, un
 par champ (`date`/`kickoff`/`venue`), `autoApplied` marque une valeur imposée hors périmètre. Maison
-unique du statut : `Fixture::setStatus` (passer PLACÉ traite la rencontre, sauf écart pendant), atteint par la seule porte `App\Matches\FederalFollowUp` pour tout lecteur et écrivain du stade, des écarts, du mémo et du libellé gardé.
+unique du stade : la seule porte `App\Matches\FederalFollowUp` pour tout lecteur et écrivain du stade, des écarts, du mémo et du libellé gardé.
 
 Règles de naissance : un extérieur, ou une rencontre passée/dans la semaine ISO en cours, naît déjà
 `REVIEWED` — « un extérieur n'est jamais à traiter par le club », « un match imminent ou déjà joué
 n'est pas nouveau » (`treatOnArrival`, foyer partagé aux deux canaux, **inchangé** par M15 : cette
 fenêtre de NAISSANCE reste tout le passé + la semaine ISO en cours). Rattrapage
 (`catchUpReview`/commande `app:fixtures:catch-up-review`) pour une rencontre `NEW` restée figée
-avant ce prédicat. Un domicile PLACÉ/SUBMITTED que la source renvoie identique sur date+heure+salle
+avant ce prédicat. Un domicile placé ou saisi que la source renvoie identique sur date+heure+salle
 devient `VALIDATED` + traité (D9 — « attesté FBI », plus un geste du gestionnaire). Un champ
 divergent sans décision → `OUT_OF_SYNC`, valeur app gardée — **sauf** si la fenêtre « FBI fait foi »
 s'applique (app OU source), qui applique la source d'office (« pris en compte », `autoApplied`) :
@@ -381,7 +381,7 @@ jamais touchée (import partiel légitime).
 
 **Régime « championnat commencé » (2026-11-11), canal xlsx seulement.** En plus de la semaine ISO en
 cours (inchangée, d'office sur tout domicile placé, Placé compris, sur les deux canaux), le fichier
-fait foi d'office sur un domicile **déjà dans FBI** (`SUBMITTED` ou `VALIDATED`) dès que le
+fait foi d'office sur un domicile **déjà dans FBI** (saisi ou validé) dès que le
 championnat de la rencontre a commencé (`LeagueValidationOutlook::startedCompetitionIds` : échéance
 ≤ aujourd'hui ou premier match strictement passé, amicaux exclus ; même définition que « validé
 ligue »). Un match seulement `PLACED` (en retard sur FBI, pas encore saisi) hors de la semaine garde
@@ -397,7 +397,7 @@ Périmètre de réconciliation par écart (choix explicite, jamais un écrasemen
 heure, mais son écart de SALLE a son propre détecteur (§1). **« Prendre le fichier » et l'application
 d'office ont UNE seule sémantique** (`FbiDeviationService::applyFieldTakeFile`) : la valeur du fichier
 est écrite, le statut et le gymnase sont conservés (date et heure : plus de dé-placement ni de retour
-à `PLACED`, plus de mémo `fbiEcho` écrit). Salle : alias confirmé du libellé → gymnase repointé quel
+à « placé », plus de mémo `fbiEcho` écrit). Salle : alias confirmé du libellé → gymnase repointé quel
 que soit le statut ; libellé sans alias et sans choix → rien écrit, écart retenu (422 sur le geste
 explicite) ; choix inline d'un gymnase inchangé ; « terrain neutre » reste la seule exception qui
 dé-place.
@@ -423,7 +423,7 @@ gardé (correction ouverte) n'est jamais appliqué d'office, même quand le fich
 troisième valeur ferme la correction « par dépôt » et ouvre un écart normal ; « Prendre le fichier »
 (dépôt ou file de revue) ferme la correction ouverte ; Garder → dépôt → reposé → Garder reste UNE
 entrée ouverte (`open` est un upsert). Seule exception : la salle d'un domicile NON placé gardée
-(`keptVenueLabel`) ne repose rien. Tant qu'il est ouvert, l'écart reposé remet un match à venir « à
+(`keptVenueLabel`, porté par le suivi fédéral) ne repose rien. Tant qu'il est ouvert, l'écart reposé remet un match à venir « à
 confirmer » dans l'export parents (`MatchesExportDataProvider::isToConfirm` lit
 `hasArbitrableDeviations()` : une valeur imposée par FBI n'est pas un doute) et un amical joué n'est
 pas balayé « validé ». **Leçon** : le dry-run `analyze()` et `import()` restent deux chemins séparés ;

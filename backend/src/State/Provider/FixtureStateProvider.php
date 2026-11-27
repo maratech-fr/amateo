@@ -8,6 +8,7 @@ use App\ApiResource\FixtureResource;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
+use App\Matches\FederalFollowUp;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -27,6 +28,8 @@ class FixtureStateProvider extends AbstractStateProvider
     private OpponentTravelProjection $travelProjection;
 
     private FixtureRepository $fixtures;
+
+    private FederalFollowUp $followUp;
 
     #[Required]
     public function setVenueAliasResolver(VenueAliasResolver $venueAliasResolver): void
@@ -52,6 +55,12 @@ class FixtureStateProvider extends AbstractStateProvider
         $this->fixtures = $fixtures;
     }
 
+    #[Required]
+    public function setFederalFollowUp(FederalFollowUp $followUp): void
+    {
+        $this->followUp = $followUp;
+    }
+
     protected function getEntityClass(): string
     {
         return Fixture::class;
@@ -65,7 +74,7 @@ class FixtureStateProvider extends AbstractStateProvider
     protected function applyRequestFilters(QueryBuilder $qb): bool
     {
         $request = $this->requestStack->getCurrentRequest();
-        foreach (['seasonId', 'teamId', 'competitionId', 'homeAway', 'status'] as $field) {
+        foreach (['seasonId', 'teamId', 'competitionId', 'homeAway'] as $field) {
             $value = $request?->query->get($field);
             if (\is_string($value) && '' !== $value) {
                 $qb->andWhere(\sprintf('e.%s = :%s', $field, $field))->setParameter($field, $value);
@@ -81,7 +90,9 @@ class FixtureStateProvider extends AbstractStateProvider
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
         $competitionId = $entity->getCompetitionId();
-        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId));
+        // Le suivi fédéral de toute la page en une lecture (les lignes déjà chargées ne sont plus relues).
+        $this->followUp->primeLoaded();
+        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId), $this->followUp);
         // Grain équipe (P2-54) : la clé d'équipe = le libellé adverse NORMALISÉ, calculée
         // SERVEUR (foyer unique) et servie, pour que le front joigne le trajet par équipe
         // sans jamais re-normaliser un libellé.

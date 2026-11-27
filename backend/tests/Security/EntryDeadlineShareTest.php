@@ -10,6 +10,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
@@ -17,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -55,6 +57,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('security')]
 final class EntryDeadlineShareTest extends WebTestCase
 {
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -411,6 +414,26 @@ final class EntryDeadlineShareTest extends WebTestCase
         self::assertSame(1, $window['toEnterCount'], 'seul le PLACED compte « à saisir » — jamais l\'UNPLACED, jamais le SUBMITTED');
     }
 
+    /**
+     * Lot 7, PR 6b : un domicile placé d'une compétition créée à la main (hors FBI) s'arrête à « Placé » — la fenêtre de
+     * son échéance le compte « à placer » quand il l'est, jamais « à saisir ». Jumeau du compte global : le scénario
+     * « Un amical posé à la main s'arrête à « Placé » » (`un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature`).
+     */
+    public function testAWindowOfAHandMadeCompetitionNeverCountsAPlacedHomeToEnter(): void
+    {
+        [, $season, $user] = $this->createClub('im');
+        $comp = $this->makeCompetition($season, 1, null, CompetitionSource::MANUAL);
+        $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
+        $teamId = self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId;
+        $this->homeFixture($season, $teamId, $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, $teamId, $comp->getId(), FixtureStatus::PLACED);
+
+        $outlook = $this->deadlineOutlook($user);
+        self::assertCount(1, $outlook['windows'], 'témoin : la fenêtre est émise (un domicile à placer)');
+        self::assertSame(1, $outlook['windows'][0]['toPlaceCount']);
+        self::assertSame(0, $outlook['windows'][0]['toEnterCount'], 'un domicile placé hors FBI n\'est jamais « à saisir »');
+    }
+
     public function testWindowWithOnlyUnplacedIsStillEmittedWithZeroToEnter(): void
     {
         // La fenêtre reste émise si l'UN des deux compteurs > 0 : tout à placer, rien à saisir,
@@ -688,13 +711,13 @@ final class EntryDeadlineShareTest extends WebTestCase
         return $member;
     }
 
-    private function makeCompetition(Season $season, int $teamN, ?string $ffbbCompetitionId): Competition
+    private function makeCompetition(Season $season, int $teamN, ?string $ffbbCompetitionId, CompetitionSource $source = CompetitionSource::FBI): Competition
     {
         $this->scopeGucToClub($season->getClubId());
         // Équipe forgée et saison parfois non unique (saison archivée) : la compétition naît dans la saison
         // donnée, par la seule porte, puis l'équipe y est engagée.
         $registry = self::getContainer()->get(CompetitionRegistry::class);
-        $competition = $registry->create($season->getClubId(), $season->getId(), 'Championnat ' . $teamN, CompetitionType::CHAMPIONSHIP);
+        $competition = $registry->create($season->getClubId(), $season->getId(), 'Championnat ' . $teamN, CompetitionType::CHAMPIONSHIP, $source);
         if (null !== $ffbbCompetitionId) {
             $competition->setFfbbCompetitionId($ffbbCompetitionId);
             $competition->setFfbbCompetitionName('Compétition ' . $teamN);
@@ -725,7 +748,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
-        $fixture->setStatus($status, new DateTimeImmutable);
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 

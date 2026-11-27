@@ -18,6 +18,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ final class VenueExternalLabelApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -344,7 +346,7 @@ final class VenueExternalLabelApiTest extends WebTestCase
             $fixture->setVenueId($venueId);
         }
         if ($status instanceof FixtureStatus) {
-            $fixture->setStatus($status, new DateTimeImmutable);
+            $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         }
         $this->em->persist($fixture);
         $this->em->flush();

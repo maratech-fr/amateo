@@ -33,6 +33,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\CompetitionSource;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -44,6 +45,7 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
@@ -58,6 +60,7 @@ use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -98,6 +101,7 @@ final class DeletionImpactParityTest extends KernelTestCase
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     /**
@@ -858,14 +862,16 @@ final class DeletionImpactParityTest extends KernelTestCase
         // Le pointeur pendouillant : un gymnase qui n'existe pas (aucune ligne venue ne le porte).
         $ghostVenueId = '22222222-2222-4222-8222-222222222222';
 
-        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
+        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->fbiCompetitionIdOf($team, $club))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($ghostVenueId)->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setVenueId($ghostVenueId)->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->stageFixture($orphan, FixtureStatus::SUBMITTED);
         $this->em->persist($orphan);
         // Témoin : un match posé sur un VRAI gymnase — le prédicat ne doit pas le voir.
-        $sound = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
+        $sound = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->fbiCompetitionIdOf($team, $club))
             ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
-            ->setStatus(FixtureStatus::PLACED, new DateTimeImmutable)->setVenueId($realVenue->getId())->setKickoffTime(new DateTimeImmutable('16:00'));
+            ->setVenueId($realVenue->getId())->setKickoffTime(new DateTimeImmutable('16:00'));
+        $this->stageFixture($sound, FixtureStatus::PLACED);
         $this->em->persist($sound);
         $this->em->flush();
 
@@ -882,7 +888,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $reloadedOrphan = $this->em->getRepository(Fixture::class)->find($orphan->getId());
         self::assertNotNull($reloadedOrphan);
         self::assertNull($reloadedOrphan->getVenueId(), 'dépointé');
-        self::assertSame(FixtureStatus::UNPLACED, $reloadedOrphan->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloadedOrphan));
         self::assertSame(FixtureUnplacedReason::VENUE_LOST, $reloadedOrphan->getUnplacedReason());
         self::assertSame('15:30', $reloadedOrphan->getKickoffTime()?->format('H:i'), 'l\'heure est conservée en repère');
 
@@ -890,7 +896,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $reloadedSound = $this->em->getRepository(Fixture::class)->find($sound->getId());
         self::assertNotNull($reloadedSound);
         self::assertSame($realVenue->getId(), $reloadedSound->getVenueId(), 'un match au vrai gymnase n\'est pas touché');
-        self::assertSame(FixtureStatus::PLACED, $reloadedSound->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloadedSound));
         self::assertNull($reloadedSound->getUnplacedReason());
     }
 
@@ -904,9 +910,10 @@ final class DeletionImpactParityTest extends KernelTestCase
         [$club, $season] = $this->seed();
         $team = $this->team($club, $season, forcedVenueId: '11111111-1111-4111-8111-111111111111');
         $venue = $this->venue($club, $season, 'Coubertin');
-        $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
+        $fixture = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->fbiCompetitionIdOf($team, $club))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
+            ->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->stageFixture($fixture, FixtureStatus::SUBMITTED);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -923,7 +930,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($fixture->getId());
         self::assertNotNull($reloaded);
         self::assertSame($venue->getId(), $reloaded->getVenueId(), 'rien dépointé');
-        self::assertSame(FixtureStatus::SUBMITTED, $reloaded->getStatus(), 'byte-identique : le statut ne bouge pas');
+        self::assertSame(FixtureStatus::SUBMITTED, $this->stageOfFixture($reloaded), 'byte-identique : le statut ne bouge pas');
         self::assertNull($reloaded->getUnplacedReason());
     }
 
@@ -946,9 +953,9 @@ final class DeletionImpactParityTest extends KernelTestCase
 
         // (A) un gymnase qui porte un match : sa suppression est refusée, avec une raison lisible.
         $venue = $this->venue($club, $season, 'Matéo');
-        $this->em->persist((new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
+        $this->em->persist($this->stageFixture((new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->fbiCompetitionIdOf($team, $club))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30')));
+            ->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30')), FixtureStatus::SUBMITTED));
         $this->em->flush();
 
         $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
@@ -956,6 +963,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNotNull($impact->reason, 'le refus porte une raison lisible pour le front');
         self::assertStringContainsStringIgnoringCase('match', $impact->reason, 'la raison nomme les matchs');
         self::assertSame(1, $impact->placedFixtures, 'le front sait combien de matchs rendent le gymnase indélébile');
+        self::assertSame(1, $impact->declaredFixtures, 'le match saisi dans FBI (lu dans son suivi fédéral) est annoncé à ressaisir');
         $announced = [];
         foreach ($impact->lines as $line) {
             $announced[$line['key']] = $line['count'];
@@ -963,9 +971,10 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertArrayNotHasKey('venue_fixture', $announced, 'plus de dépointage annoncé : le pas a quitté le plan du gymnase');
 
         // (B) la VALIDATION reste la seule gâchette qui dépointe réellement un match en venue_lost.
-        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()))
+        $orphan = (new Fixture)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())->setCompetitionId($this->fbiCompetitionIdOf($team, $club))
             ->setMatchDate(new DateTimeImmutable('2026-01-17'))->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv2')
-            ->setStatus(FixtureStatus::SUBMITTED, new DateTimeImmutable)->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('16:00'));
+            ->setVenueId('33333333-3333-4333-8333-333333333333')->setKickoffTime(new DateTimeImmutable('16:00'));
+        $this->stageFixture($orphan, FixtureStatus::SUBMITTED);
         $this->em->persist($orphan);
         $this->em->flush();
 
@@ -978,7 +987,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($orphan->getId());
         self::assertNotNull($reloaded);
         self::assertNull($reloaded->getVenueId());
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded));
         self::assertSame(FixtureUnplacedReason::VENUE_LOST, $reloaded->getUnplacedReason());
     }
 
@@ -1107,6 +1116,22 @@ final class DeletionImpactParityTest extends KernelTestCase
         );
 
         return $id;
+    }
+
+    /**
+     * Le championnat de la fédération de l'équipe, créé une fois (lot 7, PR 6b : « saisi » n'existe que pour un match
+     * suivi, d'une compétition FBI).
+     */
+    private function fbiCompetitionIdOf(Team $team, Club $club): string
+    {
+        $this->scopeGucToClub($club->getId());
+        foreach (self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($team->getId()) as $competition) {
+            if (CompetitionSource::FBI === $competition->getSource()) {
+                return $competition->getId();
+            }
+        }
+
+        return $this->fbiCompetitionFor($team->getId(), 'Championnat ' . $team->getName())->getId();
     }
 
     private function team(Club $club, Season $season, string $forcedVenueId): Team

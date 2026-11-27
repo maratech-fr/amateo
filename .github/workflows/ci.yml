@@ -1487,6 +1487,12 @@ jobs:
           # nature mal convertie libérerait une équipe engagée ou confierait un amical au moteur. Obligatoire jusqu'à
           # l'application en production.
           FILES="$FILES tests/Integration/Migration/CompetitionNatureMigrationTest.php"
+          # NR de migration de données (lot conception 7, PR 6b, axes TENANT ISOLATION et CONTRAT BACKEND-MOTEUR) — la
+          # conversion du suivi fédéral ne change le stade servi d'aucun match d'une compétition FBI : saisi et validé
+          # passent dans fixture_federal_tracking avec écarts, mémo et libellé gardé, le statut stocké n'a plus que deux
+          # valeurs. Un état perdu rendrait au moteur un match validé ou ferait ressaisir dans FBI un match déjà saisi.
+          # Obligatoire jusqu'à l'application en production.
+          FILES="$FILES tests/Integration/Migration/FederalTrackingMigrationTest.php"
           # NR d'axe CONSTRAINT SEMANTICS (lot conception 7, PR 4b) — le radar borne un domicile de championnat par la
           # fenêtre de ligue, jamais une coupe ; une coupe n'obéit qu'à son horaire, 08:00-21:00 bornes comprises, férié
           # compris, et le dit « coupe hors horaires ». Le Lot Gate ne joue pas Behat : sans ce gate, une coupe rejugée

@@ -16,6 +16,7 @@ use App\Enum\SeasonStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesCompetitionsTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,6 +36,7 @@ use Symfony\Component\Uid\Uuid;
 final class CatchUpFixtureReviewCommandTest extends KernelTestCase
 {
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -140,7 +142,7 @@ final class CatchUpFixtureReviewCommandTest extends KernelTestCase
         $fixture->setMatchDate(new DateTimeImmutable($ymd));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire');
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable);
         $fixture->setReviewState($state);
         $this->em->persist($fixture);
         $this->em->flush();

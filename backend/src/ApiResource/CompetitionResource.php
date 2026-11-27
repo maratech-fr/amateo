@@ -61,6 +61,11 @@ class CompetitionResource
     #[Groups(['read'])]
     public bool $defaultFriendly = false;
 
+    /** FBI (import, pairing, FFBB channel: its matches are tracked in FBI) · MANUAL (created by the club: its matches stop at PLACED). */
+    #[ApiProperty(openapiContext: ['enum' => ['FBI', 'MANUAL']])]
+    #[Groups(['read'])]
+    public string $source = '';
+
     /** Y-m-d. */
     #[ApiProperty(openapiContext: ['format' => 'date'])]
     #[Groups(['read'])]
@@ -131,6 +136,7 @@ class CompetitionResource
         $dto->name = $entity->getName();
         $dto->competitionType = $entity->getCompetitionType()->value;
         $dto->defaultFriendly = $entity->isDefaultFriendly();
+        $dto->source = $entity->getSource()->value;
         $dto->startDate = $entity->getStartDate()?->format('Y-m-d');
         $dto->endDate = $entity->getEndDate()?->format('Y-m-d');
         $dto->engagements = array_map(static fn (EngagementView $engagement): array => [

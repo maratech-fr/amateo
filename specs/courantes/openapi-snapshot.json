@@ -31017,6 +31017,15 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "source": {
+                        "description": "FBI (import, pairing, FFBB channel: its matches are tracked in FBI) \u00b7 MANUAL (created by the club: its matches stop at PLACED).",
+                        "default": "",
+                        "type": "string",
+                        "enum": [
+                            "FBI",
+                            "MANUAL"
+                        ]
+                    },
                     "startDate": {
                         "description": "Y-m-d.",
                         "type": [
@@ -31207,6 +31216,15 @@
                         "default": false,
                         "type": "boolean"
                     },
+                    "source": {
+                        "description": "FBI (import, pairing, FFBB channel: its matches are tracked in FBI) \u00b7 MANUAL (created by the club: its matches stop at PLACED).",
+                        "default": "",
+                        "type": "string",
+                        "enum": [
+                            "FBI",
+                            "MANUAL"
+                        ]
+                    },
                     "startDate": {
                         "description": "Y-m-d.",
                         "type": [
@@ -31344,6 +31362,15 @@
                                 "description": "\u00ab Amicaux \u00bb, the season's default friendly competition: a match set without a competition lands there.",
                                 "default": false,
                                 "type": "boolean"
+                            },
+                            "source": {
+                                "description": "FBI (import, pairing, FFBB channel: its matches are tracked in FBI) \u00b7 MANUAL (created by the club: its matches stop at PLACED).",
+                                "default": "",
+                                "type": "string",
+                                "enum": [
+                                    "FBI",
+                                    "MANUAL"
+                                ]
                             },
                             "startDate": {
                                 "description": "Y-m-d.",
@@ -32406,6 +32433,11 @@
                         "default": "",
                         "type": "string"
                     },
+                    "fbiTracked": {
+                        "description": "Tracked by the federation (its competition comes from FBI): only such a match is entered, then validated, in FBI.",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "venueId": {
                         "type": [
                             "string",
@@ -32709,6 +32741,11 @@
                         "default": "",
                         "type": "string"
                     },
+                    "fbiTracked": {
+                        "description": "Tracked by the federation (its competition comes from FBI): only such a match is entered, then validated, in FBI.",
+                        "default": false,
+                        "type": "boolean"
+                    },
                     "venueId": {
                         "type": [
                             "string",
@@ -32918,6 +32955,11 @@
                             "status": {
                                 "default": "",
                                 "type": "string"
+                            },
+                            "fbiTracked": {
+                                "description": "Tracked by the federation (its competition comes from FBI): only such a match is entered, then validated, in FBI.",
+                                "default": false,
+                                "type": "boolean"
                             },
                             "venueId": {
                                 "type": [

@@ -7,6 +7,7 @@ import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListb
 import type { Fixture, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow } from "./api";
 import type { EnvelopeResult } from "./lib/envelope";
 import { PlacementPanel } from "./PlacementPanel";
+import { MATCHES_TEXTS } from "./texts";
 
 const fixture: Fixture = {
   id: "fx-1",
@@ -355,6 +356,22 @@ describe("PlacementPanel", () => {
     const submit = screen.getByRole("button", { name: "Marquer saisi dans FBI" });
     await user.click(submit);
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  // Lot 7, PR 6b : un match que la fédération ne suit pas s'arrête à « Placé » ; un champ absent se lit « suivi ».
+  it.each([
+    { fbiTracked: false, offered: false },
+    { fbiTracked: true, offered: true },
+    { fbiTracked: undefined, offered: true },
+  ])("un match placé avec fbiTracked=$fbiTracked offre « Marquer saisi » : $offered", ({ fbiTracked, offered }) => {
+    renderPanel(openEnvelope, vi.fn(), { fixture: undefined === fbiTracked ? placedFixture : { ...placedFixture, fbiTracked } });
+    const submit = screen.queryByRole("button", { name: MATCHES_TEXTS.panelMarkSubmitted });
+    if (offered) {
+      expect(submit).toBeInTheDocument();
+    } else {
+      expect(submit).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Dé-placer" })).toBeInTheDocument(); // témoin : la fiche du match placé est rendue
+    }
   });
 
   it("does not offer « Marquer saisi dans FBI » on an unplaced match (nothing placed yet)", () => {

@@ -21,6 +21,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueClosureImpact;
 use App\Tests\ClosurePinDecorTrait;
 use App\Tests\CreatesCompetitionsTrait;
+use App\Tests\StagesFixturesTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -43,6 +44,7 @@ final class VenueClosureImpactTest extends WebTestCase
 {
     use ClosurePinDecorTrait;
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
 
     private EntityManagerInterface $em;
 
@@ -173,11 +175,11 @@ final class VenueClosureImpactTest extends WebTestCase
         $fixture->setClubId($d['club']->getId());
         $fixture->setSeasonId($d['season']->getId());
         $fixture->setTeamId((string) $d[$team]);
-        $fixture->setCompetitionId($this->friendlyCompetitionIdFor((string) $d[$team], $d['club']->getId(), $d['season']->getId()));
+        $fixture->setCompetitionId($this->fbiFriendlyCompetitionIdFor((string) $d[$team]));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);
-        $fixture->setStatus($status, new DateTimeImmutable(self::$decorToday));
+        $this->stageFixture($fixture, $status, new DateTimeImmutable(self::$decorToday), $this->em);
         $fixture->setVenueId((string) $d[$venue]);
         $fixture->setKickoffTime(null === $kickoff ? null : (DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null));
         $this->em->persist($fixture);

@@ -19,6 +19,7 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -62,6 +63,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class TeamCtcFieldTest extends WebTestCase
 {
     use CreatesCompetitionsTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -403,7 +405,7 @@ final class TeamCtcFieldTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('AS Voisins');
-        $fixture->setStatus($status, new DateTimeImmutable);
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 

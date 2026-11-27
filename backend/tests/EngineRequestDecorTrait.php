@@ -35,13 +35,13 @@ use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
-use App\Enum\FixtureStatus;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
@@ -49,6 +49,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -306,7 +307,7 @@ trait EngineRequestDecorTrait
         $em = $this->erEm();
         foreach ([[1, self::ER_TEAM_U13], [2, self::ER_TEAM_U15], [3, self::ER_TEAM_SM1]] as [$n, $teamId]) {
             $competition = (new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-                ->setName('Championnat ' . $n)->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+                ->setName('Championnat ' . $n)->setCompetitionType(CompetitionType::CHAMPIONSHIP)->setSource(CompetitionSource::FBI);
             $em->persist($competition);
             static::getContainer()->get(CompetitionRegistry::class)->engage($competition, $teamId);
         }
@@ -332,7 +333,7 @@ trait EngineRequestDecorTrait
             if (4 === $n) {
                 $fixture->setVenueId(self::ER_VENUE_NORD);
                 $fixture->setKickoffTime(new DateTimeImmutable('16:00'));
-                $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
+                static::getContainer()->get(FederalFollowUp::class)->place($fixture, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
                 $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
             }
             $em->persist($fixture);

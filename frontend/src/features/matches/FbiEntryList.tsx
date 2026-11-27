@@ -98,12 +98,13 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
       .sort((a, b) => byDateKickoff(a.fixture, b.fixture));
   }, [corrections, correctedSession, fixtureById, teamFilter]);
 
-  // « À saisir » — domiciles PLACED + lignes cochées cette session (grisées) ; les
-  // SUBMITTED anciennes (jamais cochées ici) ne sont PAS listées.
+  // « À saisir » — domiciles PLACED suivis par la fédération + lignes cochées cette session (grisées) ;
+  // les SUBMITTED anciennes (jamais cochées ici) ne sont PAS listées, ni un match non suivi (servi
+  // `fbiTracked: false`, lot 7 PR 6b), qui s'arrête à « Placé ».
   const submitRows = useMemo(
     () =>
       fixtures
-        .filter((f) => "HOME" === f.homeAway && ("PLACED" === f.status || submittedSession.has(f.id)))
+        .filter((f) => "HOME" === f.homeAway && false !== f.fbiTracked && ("PLACED" === f.status || submittedSession.has(f.id)))
         .filter((f) => "" === teamFilter || f.teamId === teamFilter)
         .sort(byDateKickoff),
     [fixtures, submittedSession, teamFilter],
@@ -119,7 +120,7 @@ export function FbiEntryList({ fixtures, corrections, teams, venues, competition
       }
     }
     for (const f of fixtures) {
-      if ("HOME" === f.homeAway && ("PLACED" === f.status || submittedSession.has(f.id))) {
+      if ("HOME" === f.homeAway && false !== f.fbiTracked && ("PLACED" === f.status || submittedSession.has(f.id))) {
         ids.add(f.teamId);
       }
     }

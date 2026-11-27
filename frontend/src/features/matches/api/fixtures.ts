@@ -103,6 +103,12 @@ export interface Fixture {
    */
   fbiEcho?: FbiEcho | null;
   /**
+   * Lot 7, PR 6b — la fédération suit ce match (sa compétition vient de FBI) : seul un match suivi est « à saisir »
+   * puis saisi et validé dans FBI ; un match non suivi (un amical posé à la main) s'arrête à « Placé ». Servi, jamais
+   * recalculé. Optionnel côté TS (patron `competitionType`) : absent, le match est lu suivi.
+   */
+  fbiTracked?: boolean;
+  /**
    * Le trajet d'une rencontre EXTÉRIEURE, DÉRIVÉ de la rencontre (jamais du club), calculé
    * SERVEUR : le lieu de l'adversaire + l'aller simple depuis le siège. null pour un domicile
    * ou si rien de connu. Optionnel côté TS (nullable, pas `required` côté OpenAPI, patron

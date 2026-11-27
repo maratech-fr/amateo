@@ -160,6 +160,36 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         self::assertResponseStatusCodeSame(409, 'l\'équipe reste engagée : le reclassement n\'a pas ouvert la cascade');
     }
 
+    /**
+     * Lot 7, PR 6b : apparier à la fédération une compétition créée à la main (MANUAL) la fait FBI — ses matchs sont
+     * désormais suivis, à saisir dans FBI. « Amicaux », la compétition d'office, reste MANUAL : un appariement proposé sur
+     * elle est ignoré, la référence fédérale de l'amical va à une compétition amicale FBI de l'équipe.
+     */
+    public function testPairingAHandMadeCompetitionMakesItFbiButNeverAmicaux(): void
+    {
+        [$token, , $clubId] = $this->register('FCPD');
+        $this->useStubClubCode($clubId);
+        $seasonId = $this->seasonOf($clubId)->getId();
+        $team = $this->createTeam($clubId);
+        $handMade = $this->createCompetition($clubId, $seasonId, $team->getId(), 'PNM');
+        $this->scopeGucToClub($clubId);
+        $amicaux = $this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId);
+        self::assertSame(['MANUAL', 'MANUAL'], $this->sourcesOf($clubId, [$handMade->getId(), $amicaux]), 'témoin : les deux naissent hors FBI');
+
+        $this->confirm($token, FfbbHttpClientStub::COMPETITION_ID, $team->getId(), $handMade->getId());
+        self::assertResponseStatusCodeSame(200);
+        $this->confirm($token, FfbbHttpClientStub::FRIENDLY_COMPETITION_ID, $team->getId(), $amicaux);
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame(['FBI', 'MANUAL'], $this->sourcesOf($clubId, [$handMade->getId(), $amicaux]), 'la compétition appariée devient FBI ; « Amicaux » reste MANUAL');
+        // L'appariement proposé sur « Amicaux » y est ignoré : la référence fédérale de l'amical va à une compétition à lui.
+        $connection = $this->em->getConnection();
+        self::assertNull($connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$amicaux]), '« Amicaux » ne porte aucune référence fédérale');
+        $carrier = $connection->fetchAssociative('SELECT c.id, c.competition_type, c.source, c.default_friendly FROM competition c JOIN engagement e ON e.competition_id = c.id WHERE e.team_id = ? AND c.ffbb_competition_id = ?', [$team->getId(), FfbbHttpClientStub::FRIENDLY_COMPETITION_ID]);
+        self::assertIsArray($carrier, 'la référence de l\'amical fédéral est posée sur une compétition de l\'équipe');
+        self::assertSame([CompetitionType::FRIENDLY->value, 'FBI', false], [$carrier['competition_type'], $carrier['source'], $carrier['default_friendly']], 'une compétition amicale, FBI, qui n\'est pas « Amicaux »');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -194,6 +224,18 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         self::assertSame($seasonId, $competition->getSeasonId());
 
         return $competition;
+    }
+
+    /**
+     * @param list<string> $competitionIds
+     *
+     * @return list<string> la source de chaque compétition, lue en base, dans l'ordre donné
+     */
+    private function sourcesOf(string $clubId, array $competitionIds): array
+    {
+        $this->scopeGucToClub($clubId);
+
+        return array_map(fn (string $id): string => (string) $this->em->getConnection()->fetchOne('SELECT source FROM competition WHERE id = ?', [$id]), $competitionIds);
     }
 
     /** @return list<string> les équipes engagées dans la compétition, lues en base */

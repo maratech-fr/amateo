@@ -466,8 +466,9 @@ coche reprise, sinon le défaut de la nature, table d'exception supprimée, et a
 `Integration/Migration/Lot7MigrationChainTest` (axe *generation pipeline*, lot conception 7 PR 3b — le décor des
 références 16 à 19, écrit en SQL dans le schéma figé d'avant la séparation « compétition et engagement »
 [`tests/Fixtures/lot-7/`], donne la même demande de placement une fois la migration jouée ; chaque compétition
-garde identifiant et nom, reçoit l'engagement de son ancienne équipe, aucun match n'est repointé. Chute attendue
-si la conversion perd, déplace ou réunit une ligne lue par la demande) ·
+garde identifiant et nom, reçoit l'engagement de son ancienne équipe, aucun match n'est repointé ; depuis la PR 6b,
+chaque match garde le stade servi, lu par la porte du suivi fédéral. Chute attendue si la conversion perd, déplace
+ou réunit une ligne lue par la demande, ou perd un « saisi » ou un « validé ») ·
 `Integration/Migration/CompetitionEngagementMigrationTest` (NR de migration de données, axes *tenant isolation*
 et *périmètre engagé*, lot conception 7 PR 3b — une ligne d'engagement par ligne de compétition, deux lignes de
 même nom restent deux compétitions, poule, journées, libellé et échéance conservés ; clé (compétition, club) en
@@ -480,6 +481,13 @@ de libellés que le test unitaire du classifieur, qui ne gate pas] : « Amical �
 reste championnat ; une compétition d'office « Amicaux » par saison, saison sans match comprise ; chaque match sans
 compétition y est versé avec l'engagement de son équipe ; une compétition déjà nommée « Amicaux » n'est pas prise
 pour la compétition d'office. Obligatoire jusqu'à l'application en production) ·
+`Integration/Migration/FederalTrackingMigrationTest` (NR de migration de données, axes *tenant isolation* et
+*contrat backend-moteur*, lot conception 7 PR 6b — la conversion du suivi fédéral ne change le stade servi d'aucun
+match d'une compétition FBI : à placer et placé restent, saisi et validé deviennent placé avec gymnase et heure,
+sinon à placer, l'état fédéral gardé dans `fixture_federal_tracking` avec écarts, mémo « FBI affiche encore … » et
+libellé de salle gardé ; un extérieur validé sans gymnase d'une amicale de la fédération reste validé ; une
+compétition sans trace fédérale n'a aucun suivi ; statut stocké fermé à deux valeurs, trois colonnes retirées.
+Obligatoire jusqu'à l'application en production) ·
 `Integration/Service/ConflictRadarLeagueWindowTest` (axe *constraint semantics*, lot conception 7 PR 4b — la
 copie club de la fenêtre de ligue borne un domicile de championnat [hors fenêtre : violation ; dedans ou sans copie :
 rien] et jamais une coupe ; une coupe est jugée sur son seul coup d'envoi, 08:00 et 21:00 compris, un mercredi comme

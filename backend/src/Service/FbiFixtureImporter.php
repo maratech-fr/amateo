@@ -12,6 +12,7 @@ use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -1312,6 +1313,8 @@ final class FbiFixtureImporter
      */
     private function hydrateFromRow(Fixture $fixture, array $row, Competition $competition, string $divisionName, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues, DateTimeImmutable $now, Club $club): void
     {
+        // Lot 7, PR 6b — la fédération range ce match dans la compétition : ses matchs sont suivis dans FBI.
+        $competition->markFromFederation();
         $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate($row['matchDate']);
         $fixture->setHomeAway($row['homeAway']);
@@ -1720,8 +1723,10 @@ final class FbiFixtureImporter
                 // Honoured ONLY for the same team the manager chose — a drifted
                 // suggestion must not hijack another team's pairing. Never across the
                 // friendly boundary (lot 7, PR 4a): an existing competition never becomes
-                // friendly nor stops being one — the division follows its own label.
-                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $team->getId())
+                // friendly nor stops being one — the division follows its own label. Never « Amicaux », the
+                // season's default friendly (lot 7, PR 6b): a federation match is tracked, it lands in the
+                // friendly competition of its own label.
+                if ($byId instanceof Competition && !$byId->isDefaultFriendly() && $this->competitionRegistry->isEngaged($byId, $team->getId())
                     && $byId->getCompetitionType()->isFriendly() === CompetitionClassifier::classify($name)->isFriendly()
                 ) {
                     $existing = $byId;
@@ -1732,6 +1737,9 @@ final class FbiFixtureImporter
                 }
             }
             $existing ??= $this->competitionRegistry->findForTeam($team->getId(), $name);
+            if ($existing instanceof Competition && $existing->isDefaultFriendly()) {
+                $existing = null; // jamais « Amicaux » : la division a sa propre compétition (lot 7, PR 6b)
+            }
             if ($existing instanceof Competition) {
                 // The manager's LATEST choice wins: only refreshing a null label
                 // would leave a drifted FBI label permanently unresolvable — the
@@ -1745,7 +1753,7 @@ final class FbiFixtureImporter
                 continue;
             }
 
-            $competition = $this->competitionRegistry->create($club->getId(), $team->getSeasonId(), $name, CompetitionClassifier::classify($name));
+            $competition = $this->competitionRegistry->create($club->getId(), $team->getSeasonId(), $name, CompetitionClassifier::classify($name), CompetitionSource::FBI);
             $this->competitionRegistry->engage($competition, $team->getId(), $label);
             $chosen[$chosenKey] = [$competition, $team->getId()];
             $dirty = true;

@@ -287,6 +287,23 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(submitFixture).toHaveBeenCalledWith(expect.objectContaining({ id: "fx-placed" }));
   });
 
+  // Lot 7, PR 6b : le compteur « FBI à faire » compte ce que la liste montre — un domicile placé que la
+  // fédération ne suit pas (`fbiTracked: false`, un amical posé à la main) n'y est jamais « à saisir ».
+  it("le compteur « FBI à faire » ne compte pas un domicile placé non suivi, comme la liste", async () => {
+    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
+      { id: "fx-tracked", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Rivaux", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: "26", fbiTracked: true },
+      { id: "fx-by-hand", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Amis", status: "PLACED", venueId: "venue-1", kickoffTime: "14:00", externalRef: null, fbiTracked: false },
+    ] as never);
+    const user = userEvent.setup();
+    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
+
+    const counter = await screen.findByRole("button", { name: /1 FBI à faire/ });
+    await user.click(counter);
+    const dialog = await screen.findByRole("dialog", { name: "FBI — à faire" });
+    expect(within(dialog).getByRole("button", { name: /Marquer saisi.*Rivaux/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Marquer saisi.*Amis/ })).not.toBeInTheDocument();
+  });
+
   it("liste le match à placer et pose le domicile", async () => {
     const user = userEvent.setup();
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });

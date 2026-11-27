@@ -6,6 +6,7 @@ namespace App\Service\Conflicts;
 
 use App\Entity\Fixture;
 use App\Enum\ConflictPersonRole;
+use App\Enum\FixtureStatus;
 use App\Matches\FederalFollowUp;
 use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
@@ -14,7 +15,7 @@ use DateTimeImmutable;
  * Petits helpers PURS partagés par la façade {@see MatchConflictDetector}
  * et les trois familles de conflits (gymnase, règles & fenêtres, personnes) — maison
  * UNIQUE, zéro doublon (décision fondateur lot architecture, option A). Sans état,
- * sans dépendance : des fonctions statiques sur les fenêtres d'occupation et la
+ * sans dépendance (la porte du suivi fédéral est passée par l'appelant) : des fonctions statiques sur les fenêtres d'occupation et la
  * sérialisation d'une fixture. Les corps sont déplacés VERBATIM depuis le détecteur
  * (iso-comportement).
  *
@@ -54,8 +55,17 @@ final class ConflictMoments
         return $a <= $b ? $a : $b;
     }
 
+    /**
+     * Le stade servi d'un match, lu par la porte du suivi fédéral ; sans elle (chemin pur des tests unitaires), son
+     * placement.
+     */
+    public static function stageOf(Fixture $fixture, ?FederalFollowUp $followUp): FixtureStatus
+    {
+        return $followUp?->stageOf($fixture) ?? FixtureStatus::from($fixture->getPlacement()->value);
+    }
+
     /** @return array<string, mixed> */
-    public static function bareFixtureView(Fixture $fixture): array
+    public static function bareFixtureView(Fixture $fixture, ?FederalFollowUp $followUp): array
     {
         return [
             'fixtureId' => $fixture->getId(),
@@ -63,7 +73,7 @@ final class ConflictMoments
             'homeAway' => $fixture->getHomeAway()->value,
             'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
             'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            'status' => (new FederalFollowUp)->stageOf($fixture)->value,
+            'status' => self::stageOf($fixture, $followUp)->value,
         ];
     }
 

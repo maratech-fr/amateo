@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace App\Enum;
 
+use App\Matches\FederalFollowUp;
+
 /**
- * Home-fixture placement lifecycle (spec gestion-matchs, workflow 2-temps):
+ * Le STADE SERVI d'un match (spec gestion-matchs, workflow 2-temps) :
  * UNPLACED → PLACED (venue + kickoff set) → SUBMITTED (entered in FBI, sent to
- * the league) → VALIDATED (league confirmed).
+ * the league) → VALIDATED (league confirmed). Rien ne le stocke tel quel depuis le lot 7
+ * (PR 6b) : il se calcule ({@see FederalFollowUp::stageOf}) depuis le placement du match
+ * ({@see PlacementStatus}) et son suivi fédéral ({@see FederalState}) — validé si le suivi
+ * est « validé », saisi s'il est « saisi », sinon le placement. Un match que la fédération
+ * ne suit pas (compétition de source MANUAL) s'arrête à PLACED.
  *
  * L'import FBI crée TOUT en UNPLACED — domicile ET extérieur (`FbiFixtureImporter` :
  * le statut est TOUJOURS UNPLACED à la CRÉATION). PLACED et SUBMITTED sont des gestes du

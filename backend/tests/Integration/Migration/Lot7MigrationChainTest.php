@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Migration;
 
+use App\Entity\Fixture;
+use App\Matches\FederalFollowUp;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
 use App\Tests\FrozenSchemaDatabaseTrait;
 use App\Tests\Integration\EngineRequestReferenceTest;
 use DAMA\DoctrineTestBundle\PHPUnit\SkipDatabaseRollback;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -38,7 +41,14 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * la référence 19 a donc ici son propre fichier, `placement-19-coupes-converties`, qui ne diffère de `placement-19-coupes`
  * que par ce match.
  *
- * Jumeau : `Lot4MigrationChainTest` (références 1 à 15, schéma d'avant le lot 4) joue aussi cette migration.
+ * Depuis la PR 6b, la chaîne joue aussi la conversion du suivi fédéral : le stade servi de chaque match (lu par
+ * `FederalFollowUp::stageOf`) ne change pas, et les quatre références restent à l'octet — la 18, qui porte saisi et
+ * validé, domicile et extérieur, avec et sans gymnase, est la preuve du point sensible (un validé sans gymnase n'est
+ * jamais rendu au moteur ; un validé posé par le système de « Championnat 1 », compétition sans identifiant fédéral
+ * ni match importé, non plus : voir l'écart nommé dans `FederalTrackingMigrationTest`).
+ *
+ * Jumeau : `Lot4MigrationChainTest` (références 1 à 15, schéma d'avant le lot 4) joue aussi cette migration ; ses
+ * références 5 et 6 (placement) n'y portent que des matchs à placer ou placés.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le groupe `phase1` est requis.
  */
@@ -85,6 +95,7 @@ final class Lot7MigrationChainTest extends KernelTestCase
         $admin = self::frozenCaseConnection();
         $fixturesBefore = $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id');
         $competitionsBefore = $admin->fetchAllKeyValue('SELECT id, name FROM competition ORDER BY id');
+        $stagesBefore = $admin->fetchAllKeyValue('SELECT id, status FROM fixture ORDER BY id');
         self::assertSame(array_keys($engagedTeamByCompetition), array_map(strval(...), array_keys($competitionsBefore)), 'témoin : les compétitions du décor figé sont celles attendues');
 
         [$code, $output, $played] = $this->runFrozenMigrations();
@@ -112,6 +123,18 @@ final class Lot7MigrationChainTest extends KernelTestCase
             self::assertSame($expected, $fixturesAfter[$id] ?? null, \sprintf('le match %s garde son équipe et sa compétition ; un amical sans compétition est versé dans « Amicaux »', $id));
         }
         self::assertSame(array_keys($fixturesBefore), array_keys($fixturesAfter), 'aucun match ne s\'ajoute ni ne part');
+
+        // Lot 7, PR 6b : le suivi fédéral quitte le match ; le stade que l'API sert, lu par la porte, ne change pour
+        // aucun match du décor — la référence 18 porte les quatre stades, domicile et extérieur.
+        $this->scopeGucToClub(self::ER_CLUB);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $em->clear();
+        foreach ($stagesBefore as $id => $stage) {
+            $fixture = $em->find(Fixture::class, (string) $id);
+            self::assertInstanceOf(Fixture::class, $fixture, \sprintf('le match %s est lisible', $id));
+            self::assertSame($stage, $followUp->stageOf($fixture)->value, \sprintf('le match %s garde le stade servi', $id));
+        }
 
         $this->scopeGucToClub(self::ER_CLUB);
         $this->assertReference($expectedFile ?? $reference, $this->runPlacement(null));

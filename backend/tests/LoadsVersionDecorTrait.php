@@ -20,7 +20,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
-use App\Enum\FixtureStatus;
+use App\Enum\PlacementStatus;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -192,7 +192,7 @@ trait LoadsVersionDecorTrait
         $competitionId = $this->competitionFor($team->getId(), 'Championnat ' . $team->getName())->getId();
         $this->em->persist((new Fixture)->setClubId($this->clubId)->setSeasonId($this->seasonId)->setTeamId($team->getId())
             ->setCompetitionId($competitionId)->setMatchDate(new DateTimeImmutable('2026-12-05'))->setHomeAway(FixtureHomeAway::HOME)
-            ->setOpponentLabel('AS Voisins')->setStatus(FixtureStatus::PLACED, new DateTimeImmutable));
+            ->setOpponentLabel('AS Voisins')->setPlacement(PlacementStatus::PLACED));
         $this->em->flush();
     }
 
