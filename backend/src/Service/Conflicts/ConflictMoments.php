@@ -6,6 +6,7 @@ namespace App\Service\Conflicts;
 
 use App\Entity\Fixture;
 use App\Enum\ConflictPersonRole;
+use App\Matches\FederalFollowUp;
 use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
 
@@ -62,7 +63,7 @@ final class ConflictMoments
             'homeAway' => $fixture->getHomeAway()->value,
             'matchDate' => $fixture->getMatchDate()->format('Y-m-d'),
             'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-            'status' => $fixture->getStatus()->value,
+            'status' => (new FederalFollowUp)->stageOf($fixture)->value,
         ];
     }
 

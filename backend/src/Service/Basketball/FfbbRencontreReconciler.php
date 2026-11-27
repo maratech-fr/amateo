@@ -12,9 +12,9 @@ use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
-use App\Enum\FixtureStatus;
 use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Service\FbiFixtureImporter;
 use DateTimeImmutable;
@@ -55,6 +55,7 @@ final class FfbbRencontreReconciler
         private readonly ClockInterface $clock,
         private readonly CompetitionRegistry $competitionRegistry,
         private readonly FriendlyCompetitions $friendlyCompetitions,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -104,7 +105,7 @@ final class FfbbRencontreReconciler
                 continue; // matched but no divergence
             }
             foreach ($fields as $field => $vals) {
-                if (null !== $fixture->getPendingDeviation($field)) {
+                if (null !== $this->followUp->deviations($fixture)->get($field)) {
                     $persistingSet[$fixture->getId() . '|' . $field] = true;
                 }
                 $records[] = $this->importer->deviationRecord($fixture, $field, $vals, $row['competitionName'], 'none');
@@ -326,7 +327,7 @@ final class FfbbRencontreReconciler
         $fixture->setFfbbRencontreId(\is_string($row['rencontreId'] ?? null) ? $row['rencontreId'] : null);
         // Status is always UNPLACED (placing a home match requires a CLUB venue +
         // an explicit manager action — same rule as the FBI import).
-        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
+        $this->followUp->unplace($fixture, $now);
         // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
         // son gymnase (jamais placé pour autant : reste UNPLACED). Moteur partagé.
         $this->importer->attachConfirmedVenue($fixture, \is_string($row['venueLabel'] ?? null) ? $row['venueLabel'] : null);

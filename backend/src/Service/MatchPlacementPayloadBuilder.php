@@ -26,6 +26,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Matches\FederalFollowUp;
 use App\Matches\HandPlaced;
 use App\Service\Conflicts\DayHoldings;
 use DateTimeImmutable;
@@ -100,6 +101,7 @@ final class MatchPlacementPayloadBuilder
         private readonly OpponentTravelProjection $opponentTravelProjection,
         private readonly PlanHoldingInputs $planHoldingInputs,
         private readonly HandPlaced $handPlaced,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -469,13 +471,14 @@ final class MatchPlacementPayloadBuilder
         // UNPLACED/unanchored → null (absent). The PLACED+SOLVER case is caught here too.
         $isHandPlaced = $this->handPlaced->is($fixture);
 
-        $isSolverPlaced = FixtureStatus::PLACED === $fixture->getStatus()
+        $stage = $this->followUp->stageOf($fixture);
+        $isSolverPlaced = FixtureStatus::PLACED === $stage
             && FixturePlacementSource::SOLVER === $fixture->getPlacementSource();
         // TO_PLACE seulement DANS la fenêtre (P4-240 ④). Hors fenêtre, le fixture tombe
         // dans la branche d'ancrage ci-dessous : déjà posé (venue+kickoff, SOLVER compris)
         // → FIXED (ancre, sa salle protégée, il ne bouge pas — le résultat ne le réécrit
         // pas, il n'est jamais renvoyé par le moteur) ; non posé → null (absent du payload).
-        if (!$isHandPlaced && $inWindow && (FixtureStatus::UNPLACED === $fixture->getStatus() || $isSolverPlaced)) {
+        if (!$isHandPlaced && $inWindow && (FixtureStatus::UNPLACED === $stage || $isSolverPlaced)) {
             $row = $base + [
                 'kind' => 'TO_PLACE',
                 'currentVenueId' => $isSolverPlaced ? $fixture->getVenueId() : null,

@@ -6,7 +6,7 @@ namespace App\Service;
 
 use App\Entity\Fixture;
 use App\Entity\Venue;
-use App\Enum\FixtureStatus;
+use App\Matches\FederalFollowUp;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -62,8 +62,9 @@ final class OrphanedFixtureFinder
     {
         $orphaned = $this->orphanedFixtures($clubId, $seasonId);
         $declared = 0;
+        $followUp = new FederalFollowUp;
         foreach ($orphaned as $fixture) {
-            if (\in_array($fixture->getStatus(), [FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)) {
+            if ($followUp->isEntered($fixture)) {
                 ++$declared;
             }
         }

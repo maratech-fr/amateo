@@ -11,6 +11,7 @@ use App\Entity\MatchModuleVisit;
 use App\Entity\SharedCompetitionDeadline;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Matches\FederalFollowUp;
 use App\Repository\ClubUserRepository;
 use App\Repository\FbiCorrectionRepository;
 use App\Repository\MatchModuleVisitRepository;
@@ -55,6 +56,7 @@ final class EntryDeadlineOutlook
         private readonly ClubUserRepository $clubUserRepository,
         private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -160,7 +162,7 @@ final class EntryDeadlineOutlook
         // à corriger = entrées OUVERTES du registre (filtres tenant+saison Doctrine).
         $toEnter = 0;
         foreach ($fixtures as $fixture) {
-            if (FixtureHomeAway::HOME === $fixture->getHomeAway() && FixtureStatus::PLACED === $fixture->getStatus()) {
+            if (FixtureHomeAway::HOME === $fixture->getHomeAway() && FixtureStatus::PLACED === $this->followUp->stageOf($fixture)) {
                 ++$toEnter;
             }
         }
@@ -227,7 +229,7 @@ final class EntryDeadlineOutlook
             if (null === $competitionId) {
                 continue; // défensif : un match a toujours une compétition
             }
-            $status = $fixture->getStatus();
+            $status = $this->followUp->stageOf($fixture);
             if (FixtureStatus::UNPLACED === $status) {
                 $toPlace[$competitionId] = ($toPlace[$competitionId] ?? 0) + 1;
             } elseif (FixtureStatus::PLACED === $status) {

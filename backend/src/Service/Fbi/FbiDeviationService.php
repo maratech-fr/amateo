@@ -13,6 +13,7 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Exception\ImportRejectedException;
+use App\Matches\FederalFollowUp;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueExternalLabelAttacher;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -48,6 +49,7 @@ final class FbiDeviationService
         // d'un export FBI, qui est réelle : jamais l'« aujourd'hui » simulé d'un club démo.
         #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $realClock,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -67,7 +69,7 @@ final class FbiDeviationService
     {
         $inPerimeter = FixtureHomeAway::HOME === $existing->getHomeAway()
             && FixtureHomeAway::HOME === $row['homeAway']
-            && FixtureStatus::UNPLACED !== $existing->getStatus();
+            && FixtureStatus::UNPLACED !== $this->followUp->stageOf($existing);
         if (!$inPerimeter) {
             return null;
         }
@@ -135,7 +137,7 @@ final class FbiDeviationService
     {
         if (FixtureHomeAway::HOME !== $existing->getHomeAway()
             || FixtureHomeAway::HOME !== $row['homeAway']
-            || FixtureStatus::UNPLACED !== $existing->getStatus()) {
+            || FixtureStatus::UNPLACED !== $this->followUp->stageOf($existing)) {
             return null;
         }
 
@@ -163,7 +165,7 @@ final class FbiDeviationService
 
         // Idempotence « Garder l'appli » (E) : un libellé déjà mémorisé ne repose pas
         // la question tant que la source le répète.
-        if ($this->labelNormalizer->normalize($fileLabel) === $existing->getKeptVenueLabel()) {
+        if ($this->labelNormalizer->normalize($fileLabel) === $this->followUp->keptVenueLabelOf($existing)) {
             return null;
         }
 
@@ -218,9 +220,9 @@ final class FbiDeviationService
      */
     public function applyVenueKeepApp(Fixture $fixture, string $fileLabel): void
     {
-        $fixture->setKeptVenueLabel($this->labelNormalizer->normalize($fileLabel));
+        $this->followUp->keepVenueLabel($fixture, $this->labelNormalizer->normalize($fileLabel));
         $fixture->setFbiVenueLabel($fileLabel);
-        $fixture->removePendingDeviation('venue');
+        $this->followUp->deviations($fixture)->remove('venue');
     }
 
     /**
@@ -236,7 +238,7 @@ final class FbiDeviationService
             'externalRef' => (string) $existing->getExternalRef(),
             'division' => $divisionName,
             'teamId' => $existing->getTeamId(),
-            'status' => $status ?? $existing->getStatus()->value,
+            'status' => $status ?? $this->followUp->stageOf($existing)->value,
             'field' => $field,
             'app' => $vals['app'],
             'file' => $vals['file'],
@@ -332,7 +334,7 @@ final class FbiDeviationService
             return;
         }
         foreach ($autoApplied as $field => $vals) {
-            $existing->putPendingDeviation($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
+            $this->followUp->deviations($existing)->put($this->pendingEntry($existing, $field, $vals, $channel, $now, true));
         }
         if (FixtureHomeAway::AWAY === $existing->getHomeAway()) {
             $existing->markReviewed($now);
@@ -354,7 +356,7 @@ final class FbiDeviationService
     /** The league re-decided: the match goes back to « à placer ». */
     public function unplace(Fixture $fixture, DateTimeImmutable $now): void
     {
-        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
+        $this->followUp->unplace($fixture, $now);
         $fixture->setVenueId(null);
     }
 
@@ -373,7 +375,7 @@ final class FbiDeviationService
     public function pendingEntry(Fixture $existing, string $field, array $vals, string $channel, DateTimeImmutable $now, bool $autoApplied): array
     {
         \assert('date' === $field || 'kickoff' === $field || 'venue' === $field);
-        $previous = $existing->getPendingDeviation($field);
+        $previous = $this->followUp->deviations($existing)->get($field);
 
         return [
             'field' => $field,
@@ -414,7 +416,7 @@ final class FbiDeviationService
             if (null !== $sourceLabel) {
                 $existing->setFbiVenueLabel($sourceLabel);
             }
-            $existing->setKeptVenueLabel(null);
+            $this->followUp->keepVenueLabel($existing, null);
             $this->unplace($existing, $now);
             $existing->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
 

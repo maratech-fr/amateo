@@ -10,6 +10,7 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Matches\ConflictType;
+use App\Matches\FederalFollowUp;
 use App\Service\ConflictRadarLoader;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
@@ -31,9 +32,13 @@ use DateTimeImmutable;
  */
 final class VenueConflicts
 {
+    private readonly FederalFollowUp $followUp;
+
     public function __construct(
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
-    ) {}
+    ) {
+        $this->followUp = new FederalFollowUp;
+    }
 
     /**
      * Severity 1 — two fixtures on the SAME venue whose VENUE windows overlap.
@@ -202,7 +207,7 @@ final class VenueConflicts
             $venueId = $fixture->getVenueId();
             if (FixtureHomeAway::HOME !== $fixture->getHomeAway()
                 || null === $venueId
-                || !\in_array($fixture->getStatus(), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
+                || !\in_array($this->followUp->stageOf($fixture), [FixtureStatus::PLACED, FixtureStatus::SUBMITTED, FixtureStatus::VALIDATED], true)
             ) {
                 continue;
             }
@@ -301,7 +306,7 @@ final class VenueConflicts
                         'homeAway' => $fixture->getHomeAway()->value,
                         'matchDate' => $date,
                         'kickoffTime' => $fixture->getKickoffTime()?->format('H:i'),
-                        'status' => $fixture->getStatus()->value,
+                        'status' => $this->followUp->stageOf($fixture)->value,
                     ],
                 ];
             }

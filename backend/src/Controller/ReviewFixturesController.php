@@ -10,6 +10,7 @@ use App\Access\Module;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
+use App\Matches\FederalFollowUp;
 use App\Service\SeasonAccessGuard;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -49,6 +50,7 @@ final class ReviewFixturesController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly ClockInterface $clock,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     // priority > 0: the static path must win over API Platform's /api/fixtures/{id}.
@@ -94,7 +96,7 @@ final class ReviewFixturesController extends AbstractController
         if (null !== $fixtureIds) {
             // Geste LIGNE : traiter chaque rencontre, écarts vidés (garder l'app implicite).
             foreach ($repository->findBy(['id' => $fixtureIds]) as $fixture) {
-                $fixture->clearPendingDeviations();
+                $this->followUp->deviations($fixture)->clear();
                 $fixture->markReviewed($now);
                 ++$reviewed;
             }
@@ -102,12 +104,13 @@ final class ReviewFixturesController extends AbstractController
             // Geste MASSE équipe : traiter l'équipe, alertes appliquées d'office acquittées,
             // sauter les rencontres à écart arbitrable.
             foreach ($repository->findBy(['teamId' => $teamId]) as $fixture) {
-                if ($fixture->hasArbitrableDeviations()) {
+                $deviations = $this->followUp->deviations($fixture);
+                if ($deviations->anyArbitrable()) {
                     $skipped[] = ['fixtureId' => $fixture->getId(), 'reason' => 'pending_deviations'];
 
                     continue;
                 }
-                $fixture->clearPendingDeviations();
+                $deviations->clear();
                 $fixture->markReviewed($now);
                 ++$reviewed;
             }
@@ -117,15 +120,16 @@ final class ReviewFixturesController extends AbstractController
             // re-horodaté. Un OUT_OF_SYNC SANS aucune entrée (orphelin) n'est ni acquitté ni
             // nommé : choix conservateur, il reste tel quel à traiter sur sa ligne.
             foreach ($repository->findBy(['homeAway' => FixtureHomeAway::AWAY]) as $fixture) {
-                if ($fixture->hasArbitrableDeviations()) {
+                $deviations = $this->followUp->deviations($fixture);
+                if ($deviations->anyArbitrable()) {
                     $skipped[] = ['fixtureId' => $fixture->getId(), 'reason' => 'pending_deviations'];
 
                     continue;
                 }
-                if (FixtureReviewState::NEW !== $fixture->getReviewState() && !$fixture->hasPendingDeviations()) {
+                if (FixtureReviewState::NEW !== $fixture->getReviewState() && !$deviations->any()) {
                     continue;
                 }
-                $fixture->clearPendingDeviations();
+                $deviations->clear();
                 $fixture->markReviewed($now);
                 ++$reviewed;
             }

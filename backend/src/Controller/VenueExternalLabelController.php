@@ -13,6 +13,7 @@ use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
+use App\Matches\FederalFollowUp;
 use App\Service\Basketball\VenueExternalLabelAttacher;
 use App\Service\Basketball\VenueLabelInventory;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -63,6 +64,7 @@ final class VenueExternalLabelController extends AbstractController implements S
         private readonly SeasonResolver $seasonResolver,
         private readonly VenueLabelInventory $labelInventory,
         private readonly VenueExternalLabelAttacher $attacher,
+        private readonly FederalFollowUp $followUp,
     ) {}
 
     /**
@@ -200,7 +202,7 @@ final class VenueExternalLabelController extends AbstractController implements S
             if (null === $fixtureLabel || $this->labelNormalizer->normalize($fixtureLabel) !== $label) {
                 continue;
             }
-            if (FixtureStatus::UNPLACED !== $fixture->getStatus()) {
+            if (FixtureStatus::UNPLACED !== $this->followUp->stageOf($fixture)) {
                 ++$kept;
 
                 continue;
