@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, reworkSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -118,6 +118,7 @@ vi.mock("./api", () => {
   EngineVerificationInterruptedError,
   VerdictAbandonedError,
   reopenSchedule: vi.fn(),
+  reworkSchedule: vi.fn(() => Promise.resolve({ id: "work-1" })),
   fillSchedule: vi.fn(() => Promise.resolve({ id: "sched-fill" })),
   listSchedules: vi.fn(() => Promise.resolve([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan" }])),
   getSlots: vi.fn(() =>
@@ -1212,83 +1213,39 @@ describe("PlanningPage (integration)", () => {
     expect(closed.getAttribute("title")).toMatch(/mardi est fermé/);
   });
 
-  // planning lifecycle (§7.1): reopening the version the plan POINTS at, when the
-  // season has period overlays, 409s; the UI escalates to a proportional confirm,
-  // then re-sends with the flag.
-  describe("reopen escalation (the plan in force, with overlays)", () => {
+  // planning lifecycle (§7.1) — lot 5 : le planning de saison en vigueur ne se rouvre plus, il se
+  // RETRAVAILLE (son refus serveur : `Security/SeasonPlanInForceTest::testReopeningTheSeasonPlanIsRefused`).
+  // Une période validée se rouvre toujours (dernier cas du bloc).
+  describe("retravailler le socle, rouvrir une période (le plan en vigueur)", () => {
     const validated: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }];
 
     beforeEach(() => {
       vi.mocked(reopenSchedule).mockReset(); // per-test call count + queued once-values
+      vi.mocked(reworkSchedule).mockReset();
     });
 
-    it("409 → confirm naming the overlay count → re-sends confirmDeleteOverlays", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockRejectedValueOnce(new OverlaysExistError(2, [])).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      // First reopen (no flag) → 409 → proportional confirm dialog.
-      // D5 « nom unique » : le dialogue compte des « plannings de période » (clé), jamais « secondaires ».
-      const reopenDialog = await screen.findByRole("dialog");
-      expect(reopenDialog).toHaveTextContent(PLANNING_TEXTS.reopenDeletesPeriodPlans("Planning A", 2));
-      expect(reopenDialog).not.toHaveTextContent(/secondaire/i);
-
-      // P2-7 : le geste lourd exige de taper la phrase — le bouton reste grisé sans elle.
-      const confirmButton = screen.getByRole("button", { name: "Rouvrir et supprimer" });
-      expect(confirmButton).toBeDisabled();
-      await user.type(within(screen.getByRole("dialog")).getByRole("textbox"), "modifier mon planning de saison");
-      expect(confirmButton).toBeEnabled();
-
-      await user.click(confirmButton);
-      expect(vi.mocked(reopenSchedule)).toHaveBeenCalledTimes(2);
-      expect(vi.mocked(reopenSchedule).mock.calls[1]).toEqual([SID, { confirmDeleteOverlays: true }]);
-      // Reopened → back to the wizard's generation step.
-      expect(navigate).toHaveBeenCalledWith("/wizard");
-    });
-
-    // Q8bis (P2-63) — le confirm annonce AUSSI les doléances des vacances à venir qui partiront.
-    it("409 avec doléances → le confirm annonce les doléances emportées (relancer la collecte)", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockRejectedValueOnce(new OverlaysExistError(1, [], 25)).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />);
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      expect(await screen.findByText(/25 doléances déjà reçues pour les vacances à venir partiront aussi/i)).toBeInTheDocument();
-      expect(screen.getByText(/il faudra relancer la collecte/i)).toBeInTheDocument();
-    });
-
-    it("« Rouvrir » (no overlays) → wizard generation step", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      expect(vi.mocked(reopenSchedule)).toHaveBeenCalledTimes(1);
-      expect(navigate).toHaveBeenCalledWith("/wizard");
-    });
-
-    // NR (défaut 3, axe planning lifecycle — LE bloquant) : toute navigation vers /wizard
-    // DÉCLARE son mode ; aucun héritage du localStorage. Rouvrir la SAISON repasse en mode
-    // saison même si un mode période traînait. Falsification : sans exitPeriodMode, la
-    // période persistée resterait et le wizard s'ouvrirait sur la mauvaise portée.
-    it("Rouvrir le SOCLE (SEASON) déclare le mode SAISON — une période persistée ne survit pas", async () => {
+    // NR (défaut 3, axe planning lifecycle) : toute navigation vers /wizard DÉCLARE son mode ;
+    // aucun héritage du localStorage. Retravailler la SAISON repasse en mode saison même si un
+    // mode période traînait. Falsification : sans exitPeriodMode, la période persistée resterait
+    // et le wizard s'ouvrirait sur la mauvaise portée.
+    it("« Retravailler » le SOCLE confirme, crée la copie, puis déclare le mode SAISON — une période persistée ne survit pas", async () => {
       const user = userEvent.setup();
       // Un mode période traîne du localStorage/écran précédent : le piège exact.
       useWizardStore.getState().startPeriodMode("stale-entry");
       vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
+      vi.mocked(reworkSchedule).mockResolvedValueOnce({ id: "work-1" });
+      renderWithProviders(<PlanningPage />);
       await screen.findByText("U11");
 
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
+      await user.click(screen.getByRole("button", { name: PLANNING_TEXTS.rework }));
+      const dialog = await screen.findByRole("dialog");
+      expect(vi.mocked(reworkSchedule)).not.toHaveBeenCalled();
+      await user.click(within(dialog).getByRole("button", { name: PLANNING_TEXTS.rework }));
+
       await waitFor(() => expect(navigate).toHaveBeenCalledWith("/wizard"));
+      expect(vi.mocked(reworkSchedule)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(reworkSchedule).mock.calls[0]?.[0]).toBe(SID);
+      expect(vi.mocked(reopenSchedule)).not.toHaveBeenCalled();
       expect(useWizardStore.getState().mode).toBe("season");
       expect(useWizardStore.getState().calendarEntryId).toBeNull();
       expect(useWizardStore.getState().stepId).toBe("generate");

@@ -83,13 +83,6 @@ describe("TeamDailyCapPanel — le plafond part au bon endroit", () => {
     expect(h.updateTeam).not.toHaveBeenCalled();
   });
 
-  it("saison sous planning en vigueur : le champ est en lecture seule et dit pourquoi", () => {
-    renderWithProviders(<TeamDailyCapPanel team={u15} schedulePlanId={null} readOnly />);
-
-    expect(field()).toBeDisabled();
-    expect(screen.getByText(TEAMS_TEXTS.sessionsLockHint)).toBeInTheDocument();
-  });
-
   it("Membre : le champ est en lecture seule", () => {
     h.canManage = false;
     renderWithProviders(<TeamDailyCapPanel team={u15} schedulePlanId={null} readOnly={false} />);
