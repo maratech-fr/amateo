@@ -111,8 +111,8 @@ Fonctionnalité: Les conflits d'un match disent la vérité
   Scénario: Un match un jour férié ne crie jamais hors fenêtre de ligue (PR2)
     Un match fixé par la ligue un jour férié n'est pas un week-end libre : la ligue a posé ce jour
     exprès. Le radar ne lève donc jamais de violation de fenêtre de ligue pour un match un jour
-    férié, là où le même coup d'envoi un jour ordinaire serait hors de la fenêtre autorisée. Décor
-    identique à la coupe hors fenêtre, mais la rencontre tombe un jour férié officiel du territoire.
+    férié, là où le même coup d'envoi un jour ordinaire serait hors de la fenêtre autorisée. La
+    rencontre est un championnat, et elle tombe un jour férié officiel du territoire.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
     Et une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d'envoi viole un jour ordinaire
