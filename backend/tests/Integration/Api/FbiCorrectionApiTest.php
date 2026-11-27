@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
@@ -33,6 +34,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class FbiCorrectionApiTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
@@ -199,6 +201,7 @@ final class FbiCorrectionApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');

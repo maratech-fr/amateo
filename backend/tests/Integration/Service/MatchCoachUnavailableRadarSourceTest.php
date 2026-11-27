@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
@@ -54,6 +55,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class MatchCoachUnavailableRadarSourceTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -162,6 +164,7 @@ final class MatchCoachUnavailableRadarSourceTest extends KernelTestCase
         $weekday = (int) $matchDate->format('N');
         $fixture = (new Fixture)
             ->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($teamId)
+            ->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $club->getId(), $season->getId()))
             ->setMatchDate($matchDate)->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adv');
         $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', '16:00') ?: null);
         $this->em->persist($fixture);

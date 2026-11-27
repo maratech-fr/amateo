@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Command;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Command\CatchUpFixtureReviewCommand;
 use App\Entity\Club;
@@ -33,6 +34,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class CatchUpFixtureReviewCommandTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -132,7 +134,9 @@ final class CatchUpFixtureReviewCommandTest extends KernelTestCase
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
-        $fixture->setTeamId(Uuid::v4()->toRfc4122());
+        $teamId = Uuid::v4()->toRfc4122();
+        $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($ymd));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Adversaire');

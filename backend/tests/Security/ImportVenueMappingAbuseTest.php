@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
 use App\Entity\Fixture;
@@ -53,6 +54,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 #[Group('integration')]
 final class ImportVenueMappingAbuseTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
@@ -334,6 +336,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setClubId($clubA);
         $fixture->setSeasonId($team->getSeasonId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubA, $team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Arbitrage');
@@ -517,6 +520,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($team->getSeasonId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubId, $team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable('2099-03-14'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Placé');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -71,6 +72,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 #[Group('security')]
 final class ExportPdfDownloadIsolationTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
@@ -292,6 +294,7 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($year . '-11-14'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponent);

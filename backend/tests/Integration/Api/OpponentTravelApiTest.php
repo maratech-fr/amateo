@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -44,6 +45,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
 #[Group('integration')]
 final class OpponentTravelApiTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     /** Siège du club, pour que les trajets se résolvent depuis une origine connue. */
@@ -738,6 +740,7 @@ final class OpponentTravelApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponentLabel);

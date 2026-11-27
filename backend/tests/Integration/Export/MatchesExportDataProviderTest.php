@@ -116,7 +116,8 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         self::assertFalse($this->row('A')->toConfirm);
     }
 
-    public function testAFutureFriendlyHomeWithoutCompetitionIsFirm(): void
+    /** Un amical à venir rangé dans « Amicaux » est ferme et dit « amical ». */
+    public function testAFutureHomeInTheDefaultFriendliesIsFirm(): void
     {
         $this->homeMatch('A', '2026-11-14', '10:00', FixtureStatus::PLACED, null);
 
@@ -125,14 +126,22 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         self::assertTrue($row->friendly);
     }
 
-    public function testACompetitionLabelledFriendlyIsAFriendlyToo(): void
+    /**
+     * La NATURE de la compétition dit l'amical, plus son libellé (lot 7, PR 4a) : un match d'une compétition amicale
+     * de la fédération (« Amical PNF ») est un amical ; un match d'une compétition de championnat que son libellé dit
+     * « Amical … » n'en est pas un (avant la PR 4a, le libellé décidait).
+     */
+    public function testTheCompetitionNatureNotItsLabelMakesAFriendly(): void
     {
-        $friendly = $this->competition('Amical PNF');
+        $friendly = $this->competitionFor($this->team->getId(), 'Amical PNF', CompetitionType::FRIENDLY);
         $this->homeMatch('A', '2026-11-14', '10:00', FixtureStatus::PLACED, $friendly->getId());
+        $labelledFriendly = $this->competition('Amical RM3');
+        $this->homeMatch('B', '2026-11-14', '12:00', FixtureStatus::PLACED, $labelledFriendly->getId());
 
         $row = $this->row('A');
         self::assertFalse($row->toConfirm);
         self::assertTrue($row->friendly);
+        self::assertFalse($this->row('B')->friendly, 'un championnat reste un championnat, quel que soit son libellé');
     }
 
     public function testAPlayedMatchIsFirm(): void
@@ -618,7 +627,9 @@ final class MatchesExportDataProviderTest extends KernelTestCase
     private function homeMatch(string $opponent, string $date, ?string $kickoff, FixtureStatus $status, ?string $competitionId): Fixture
     {
         $fixture = $this->baseFixture($this->team, $opponent, $date, FixtureHomeAway::HOME, $kickoff);
-        $fixture->setCompetitionId($competitionId);
+        if (null !== $competitionId) {
+            $fixture->setCompetitionId($competitionId); // sinon « Amicaux », posée par baseFixture
+        }
         $fixture->setStatus($status, new DateTimeImmutable('2026-11-01'));
         $this->em->flush();
 
@@ -655,6 +666,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);

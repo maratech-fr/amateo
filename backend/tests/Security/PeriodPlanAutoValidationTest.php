@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\ScheduleStatus;
+use App\Matches\FriendlyCompetitions;
 use App\Service\PeriodPlanAlertResolver;
 use App\Service\PeriodPlanAutoValidator;
 use App\Service\PeriodPlanSweepReport;
@@ -465,10 +466,11 @@ final class PeriodPlanAutoValidationTest extends WebTestCase
 
         $this->scopeGucToClub($club->getId());
         $fixtureId = $this->uuid();
+        $teamId = $this->uuid();
         $this->em->getConnection()->executeStatement(
-            'INSERT INTO fixture (id, version, created_at, updated_at, club_id, season_id, team_id, match_date, home_away, opponent_label, status, venue_id, kickoff_time) '
-            . 'VALUES (:id, 1, now(), now(), :club, :season, :team, \'2026-12-27\', \'HOME\', \'Adversaire\', \'PLACED\', :venue, \'15:00\')',
-            ['id' => $fixtureId, 'club' => $club->getId(), 'season' => $season->getId(), 'team' => $this->uuid(), 'venue' => $this->uuid()],
+            'INSERT INTO fixture (id, version, created_at, updated_at, club_id, season_id, team_id, competition_id, match_date, home_away, opponent_label, status, venue_id, kickoff_time) '
+            . 'VALUES (:id, 1, now(), now(), :club, :season, :team, :competition, \'2026-12-27\', \'HOME\', \'Adversaire\', \'PLACED\', :venue, \'15:00\')',
+            ['id' => $fixtureId, 'club' => $club->getId(), 'season' => $season->getId(), 'team' => $teamId, 'competition' => self::getContainer()->get(FriendlyCompetitions::class)->engageInDefault($club->getId(), $season->getId(), $teamId)->getId(), 'venue' => $this->uuid()],
         );
 
         $this->sweep($club, self::THRESHOLD);

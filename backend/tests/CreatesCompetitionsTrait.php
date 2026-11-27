@@ -9,6 +9,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FriendlyCompetitions;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Assert;
 
@@ -44,6 +45,27 @@ trait CreatesCompetitionsTrait
         $em->flush();
 
         return $competition;
+    }
+
+    /**
+     * « Amicaux », la compétition d'office de la saison de l'équipe, l'équipe y engagée ({@see FriendlyCompetitions::engageInDefault}) :
+     * la compétition d'un match de décor qui n'en portait pas avant la PR 4a du lot 7, l'ancien sens d'un
+     * `competitionId` nul (un amical). Écriture immédiate, aucun flush requis. Club et saison : ceux passés, sinon
+     * ceux de l'équipe (règle de {@see competitionFor}).
+     */
+    private function friendlyCompetitionIdFor(string $teamId, ?string $clubId = null, ?string $seasonId = null): string
+    {
+        if (null === $clubId || null === $seasonId) {
+            [$clubId, $seasonId] = $this->clubAndSeasonOfTeam(static::getContainer()->get(EntityManagerInterface::class), $teamId);
+        }
+
+        // Ni `find` ni filtre Doctrine : un décor pose parfois les lignes d'un AUTRE club que celui du filtre (RLS
+        // seule, `scopeGucToClub`) ; la compétition d'office n'y serait pas lisible.
+        $friendlies = static::getContainer()->get(FriendlyCompetitions::class);
+        $id = $friendlies->ensureDefault($clubId, $seasonId);
+        $friendlies->engageIn(new Competition()->setId($id)->setClubId($clubId)->setSeasonId($seasonId)->setCompetitionType(CompetitionType::FRIENDLY), $teamId);
+
+        return $id;
     }
 
     /** @return array{0: string, 1: string} */

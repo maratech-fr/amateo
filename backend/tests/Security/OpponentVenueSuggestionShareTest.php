@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -64,6 +65,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 #[Group('security')]
 final class OpponentVenueSuggestionShareTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private const string CODE = 'ARA0069424';
@@ -458,6 +460,7 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $fixture->setClubId($season->getClubId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($this->uuid());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($fixture->getTeamId(), $season->getClubId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponentLabel);
@@ -629,6 +632,7 @@ final class OpponentVenueSuggestionShareTest extends WebTestCase
         $fixture->setClubId($season->getClubId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($this->uuid());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($fixture->getTeamId(), $season->getClubId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel($opponentLabel);

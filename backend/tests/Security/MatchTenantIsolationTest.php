@@ -1635,6 +1635,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel($opponent);
@@ -1651,6 +1652,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
@@ -1721,6 +1723,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adversaire sans empreinte');
@@ -1761,6 +1764,7 @@ final class MatchTenantIsolationTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId($team->getId());
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
             $fixture->setHomeAway(FixtureHomeAway::HOME);
             $fixture->setOpponentLabel('Adversaire');
@@ -1789,6 +1793,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');

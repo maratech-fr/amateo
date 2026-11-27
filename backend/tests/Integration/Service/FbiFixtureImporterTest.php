@@ -3543,6 +3543,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->team->getSeasonId());
         $fixture->setTeamId($this->team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($this->team->getId(), $this->club->getId(), $this->team->getSeasonId()));
         $fixture->setMatchDate(new DateTimeImmutable($dateYmd));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel($opponent);

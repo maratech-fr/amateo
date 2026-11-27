@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
@@ -46,6 +47,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class FixtureConflictsApiTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -694,6 +696,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable($matchDate));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
@@ -772,6 +775,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $away->setClubId($club->getId());
         $away->setSeasonId($season->getId());
         $away->setTeamId($team2);
+        $away->setCompetitionId($this->friendlyCompetitionIdFor($team2, $club->getId(), $season->getId()));
         $away->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $away->setHomeAway(FixtureHomeAway::AWAY);
         $away->setOpponentLabel('ASVEL - 2');
@@ -855,6 +859,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');

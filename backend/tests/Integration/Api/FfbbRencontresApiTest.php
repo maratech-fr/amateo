@@ -991,6 +991,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate($date->setTime(0, 0));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);

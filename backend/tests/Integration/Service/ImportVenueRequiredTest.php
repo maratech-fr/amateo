@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
@@ -78,6 +79,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class ImportVenueRequiredTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
@@ -568,6 +570,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv Placé');

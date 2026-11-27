@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubTravelCache;
 use App\Entity\Fixture;
@@ -36,6 +37,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class OpponentTravelProjectionTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     /** Le siège du club, fixé pour que le cache des trajets ait une origine connue. */
@@ -223,6 +225,7 @@ final class OpponentTravelProjectionTest extends KernelTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-24'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponentLabel);

@@ -953,6 +953,7 @@ final class FixtureApiTest extends WebTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId(self::TEAM_ID);
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor(self::TEAM_ID, $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponentLabel);

@@ -476,7 +476,7 @@ final class CascadeDeleteApiTest extends WebTestCase
 
         return $this->persist((new Fixture)
             ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setTeamId('11111111-1111-4111-8111-111111111111')
+            ->setTeamId('11111111-1111-4111-8111-111111111111')->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()))
             ->setMatchDate(new DateTimeImmutable('2026-01-10'))
             ->setHomeAway(FixtureHomeAway::HOME)->setOpponentLabel('Adversaire')
             ->setStatus($status, new DateTimeImmutable)->setVenueId($venueId));

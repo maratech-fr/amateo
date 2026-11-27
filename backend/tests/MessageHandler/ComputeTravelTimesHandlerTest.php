@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\MessageHandler;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
@@ -54,6 +55,7 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 #[Group('integration')]
 final class ComputeTravelTimesHandlerTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -210,6 +212,7 @@ final class ComputeTravelTimesHandlerTest extends WebTestCase
             $fixture->setClubId($club->getId());
             $fixture->setSeasonId($season->getId());
             $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+            $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
             $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
             $fixture->setHomeAway(FixtureHomeAway::AWAY);
             $fixture->setOpponentLabel('Adverse ' . $suffix . ' ' . $i);
@@ -266,6 +269,7 @@ final class ComputeTravelTimesHandlerTest extends WebTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $club->getId(), $season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('+10 days'));
         $fixture->setHomeAway(FixtureHomeAway::AWAY);
         $fixture->setOpponentLabel('Adverse ' . $suffix);

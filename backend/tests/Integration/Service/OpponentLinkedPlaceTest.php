@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
@@ -28,6 +29,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class OpponentLinkedPlaceTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -135,6 +137,7 @@ final class OpponentLinkedPlaceTest extends KernelTestCase
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId('11111111-1111-4111-8111-111111111111');
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor('11111111-1111-4111-8111-111111111111', $this->club->getId(), $this->season->getId()));
         $fixture->setMatchDate(new DateTimeImmutable('2026-11-14'));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel('Les Lions');
