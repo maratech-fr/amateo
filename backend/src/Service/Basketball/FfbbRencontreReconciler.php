@@ -187,7 +187,9 @@ final class FfbbRencontreReconciler
             // amicale, competitionFfbbId non null), reçoit la compétition résolue-
             // ou-créée POUR SON équipe — et RIEN d'autre : jamais un statut, jamais
             // une date, jamais un re-pointage d'une fixture qui a DÉJÀ une compétition.
-            if (null === $fixture->getCompetitionId()) {
+            // Lot 7, PR 4a : « sans compétition » se lit aussi « dans l'Amicaux d'office » (la
+            // migration y a versé les anciens) ; seule une rencontre NON amicale y est rattachée.
+            if ((null === $fixture->getCompetitionId() || $this->inDefaultFriendlies($fixture)) && !$this->isFriendlyRow($row)) {
                 $competition = $this->resolveOrCreateCompetition($row, $fixture->getTeamId(), $clubId, $seasonId, $context, $createdByKey);
                 if ($competition instanceof Competition) {
                     $fixture->setCompetitionId($competition->getId());
@@ -493,9 +495,10 @@ final class FfbbRencontreReconciler
         // compétition fédérale. ⚠ un amical réel PORTE un competitionFfbbId : « non
         // apparié » ne suffit jamais, c'est le LIBELLÉ qui tranche. Lot 7, PR 4a : il entre
         // dans la compétition amicale de son libellé (« AMICAL PNM »), jamais dans « Amicaux ».
-        if (null === $competitionFfbbId || $this->isFriendlyLabel($competitionName)) {
+        if ($this->isFriendlyRow($row)) {
             return $this->friendlyCompetitionOf($teamId, $clubId, $seasonId, $competitionName, $createdByKey);
         }
+        \assert(null !== $competitionFfbbId);
 
         // (1) — (ffbbId, teamId) : la carte du run d'abord (deux rencontres de la
         // même coupe → UNE compétition), puis le contexte chargé en base.
@@ -540,6 +543,24 @@ final class FfbbRencontreReconciler
         $this->competitionRegistry->engage($competition, $teamId);
 
         return $createdByKey[$key] = $competition;
+    }
+
+    /**
+     * R1 — une rencontre amicale : son libellé le dit, ou elle n'a aucune réf de compétition fédérale.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function isFriendlyRow(array $row): bool
+    {
+        return !\is_string($row['competitionFfbbId'] ?? null) || $this->isFriendlyLabel(\is_string($row['competitionName'] ?? null) ? $row['competitionName'] : '');
+    }
+
+    /** Le match est dans « Amicaux », la compétition d'office de sa saison. */
+    private function inDefaultFriendlies(Fixture $fixture): bool
+    {
+        $competitionId = $fixture->getCompetitionId();
+
+        return null !== $competitionId && true === $this->entityManager->find(Competition::class, $competitionId)?->isDefaultFriendly();
     }
 
     /**

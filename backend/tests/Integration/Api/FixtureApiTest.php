@@ -804,7 +804,7 @@ final class FixtureApiTest extends WebTestCase
     }
 
     /** Une équipe du club et de la saison du test, nommée : le texte du refus la nomme. */
-    private function persistTeam(string $name): string
+    private function persistTeam(string $name, ?string $id = null): string
     {
         $this->scopeGucToClub($this->club->getId());
         $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
@@ -817,6 +817,9 @@ final class FixtureApiTest extends WebTestCase
         $this->em->persist($category);
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
             ->setPriorityTierId(3)->setName($name)->setIsActive(true);
+        if (null !== $id) {
+            $team->setId($id);
+        }
         $this->em->persist($team);
         $this->em->flush();
 
@@ -1039,6 +1042,8 @@ final class FixtureApiTest extends WebTestCase
         $this->settleSeasonPlan($season);
         $this->club = $club;
         $this->season = $season;
+        // Un match désigne une équipe du club (lot 7, PR 4a) : l'équipe du décor existe.
+        $this->persistTeam('Équipe du décor', self::TEAM_ID);
 
         return $user;
     }

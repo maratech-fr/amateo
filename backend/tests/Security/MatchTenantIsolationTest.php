@@ -114,7 +114,8 @@ final class MatchTenantIsolationTest extends WebTestCase
     public function testPostStampsTheResolvedClubAndSeason(): void
     {
         [$clubA, $userA, $seasonA] = $this->createClubUser('a');
-        $teamId = '11111111-1111-4111-8111-111111111111';
+        // Un match désigne une équipe du club (lot 7, PR 4a) : l'équipe du décor existe.
+        $teamId = $this->createTeam($clubA, $seasonA, 'U15 A')->getId();
 
         $this->client->request('POST', '/api/fixtures', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'teamId' => $teamId,

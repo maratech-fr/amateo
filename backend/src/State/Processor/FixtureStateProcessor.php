@@ -126,6 +126,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         $now = DateTimeImmutable::createFromInterface($this->clock->now());
         $entity = new Fixture;
         if (null !== $input->teamId) {
+            $this->assertTeamInScope($input->teamId);
             $entity->setTeamId($input->teamId);
         }
         // Lot 7, PR 4a (C55) — à la création, une compétition absente, nulle ou vide range le match dans « Amicaux ».
@@ -184,6 +185,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         $competitionBefore = $entity->getCompetitionId();
         $homeAwayBefore = $entity->getHomeAway();
         if (null !== $input->teamId) {
+            $this->assertTeamInScope($input->teamId);
             $entity->setTeamId($input->teamId);
         }
         // Lot 7, PR 4a (C55) — en modification, une compétition absente ou nulle laisse le match où il est ; seule
@@ -422,6 +424,17 @@ class FixtureStateProcessor extends AbstractStateProcessor
     {
         if (null === $this->entityManager->find(Competition::class, $competitionId)) {
             throw new UnprocessableEntityHttpException('Compétition inconnue pour ce club et cette saison.');
+        }
+    }
+
+    /**
+     * Le match désigne une équipe du club et de la saison (filtres club et saison, RLS) : une équipe inconnue ou d'un
+     * autre club est refusée avant toute écriture, match comme engagement.
+     */
+    private function assertTeamInScope(string $teamId): void
+    {
+        if (!$this->entityManager->find(Team::class, $teamId) instanceof Team) {
+            $this->refuse('Équipe inconnue pour ce club et cette saison.');
         }
     }
 
