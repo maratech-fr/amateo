@@ -887,6 +887,11 @@ final class FixtureApiTest extends WebTestCase
         $manual = $this->responseData();
         self::assertSame('MANUAL', $manual['source'] ?? null, 'une compétition créée à la main est servie hors FBI');
 
+        // Sans renvoyer le stade d'abord : seule cette garde parle (le refus « non suivi » ne juge qu'un stade demandé).
+        $this->putFixture($entered, ['competitionId' => (string) $manual['id']] + $away);
+        self::assertResponseStatusCodeSame(422, 'le changement de compétition seul est refusé');
+        self::assertSame('Ce match est déjà saisi dans FBI : il ne peut pas quitter sa compétition.', $this->firstViolation());
+
         $this->putFixture($entered, ['status' => 'SUBMITTED', 'competitionId' => (string) $manual['id']] + $away);
 
         self::assertResponseStatusCodeSame(422);
