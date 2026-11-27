@@ -26,6 +26,7 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\SeasonResolver;
@@ -172,6 +173,32 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertNotContains(FfbbHttpClientStub::RENCONTRE_AMICAL_ID, $this->listCreatableIds($token));
         $again = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
         self::assertSame(0, $again['created'], 'a rencontre already created is never re-created');
+    }
+
+    /**
+     * Lot 7, PR 6b : un amical de la fédération dont le libellé porte le nom « Amicaux » n'entre jamais dans la compétition
+     * d'office de ce nom (MANUAL, non suivie) où l'équipe est engagée — il naît dans une compétition amicale FBI, suivi.
+     */
+    public function testAFederalFriendlyLabelledAmicauxNeverLandsInTheDefaultFriendly(): void
+    {
+        [$token, , $clubId] = $this->register('FRAMX');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $seasonId = $this->seasonOf($clubId)->getId();
+        $amicaux = $this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId);
+        FfbbHttpClientStub::$amicalCompetition = ['nom' => 'Amicaux'];
+
+        $created = $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID, 'teamId' => $team->getId()]]);
+        self::assertSame(1, $created['created'], 'témoin : la rencontre est créée');
+
+        $connection = $this->scoped($clubId);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_AMICAL_ID]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertNotSame($amicaux, $fixture->getCompetitionId(), 'l\'amical fédéral n\'est pas rangé dans « Amicaux »');
+        $competition = $connection->fetchAssociative('SELECT competition_type, source FROM competition WHERE id = ?', [$fixture->getCompetitionId()]);
+        self::assertSame(['competition_type' => CompetitionType::FRIENDLY->value, 'source' => 'FBI'], $competition, 'sa compétition est amicale et de source FBI');
+        self::assertTrue(self::getContainer()->get(FederalFollowUp::class)->isTracked($fixture), 'le match est suivi par la fédération (fbiTracked)');
     }
 
     public function testApplyCreatesAPastRencontreAlreadyTreated(): void
@@ -885,6 +912,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         // Relâche toute horloge épinglée (Redis partagé, non transactionnel) — sinon
         // elle fuirait sur les tests suivants.
         self::getContainer()->get(DevClockStore::class)->set(null);
+        FfbbHttpClientStub::$amicalCompetition = null;
         parent::tearDown();
     }
 

@@ -150,6 +150,15 @@ final class FfbbHttpClientStub implements HttpClientInterface
      */
     public static int $organismeSearchCount = 0;
 
+    /**
+     * Lot 7, PR 6b — la compétition fédérale que porte la rencontre amicale ; null = celle du stub (« AMICAL PNM »,
+     * avec sa référence). Permet une rencontre amicale sans référence dont le libellé est « Amicaux ». Remise à null
+     * par le test qui la pose (statique partagée dans le process).
+     *
+     * @var array<string, string>|null
+     */
+    public static ?array $amicalCompetition = null;
+
     private readonly MockHttpClient $inner;
 
     public function __construct()
@@ -354,7 +363,7 @@ final class FfbbHttpClientStub implements HttpClientInterface
                 // P4-194 R1 — a REAL amical carries a competitionFfbbId (« non
                 // apparié » ne suffit pas) : c'est le token « amical » du LIBELLÉ
                 // multi-mots qui tranche (« AMICAL PNM », cas mesuré).
-                'competitionId' => ['id' => 'amical-unpaired', 'nom' => 'AMICAL PNM'],
+                'competitionId' => self::$amicalCompetition ?? ['id' => 'amical-unpaired', 'nom' => 'AMICAL PNM'],
                 'salle' => ['libelle' => 'GYMNASE STUB', 'adresse' => '1 rue du Test'],
                 'saison' => $season,
             ],

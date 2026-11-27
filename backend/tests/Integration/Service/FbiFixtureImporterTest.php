@@ -26,7 +26,9 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Matches\CompetitionClassifier;
 use App\Matches\CompetitionRegistry;
+use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
 use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -412,6 +414,39 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(2, $result['created'], 'témoin : les deux rencontres sont déposées');
         self::assertSame([$handMade->getId(), $this->team->getId()], $this->fixtureCompetitionAndTeam('S1'), 'témoin : la rencontre entre dans la compétition créée à la main');
         self::assertSame(['FBI', 'MANUAL'], $sources(), 'la compétition créée à la main devient FBI ; « Amicaux » reste MANUAL');
+        // Lot 7, PR 6b — la proposition vers « Amicaux » est ignorée : l'amical fédéral entre dans la compétition de son libellé, suivi.
+        $this->assertTrackedFederalMatchOutsideAmicaux('S2', $amicaux, CompetitionType::FRIENDLY);
+        self::assertSame('Amicaux', $this->em->getConnection()->fetchOne('SELECT name FROM competition WHERE id = ?', [$amicaux]), '« Amicaux » n\'est pas renommée au libellé de la division');
+    }
+
+    /**
+     * Lot 7, PR 6b : une division du fichier qui porte le nom « Amicaux » n'entre jamais dans la compétition d'office
+     * (MANUAL, non suivie) retrouvée par son nom — elle a sa propre compétition, FBI, et ses matchs sont suivis. Sa nature
+     * est celle que le classement donne au libellé (« Amicaux » n'ouvre pas sur « amical » : championnat).
+     */
+    public function testADivisionNamedAmicauxNeverLandsInTheDefaultFriendly(): void
+    {
+        $amicaux = $this->friendlyCompetitionIdFor($this->team->getId(), $this->club->getId(), $this->team->getSeasonId());
+
+        $result = $this->importMapped([['Amicaux', 'S3', 'BC TESTVILLE - 1', 'AS Z', '10/10/2026', '', '']]);
+
+        self::assertSame(1, $result['created'], 'témoin : la rencontre est déposée');
+        $this->assertTrackedFederalMatchOutsideAmicaux('S3', $amicaux, CompetitionClassifier::classify('Amicaux'));
+    }
+
+    /**
+     * Lot 7, PR 6b : au re-dépôt sans correspondance, une division « Amicaux » ne se résout jamais vers l'engagement de
+     * l'équipe dans la compétition d'office — elle reste « à faire correspondre », aucun match n'y entre non suivi.
+     */
+    public function testAnUnmappedDivisionNamedAmicauxIsToBeMatchedNeverResolvedIntoTheDefaultFriendly(): void
+    {
+        $amicaux = $this->friendlyCompetitionIdFor($this->team->getId(), $this->club->getId(), $this->team->getSeasonId());
+
+        $result = $this->importMapped([['Amicaux', 'S4', 'BC TESTVILLE - 1', 'AS Z', '10/10/2026', '', '']], []);
+
+        self::assertSame(0, $result['created'], 'aucun match n\'est rangé d\'office dans « Amicaux »');
+        self::assertSame([['name' => 'Amicaux', 'fbiTeamLabel' => null, 'rowCount' => 1]], $result['unmappedDivisions'], 'la division est à faire correspondre');
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE competition_id = ?', [$amicaux]), '« Amicaux » ne reçoit aucun match du fichier');
     }
 
     // ── Poule guard + completeness + suggestion (P1-4 PR F2) ─────────────────
@@ -3232,6 +3267,18 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertIsArray($row, \sprintf('le match %s existe', $externalRef));
 
         return [(string) $row['competition_id'], (string) $row['team_id']];
+    }
+
+    /** Le match de ce numéro n'est pas dans « Amicaux » : sa compétition a la nature attendue, la source FBI, et le match est suivi. */
+    private function assertTrackedFederalMatchOutsideAmicaux(string $externalRef, string $amicauxId, CompetitionType $type): void
+    {
+        [$competitionId] = $this->fixtureCompetitionAndTeam($externalRef);
+        self::assertNotSame($amicauxId, $competitionId, \sprintf('le match fédéral %s n\'est pas rangé dans « Amicaux »', $externalRef));
+        $row = $this->em->getConnection()->fetchAssociative('SELECT competition_type, source FROM competition WHERE id = ?', [$competitionId]);
+        self::assertSame(['competition_type' => $type->value, 'source' => 'FBI'], $row, 'sa compétition a la nature de son libellé et la source FBI');
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertTrue(self::getContainer()->get(FederalFollowUp::class)->isTracked($fixture), 'le match est suivi par la fédération (fbiTracked)');
     }
 
     /** @return array{competitions: int, engagements: int, fixtures: int} */
