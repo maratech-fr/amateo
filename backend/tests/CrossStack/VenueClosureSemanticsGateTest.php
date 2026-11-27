@@ -28,6 +28,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\PlanVenueClosures;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -58,6 +59,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class VenueClosureSemanticsGateTest extends KernelTestCase
 {
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const string ENGINE_URL = 'http://engine:8000/place-matches';
@@ -244,7 +246,7 @@ final class VenueClosureSemanticsGateTest extends KernelTestCase
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');
-        $fixture->setStatus(FixtureStatus::UNPLACED, $now);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, $now);
         $this->em->persist($fixture);
     }
 

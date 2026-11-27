@@ -38,6 +38,7 @@ use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -96,6 +97,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     use EngineRequestDecorTrait;
     use EngineRequestGroupRulesDecorTrait;
     use EngineRequestTravelDecorTrait;
+    use StagesFixturesTrait;
 
     private const string REFERENCE_DIR = __DIR__ . '/../../Fixtures/engine-requests';
 
@@ -564,7 +566,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $friendly->setOpponentLabel('Adversaire 51');
         $friendly->setVenueId(self::ER_VENUE_NORD);
         $friendly->setKickoffTime(new DateTimeImmutable('15:00'));
-        $friendly->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2025-12-01T10:00:00+00:00'));
+        $this->stageFixture($friendly, FixtureStatus::PLACED, new DateTimeImmutable('2025-12-01T10:00:00+00:00'));
         $friendly->setPlacementSource(FixturePlacementSource::MANUAL);
         $this->erEm()->persist($friendly);
         $this->erEm()->flush();

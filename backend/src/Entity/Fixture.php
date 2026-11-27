@@ -7,8 +7,8 @@ namespace App\Entity;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureReviewState;
-use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
+use App\Enum\PlacementStatus;
 use App\Repository\FixtureRepository;
 use App\Structure\Family;
 use App\Structure\Level;
@@ -45,6 +45,9 @@ use Doctrine\ORM\Mapping as ORM;
 // national rencontre id per team (same team-scoping as external_ref: an
 // intra-club amical can exist once per team; re-checking never re-proposes a
 // rencontre already created, and a concurrent create collides → clean 409).
+// Cible de la clé composée (fixture_id, club_id) du suivi fédéral : un suivi ne désigne jamais le match d'un
+// autre club (une clé simple ignorerait la RLS).
+#[ORM\UniqueConstraint(name: 'uniq_fixture_id_club', columns: ['id', 'club_id'])]
 #[ORM\UniqueConstraint(name: 'uniq_fixture_ffbb_rencontre', columns: ['club_id', 'season_id', 'team_id', 'ffbb_rencontre_id'], options: ['where' => '(ffbb_rencontre_id IS NOT NULL)'])]
 #[ORM\HasLifecycleCallbacks]
 class Fixture implements TenantOwnedInterface
@@ -94,8 +97,12 @@ class Fixture implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 180)]
     private string $opponentLabel;
 
-    #[ORM\Column(length: 20, enumType: FixtureStatus::class, options: ['default' => 'UNPLACED'])]
-    private FixtureStatus $status = FixtureStatus::UNPLACED;
+    /**
+     * À placer ou placé (colonne `status`, fermée par un CHECK). Le stade servi — saisi, validé — le compose avec le
+     * suivi fédéral : il se lit par `FederalFollowUp::stageOf`, jamais ici.
+     */
+    #[ORM\Column(name: 'status', length: 20, enumType: PlacementStatus::class, options: ['default' => 'UNPLACED'])]
+    private PlacementStatus $placement = PlacementStatus::UNPLACED;
 
     /** Home only: the venue that receives the match. */
     #[ORM\Column(type: 'guid', nullable: true)]
@@ -175,20 +182,8 @@ class Fixture implements TenantOwnedInterface
     private ?FixtureUnplacedReason $unplacedReason = null;
 
     /**
-     * Le libellé de salle « gardé » par le gestionnaire quand il choisit « Garder
-     * l'appli » sur l'écart salle d'un domicile NON PLACÉ (venueId ≠ salle du
-     * fichier) — stocké NORMALISÉ ({@see App\Service\Basketball\VenueLabelNormalizer}).
-     * Pense-bête d'idempotence : tant que la source répète CE libellé, l'écart ne se
-     * repose plus ; un autre libellé rouvre un écart. Effacé dès qu'une salle non
-     * nulle est posée ({@see setVenueId}) et par un « Prendre le fichier » sur la
-     * salle. Non exposé à l'API (aucun groupe de sérialisation).
-     */
-    #[ORM\Column(length: 180, nullable: true)]
-    private ?string $keptVenueLabel = null;
-
-    /**
      * Le TRAITEMENT de la rencontre par le gestionnaire (espace « Importer »,
-     * PR-3a), distinct du placement {@see FixtureStatus}. Défaut NEW. Passé à
+     * PR-3a), distinct du placement {@see PlacementStatus}. Défaut NEW. Passé à
      * REVIEWED par un geste explicite (trancher un écart, placer, créer à la
      * main) ; OUT_OF_SYNC dès qu'un écart pendant subsiste.
      */
@@ -198,31 +193,6 @@ class Fixture implements TenantOwnedInterface
     /** Quand la rencontre a été traitée pour la dernière fois (null = jamais). */
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $reviewedAt = null;
-
-    /**
-     * Les écarts source⇄app encore ouverts sur CETTE rencontre — le pense-bête
-     * relu à chaque dépôt (la trace vit désormais sur la fixture, pas sur le
-     * dépôt FBI). Une entrée par champ divergent ; `seenAt` date la PREMIÈRE
-     * apparition de l'écart (conservé tant qu'il diverge), `autoApplied` marque
-     * une valeur appliquée d'office hors périmètre alors que le match était traité.
-     *
-     * @var list<PendingDeviation>
-     */
-    #[ORM\Column(type: 'json', options: ['default' => '[]'])]
-    private array $pendingDeviations = [];
-
-    /**
-     * Mémo « FBI affiche encore … » posé quand un « prendre le fichier » sur l'HEURE
-     * rétrograde ce domicile de SUBMITTED/VALIDATED à PLACED (la coche FBI portait une
-     * mauvaise heure) : la rencontre est retombée « à saisir dans FBI » et FBI montre
-     * la valeur `value` pour le champ `field` (posé à l'instant `at`). Sert la mention
-     * de la ligne « à saisir » de la liste FBI. Effacé dès que le statut repasse
-     * SUBMITTED/VALIDATED ({@see setStatus}) — la rencontre est de nouveau à jour.
-     *
-     * @var FbiEcho|null
-     */
-    #[ORM\Column(type: 'json', nullable: true)]
-    private ?array $fbiEcho = null;
 
     public function __construct()
     {
@@ -363,30 +333,15 @@ class Fixture implements TenantOwnedInterface
         return $this;
     }
 
-    public function getStatus(): FixtureStatus
+    public function getPlacement(): PlacementStatus
     {
-        return $this->status;
+        return $this->placement;
     }
 
-    /**
-     * MAISON UNIQUE du statut (D6, « placer = traiter ») : passer à un statut
-     * placé (PLACED/SUBMITTED/VALIDATED) TRAITE la rencontre — REVIEWED + horodaté
-     * — sauf s'il lui reste un écart pendant (elle reste OUT_OF_SYNC). UNPLACED ne
-     * touche PAS le traitement. L'horloge est passée par l'appelant (jamais un
-     * `new DateTimeImmutable` nu ici : le mode démo/play a une horloge simulée).
-     */
-    public function setStatus(FixtureStatus $status, DateTimeImmutable $now): self
+    /** Écrit par `FederalFollowUp` seulement, maison des effets d'un placement (le traitement de la rencontre). */
+    public function setPlacement(PlacementStatus $placement): self
     {
-        $this->status = $status;
-        // Le mémo « FBI affiche … » ne vaut que tant que la rencontre est « à saisir » :
-        // dès qu'elle repasse SUBMITTED/VALIDATED (re-saisie dans FBI, ou attestée D9),
-        // FBI est de nouveau à jour — le mémo n'a plus d'objet.
-        if (FixtureStatus::SUBMITTED === $status || FixtureStatus::VALIDATED === $status) {
-            $this->fbiEcho = null;
-        }
-        if (FixtureStatus::UNPLACED !== $status && [] === $this->pendingDeviations) {
-            $this->markReviewed($now);
-        }
+        $this->placement = $placement;
 
         return $this;
     }
@@ -426,103 +381,6 @@ class Fixture implements TenantOwnedInterface
         return $this;
     }
 
-    /**
-     * @return list<PendingDeviation>
-     */
-    public function getPendingDeviations(): array
-    {
-        return $this->pendingDeviations;
-    }
-
-    public function hasPendingDeviations(): bool
-    {
-        return [] !== $this->pendingDeviations;
-    }
-
-    /**
-     * Vrai si au moins une entrée est à TRANCHER (`autoApplied === false`) : aucun geste en masse
-     * (équipe, extérieurs) ne l'acquitte. Des entrées toutes appliquées d'office ne sont qu'une
-     * alerte à acquitter. Une entrée sans la clé (JSON relu tel quel de la base) compte comme
-     * arbitrable : dans le doute, jamais vidée en masse.
-     */
-    public function hasArbitrableDeviations(): bool
-    {
-        // Élargi exprès : le type PendingDeviation garantit la clé, la colonne JSON non.
-        /** @var list<array<string, mixed>> $entries */
-        $entries = $this->pendingDeviations;
-        foreach ($entries as $entry) {
-            if (true !== ($entry['autoApplied'] ?? null)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return PendingDeviation|null
-     */
-    public function getPendingDeviation(string $field): ?array
-    {
-        foreach ($this->pendingDeviations as $entry) {
-            if ($entry['field'] === $field) {
-                return $entry;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Upsert par champ : remplace l'entrée du champ si elle existe, l'ajoute sinon.
-     * L'ordre canonique (date, kickoff, venue) est reconstruit pour un JSON stable.
-     *
-     * @param PendingDeviation $entry
-     */
-    public function putPendingDeviation(array $entry): self
-    {
-        $this->removePendingDeviation($entry['field']);
-        $this->pendingDeviations[] = $entry;
-        $this->sortPendingDeviations();
-
-        return $this;
-    }
-
-    public function removePendingDeviation(string $field): self
-    {
-        $this->pendingDeviations = array_values(array_filter(
-            $this->pendingDeviations,
-            static fn (array $entry): bool => $entry['field'] !== $field,
-        ));
-
-        return $this;
-    }
-
-    public function clearPendingDeviations(): self
-    {
-        $this->pendingDeviations = [];
-
-        return $this;
-    }
-
-    /**
-     * @return FbiEcho|null
-     */
-    public function getFbiEcho(): ?array
-    {
-        return $this->fbiEcho;
-    }
-
-    /**
-     * @param FbiEcho|null $fbiEcho
-     */
-    public function setFbiEcho(?array $fbiEcho): self
-    {
-        $this->fbiEcho = $fbiEcho;
-
-        return $this;
-    }
-
     public function getVenueId(): ?string
     {
         return $this->venueId;
@@ -535,25 +393,10 @@ class Fixture implements TenantOwnedInterface
         // raison de dépointage persistante — couvre le processor, l'applier du solveur, tout
         // écrivain qui repose une salle. Le dépointage, lui, POSE la raison via son foyer
         // unique (FixtureVenueLossMarker), jamais par ce setter.
+        // Le libellé de salle gardé, lui, vit dans le suivi fédéral : `KeptVenueLabelListener` l'éteint au flush.
         if (null !== $venueId) {
             $this->unplacedReason = null;
-            // Poser une salle éteint le pense-bête « garder l'appli » : le domicile
-            // a désormais un gymnase choisi, l'idempotence de l'ancien écart n'a plus
-            // d'objet (même maison que unplacedReason).
-            $this->keptVenueLabel = null;
         }
-
-        return $this;
-    }
-
-    public function getKeptVenueLabel(): ?string
-    {
-        return $this->keptVenueLabel;
-    }
-
-    public function setKeptVenueLabel(?string $keptVenueLabel): self
-    {
-        $this->keptVenueLabel = $keptVenueLabel;
 
         return $this;
     }
@@ -652,16 +495,6 @@ class Fixture implements TenantOwnedInterface
         $this->kickoffTime = $kickoffTime;
 
         return $this;
-    }
-
-    /** Ordre canonique date → kickoff → venue : le JSON persisté ne dépend pas de l'ordre d'insertion. */
-    private function sortPendingDeviations(): void
-    {
-        $rank = ['date' => 0, 'kickoff' => 1, 'venue' => 2];
-        usort(
-            $this->pendingDeviations,
-            static fn (array $a, array $b): int => $rank[$a['field']] <=> $rank[$b['field']],
-        );
     }
 
     private function newUuid(): string

@@ -17,6 +17,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -33,6 +34,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -72,6 +74,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     /** Un samedi FUTUR : un championnat non commencé (aucune échéance, aucun match joué). */
@@ -113,7 +116,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $manualAfter = $this->em->find(Fixture::class, $manualId);
         self::assertInstanceOf(Fixture::class, $manualAfter);
-        self::assertSame(FixtureStatus::VALIDATED, $manualAfter->getStatus(), 'la lecture du gestionnaire valide le témoin');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($manualAfter, $this->em), 'la lecture du gestionnaire valide le témoin');
         self::assertSame(FixturePlacementSource::MANUAL, $manualAfter->getPlacementSource());
 
         // DÉPÔT : un domicile de championnat daté dans le passé (premier match joué), heure + salle
@@ -127,7 +130,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $auto = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AUTO-1']);
         self::assertInstanceOf(Fixture::class, $auto);
-        self::assertSame(FixtureStatus::VALIDATED, $auto->getStatus(), 'au dépôt, le domicile commencé est « validé ligue »');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($auto, $this->em), 'au dépôt, le domicile commencé est « validé ligue »');
         self::assertSame(FixturePlacementSource::MANUAL, $auto->getPlacementSource());
         self::assertSame($venue->getId(), $auto->getVenueId(), 'le domicile naît avec son gymnase (alias confirmé)');
         $autoId = $auto->getId();
@@ -165,7 +168,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'FUT-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
         self::assertSame($venue->getId(), $fixture->getVenueId(), 'le gymnase est bien là — seule la maturité manque');
 
         $rows = $this->payloadMatchesById($clubId, $seasonId);
@@ -192,7 +195,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'NOHOUR-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
         self::assertNull($fixture->getKickoffTime());
     }
 
@@ -211,7 +214,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
 
         // Un domicile mûr (échéance passée) parfaitement plaçable MAIS portant un écart en attente.
         $deviated = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), self::FUTURE_DATE, '15:30', $venue->getId(), '2020-09-10');
-        $deviated->putPendingDeviation(['field' => 'date', 'appValue' => self::FUTURE_DATE, 'sourceValue' => '2099-03-21', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-09-01T00:00:00+00:00', 'autoApplied' => false]);
+        $this->putPendingDeviationOn($deviated, ['field' => 'date', 'appValue' => self::FUTURE_DATE, 'sourceValue' => '2099-03-21', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-09-01T00:00:00+00:00', 'autoApplied' => false], $this->em);
         $this->em->flush();
         $deviatedId = $deviated->getId();
 
@@ -225,7 +228,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $fresh = $this->em->find(Fixture::class, $deviatedId);
         self::assertInstanceOf(Fixture::class, $fresh);
-        self::assertSame(FixtureStatus::UNPLACED, $fresh->getStatus(), 'un écart en attente reste à traiter, jamais validé');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em), 'un écart en attente reste à traiter, jamais validé');
     }
 
     /**
@@ -255,7 +258,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'NEUTRE-1']);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'un terrain neutre reste UNPLACED, jamais VALIDATED');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em), 'un terrain neutre reste UNPLACED, jamais VALIDATED');
         self::assertNull($fixture->getVenueId());
         self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $fixture->getUnplacedReason());
     }
@@ -358,7 +361,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $friendly = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AM-1']);
         self::assertInstanceOf(Fixture::class, $friendly);
         $friendlyId = $friendly->getId();
-        $friendly->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2026-09-16 10:00:00'));
+        $this->stageFixture($friendly, FixtureStatus::PLACED, new DateTimeImmutable('2026-09-16 10:00:00'), $this->em);
         $friendly->setVenueId($venue->getId());
         $this->em->flush();
 
@@ -377,8 +380,8 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $reposted = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $reposted);
-        self::assertTrue($reposted->hasArbitrableDeviations(), 'l\'écart d\'heure est de nouveau à trancher');
-        self::assertSame(FixtureStatus::PLACED, $reposted->getStatus(), 'un écart ouvert n\'est jamais balayé « validé »');
+        self::assertTrue($this->followUpOf($this->em)->deviations($reposted)->anyArbitrable(), 'l\'écart d\'heure est de nouveau à trancher');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reposted, $this->em), 'un écart ouvert n\'est jamais balayé « validé »');
 
         // Re-tranché (« Garder » encore) : plus d'écart, le balayage passe.
         $this->deposit($clubId, $seasonId, [['Amical PNF', 'AM-1', $needle . ' - 1', 'AS Voisins', $played, '17:00', 'GYMNASE AM']], $team->getId(), decisions: $keep);
@@ -387,7 +390,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $this->em->clear();
         $decided = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $decided);
-        self::assertSame(FixtureStatus::VALIDATED, $decided->getStatus(), 'tranché, l\'amical joué est balayé « validé »');
+        self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($decided, $this->em), 'tranché, l\'amical joué est balayé « validé »');
     }
 
     protected function setUp(): void
@@ -471,7 +474,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      */
     private function seedHomeFixture(string $clubId, string $seasonId, string $teamId, string $date, string $kickoff, string $venueId, ?string $deadline): Fixture
     {
-        $competition = $this->competitionFor($teamId, 'D SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline(null === $deadline ? null : new DateTimeImmutable($deadline)));
+        $competition = $this->competitionFor($teamId, 'D SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI)->setEntryDeadline(null === $deadline ? null : new DateTimeImmutable($deadline)));
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

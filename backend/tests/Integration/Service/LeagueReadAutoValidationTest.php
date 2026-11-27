@@ -15,6 +15,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -29,6 +30,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -66,6 +68,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     /** Décalages (jours) des 11 domiciles FUTURS par rapport au jour de lecture. */
@@ -107,7 +110,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         // L'écart en attente (une date que FBI a changée, pas encore arbitrée).
         $this->scopeGucToClub($clubId);
         $deviated = $this->fixtureByRef('U15-DEV');
-        $deviated->putPendingDeviation(['field' => 'date', 'appValue' => $deviated->getMatchDate()->format('Y-m-d'), 'sourceValue' => $this->today->modify('+39 days')->format('Y-m-d'), 'channel' => 'FBI_XLSX', 'seenAt' => $this->today->format('Y-m-d\TH:i:sP'), 'autoApplied' => false]);
+        $this->putPendingDeviationOn($deviated, ['field' => 'date', 'appValue' => $deviated->getMatchDate()->format('Y-m-d'), 'sourceValue' => $this->today->modify('+39 days')->format('Y-m-d'), 'channel' => 'FBI_XLSX', 'seenAt' => $this->today->format('Y-m-d\TH:i:sP'), 'autoApplied' => false], $this->em);
         $this->em->flush();
 
         $dated = ['U15-00' => '15:30'];
@@ -115,7 +118,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
             $dated[\sprintf('U15-%02d', $i + 1)] = '16:00';
         }
         foreach (array_keys($dated) as $ref) {
-            self::assertSame(FixtureStatus::UNPLACED, $this->fixtureByRef($ref)->getStatus(), 'témoin : ' . $ref . ' est « Sans date ni gymnase » avant la lecture');
+            self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($this->fixtureByRef($ref), $this->em), 'témoin : ' . $ref . ' est « Sans date ni gymnase » avant la lecture');
         }
 
         // 10/11 : le gestionnaire ouvre l'accueil.
@@ -126,7 +129,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         $idsByRef = [];
         foreach ($dated as $ref => $kickoff) {
             $fixture = $this->fixtureByRef($ref);
-            self::assertSame(FixtureStatus::VALIDATED, $fixture->getStatus(), $ref . ' est « Déjà dans FBI » après la lecture du gestionnaire');
+            self::assertSame(FixtureStatus::VALIDATED, $this->stageOfFixture($fixture, $this->em), $ref . ' est « Déjà dans FBI » après la lecture du gestionnaire');
             self::assertSame(FixturePlacementSource::MANUAL, $fixture->getPlacementSource(), $ref . ' porte l\'ancre MANUAL');
             self::assertSame($kickoff, $fixture->getKickoffTime()?->format('H:i'), $ref . ' garde son heure');
             $idsByRef[$ref] = $fixture->getId();
@@ -135,12 +138,12 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         self::assertSame(0, $data['toConfirmCount'], 'plus rien à confirmer');
 
         $noHour = $this->fixtureByRef('U15-NOHOUR');
-        self::assertSame(FixtureStatus::UNPLACED, $noHour->getStatus(), 'sans heure : jamais validé');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($noHour, $this->em), 'sans heure : jamais validé');
         $deviatedAfter = $this->fixtureByRef('U15-DEV');
-        self::assertSame(FixtureStatus::UNPLACED, $deviatedAfter->getStatus(), 'un écart en attente n\'est jamais tranché par une lecture');
-        self::assertTrue($deviatedAfter->hasPendingDeviations());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($deviatedAfter, $this->em), 'un écart en attente n\'est jamais tranché par une lecture');
+        self::assertTrue([] !== $this->pendingDeviationsOf($deviatedAfter, $this->em));
         $neutral = $this->fixtureByRef('U15-NEUTRE');
-        self::assertSame(FixtureStatus::UNPLACED, $neutral->getStatus(), 'un terrain neutre n\'est jamais validé');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($neutral, $this->em), 'un terrain neutre n\'est jamais validé');
         self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $neutral->getUnplacedReason());
         [$noHourId, $deviatedId, $neutralId] = [$noHour->getId(), $deviatedAfter->getId(), $neutral->getId()];
 
@@ -197,7 +200,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         foreach ($ids as $id) {
             $fixture = $this->em->find(Fixture::class, $id);
             self::assertInstanceOf(Fixture::class, $fixture);
-            self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'rien n\'est écrit quand le balayage perd la course');
+            self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em), 'rien n\'est écrit quand le balayage perd la course');
         }
         self::assertSame($versionBefore + 1, $this->fixtureVersion($clubId, $raced), 'la modification concurrente n\'est pas gênée');
 
@@ -221,7 +224,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         $this->em->clear();
         $friendly = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $friendly);
-        self::assertSame(FixtureStatus::UNPLACED, $friendly->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($friendly, $this->em));
 
         $next = $this->managerReadsTheHome($token);
         self::assertSame(1, $next['swept'] ?? -1, 'la lecture suivante rattrape l\'amical passé');
@@ -403,7 +406,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     private function seedStartedChampionship(string $clubId, string $seasonId, string $teamId, string $venueId, int $count = 12): array
     {
         $this->scopeGucToClub($clubId);
-        $competition = $this->competitionFor($teamId, 'U15 SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($teamId, 'U15 SEED ' . uniqid('', true), CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI));
 
         $offsets = [-3, ...self::FUTURE_OFFSETS];
         $ids = [];
@@ -434,7 +437,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         $fixture->setClubId($clubId);
         $fixture->setSeasonId($seasonId);
         $fixture->setTeamId($teamId);
-        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($teamId, $clubId, $seasonId));
+        $fixture->setCompetitionId($this->fbiFriendlyCompetitionIdFor($teamId));
         $fixture->setMatchDate($this->today->modify('-10 days')->setTime(0, 0));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Amical passé');
@@ -448,7 +451,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     {
         $this->scopeGucToClub($clubId);
 
-        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setEntryDeadline($entryDeadline));
+        return $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP, static fn ($c) => $c->setSource(CompetitionSource::FBI)->setEntryDeadline($entryDeadline));
     }
 
     /** Un domicile de championnat ; avec gymnase, il porte une heure (16:00) et l'ancre MANUAL. */
@@ -468,7 +471,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
             $fixture->setKickoffTime(new DateTimeImmutable('16:00'));
             $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
         }
-        $fixture->setStatus($status, $this->today);
+        $this->stageFixture($fixture, $status, $this->today, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
     }

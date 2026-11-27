@@ -10,6 +10,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
@@ -17,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Matches\CompetitionRegistry;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -55,6 +57,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('security')]
 final class EntryDeadlineShareTest extends WebTestCase
 {
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -694,7 +697,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         // Équipe forgée et saison parfois non unique (saison archivée) : la compétition naît dans la saison
         // donnée, par la seule porte, puis l'équipe y est engagée.
         $registry = self::getContainer()->get(CompetitionRegistry::class);
-        $competition = $registry->create($season->getClubId(), $season->getId(), 'Championnat ' . $teamN, CompetitionType::CHAMPIONSHIP);
+        $competition = $registry->create($season->getClubId(), $season->getId(), 'Championnat ' . $teamN, CompetitionType::CHAMPIONSHIP, CompetitionSource::FBI);
         if (null !== $ffbbCompetitionId) {
             $competition->setFfbbCompetitionId($ffbbCompetitionId);
             $competition->setFfbbCompetitionName('Compétition ' . $teamN);
@@ -725,7 +728,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv');
-        $fixture->setStatus($status, new DateTimeImmutable);
+        $this->stageFixture($fixture, $status, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 

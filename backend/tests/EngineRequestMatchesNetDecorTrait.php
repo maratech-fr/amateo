@@ -9,6 +9,7 @@ use App\Entity\Fixture;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
@@ -229,7 +230,7 @@ trait EngineRequestMatchesNetDecorTrait
     private function netCompetition(int $n, string $teamId, string $name, CompetitionType $type, ?string $fbiTeamLabel = null): void
     {
         $competition = (new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setName($name)->setCompetitionType($type);
+            ->setName($name)->setCompetitionType($type)->setSource(CompetitionSource::FBI);
         $this->erEm()->persist($competition);
         static::getContainer()->get(CompetitionRegistry::class)->engage($competition, $teamId, $fbiTeamLabel);
         $this->erEm()->flush();
@@ -261,7 +262,7 @@ trait EngineRequestMatchesNetDecorTrait
         $fixture->setKickoffTime(null === $kickoff ? null : new DateTimeImmutable($kickoff));
         $fixture->setExternalRef($externalRef);
         if (FixtureStatus::UNPLACED !== $status) {
-            $fixture->setStatus($status, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
+            static::getContainer()->get(FederalFollowUp::class)->moveTo($fixture, $status, new DateTimeImmutable('2026-01-02T10:00:00+00:00'));
         }
         $fixture->setPlacementSource($source);
         $this->erEm()->persist($fixture);

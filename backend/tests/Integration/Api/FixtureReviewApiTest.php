@@ -25,6 +25,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,6 +44,7 @@ final class FixtureReviewApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -170,7 +172,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $exHome = $this->deviatedFixture($club, $season, $team, '2026-12-05', '2026-12-12');
         $this->scopeGucToClub($club->getId());
         $exHome->setHomeAway(FixtureHomeAway::AWAY);
-        $exHome->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($exHome, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $exHome->setVenueId(null);
         $this->em->flush();
         $awayNew = $this->awayFixture($club, $season, $team, '2026-12-19', FixtureReviewState::NEW, []);
@@ -221,7 +223,7 @@ final class FixtureReviewApiTest extends WebTestCase
         unset($entry['autoApplied']);
         $this->scopeGucToClub($club->getId());
         $this->em->getConnection()->executeStatement(
-            'UPDATE fixture SET pending_deviations = ? WHERE id = ?',
+            'UPDATE fixture_federal_tracking SET pending_deviations = ? WHERE fixture_id = ?',
             [json_encode([$entry], \JSON_THROW_ON_ERROR), $away->getId()],
         );
         $this->em->clear(); // la requête relit la ligne telle que stockée, pas l'entité en mémoire
@@ -290,15 +292,15 @@ final class FixtureReviewApiTest extends WebTestCase
         $team = $this->createTeam($club, $season, 'SF3');
         $homeAuto = $this->plainFixture($club, $season, $team, '2026-12-05');
         $this->scopeGucToClub($club->getId());
-        $homeAuto->putPendingDeviation($this->deviation('kickoff', true));
+        $this->putPendingDeviationOn($homeAuto, $this->deviation('kickoff', true), $this->em);
         $homeAuto->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->flush();
         $awayAuto = $this->awayFixture($club, $season, $team, '2026-12-12', FixtureReviewState::REVIEWED, [$this->deviation('date', true)], '2026-09-02 10:00:00');
         $arbitrable = $this->deviatedFixture($club, $season, $team, '2026-12-19', '2026-12-26');
         $mixed = $this->plainFixture($club, $season, $team, '2027-01-09');
         $this->scopeGucToClub($club->getId());
-        $mixed->putPendingDeviation($this->deviation('date', true));
-        $mixed->putPendingDeviation($this->deviation('venue', false));
+        $this->putPendingDeviationOn($mixed, $this->deviation('date', true), $this->em);
+        $this->putPendingDeviationOn($mixed, $this->deviation('venue', false), $this->em);
         $mixed->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->flush();
 
@@ -360,7 +362,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame('2026-10-11', $reloaded->getMatchDate()->format('Y-m-d'), 'la date persistée de la source est adoptée');
-        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le match reste placé');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloaded, $this->em), 'le match reste placé');
         self::assertSame($venueId, $reloaded->getVenueId(), 'il garde son gymnase');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
     }
@@ -379,7 +381,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture = $this->plainFixture($club, $season, $team, '2026-12-05');
         $this->scopeGucToClub($club->getId());
         $fixture->setVenueId($gymA);
-        $fixture->putPendingDeviation($this->deviation('venue', false));
+        $this->putPendingDeviationOn($fixture, $this->deviation('venue', false), $this->em);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->flush();
 
@@ -392,7 +394,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($gymB, $reloaded->getVenueId(), 'l\'alias confirmé repointe le gymnase');
-        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le match reste placé');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloaded, $this->em), 'le match reste placé');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
     }
 
@@ -505,9 +507,9 @@ final class FixtureReviewApiTest extends WebTestCase
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase est gardé');
         self::assertSame('SALLE RAPHAEL DE BARROS', $reloaded->getFbiVenueLabel(), 'le libellé source brut est adopté');
-        self::assertSame('salle raphael de barros', $reloaded->getKeptVenueLabel(), 'le libellé normalisé est mémorisé');
+        self::assertSame('salle raphael de barros', $this->keptVenueLabelOfFixture($reloaded, $this->em), 'le libellé normalisé est mémorisé');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
-        self::assertSame([], $reloaded->getPendingDeviations());
+        self::assertSame([], $this->pendingDeviationsOf($reloaded, $this->em));
     }
 
     public function testTakeSourceVenueOnAnUnplacedFollowsTheConfirmedAlias(): void
@@ -529,10 +531,10 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($debarros, $reloaded->getVenueId(), 'l\'alias confirmé repose le bon gymnase');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'le statut reste UNPLACED');
-        self::assertNull($reloaded->getKeptVenueLabel());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'le statut reste UNPLACED');
+        self::assertNull($this->keptVenueLabelOfFixture($reloaded, $this->em));
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
-        self::assertSame([], $reloaded->getPendingDeviations());
+        self::assertSame([], $this->pendingDeviationsOf($reloaded, $this->em));
     }
 
     // ── Chantier A PR 4 — « prendre la source » vers une salle INCONNUE ─────────
@@ -572,8 +574,8 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase reste INTACT — jamais venueId null');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus());
-        self::assertNotNull($reloaded->getPendingDeviation('venue'), 'l\'écart reste à trancher');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em));
+        self::assertNotNull($this->pendingDeviationOf($reloaded, 'venue', $this->em), 'l\'écart reste à trancher');
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded->getReviewState(), 'la rencontre reste déphasée');
     }
 
@@ -597,8 +599,8 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($cosec2, $reloaded->getVenueId(), 'le gymnase choisi inline est posé');
-        self::assertSame(FixtureStatus::UNPLACED, $reloaded->getStatus(), 'apparier la salle ne place jamais');
-        self::assertSame([], $reloaded->getPendingDeviations(), 'l\'écart est résolu');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($reloaded, $this->em), 'apparier la salle ne place jamais');
+        self::assertSame([], $this->pendingDeviationsOf($reloaded, $this->em), 'l\'écart est résolu');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
 
         $this->scopeGucToClub($club->getId());
@@ -625,7 +627,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $reloaded->getUnplacedReason(), 'la rencontre devient un terrain neutre');
-        self::assertSame([], $reloaded->getPendingDeviations(), 'l\'écart est résolu');
+        self::assertSame([], $this->pendingDeviationsOf($reloaded, $this->em), 'l\'écart est résolu');
         self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
     }
 
@@ -649,7 +651,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase de la rencontre reste intact');
-        self::assertNotNull($reloaded->getPendingDeviation('venue'));
+        self::assertNotNull($this->pendingDeviationOf($reloaded, 'venue', $this->em));
         // La requête HTTP (en tant que CE club) a laissé les filtres Doctrine tenant/saison
         // figés sur lui ; `scopeGucToClub` ne déplace que le GUC RLS. On relâche les filtres
         // pour LIRE le gymnase de l'autre club et prouver qu'il n'a reçu aucun alias (patron
@@ -684,7 +686,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase reste intact');
-        self::assertNotNull($reloaded->getPendingDeviation('venue'), 'l\'écart reste à trancher');
+        self::assertNotNull($this->pendingDeviationOf($reloaded, 'venue', $this->em), 'l\'écart reste à trancher');
     }
 
     public function testInlineVenueChoiceOfAnArchivedSeasonVenueIsRefusedAndWritesNothing(): void
@@ -706,7 +708,7 @@ final class FixtureReviewApiTest extends WebTestCase
 
         $reloaded = $this->reloadFixture($club, $fixture->getId());
         self::assertSame($jdr, $reloaded->getVenueId(), 'le gymnase reste intact');
-        self::assertNotNull($reloaded->getPendingDeviation('venue'));
+        self::assertNotNull($this->pendingDeviationOf($reloaded, 'venue', $this->em));
     }
 
     public function testInlineVenueChoiceWhoseSourceLabelAlreadyAliasesAnotherVenueIs422(): void
@@ -816,7 +818,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setVenueId('22222222-2222-4222-8222-222222222222');
         $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $this->em->persist($fixture);
         $this->em->flush();
 
@@ -827,14 +829,14 @@ final class FixtureReviewApiTest extends WebTestCase
     {
         $fixture = $this->plainFixture($club, $season, $team, $appDate);
         $this->scopeGucToClub($club->getId());
-        $fixture->putPendingDeviation([
+        $this->putPendingDeviationOn($fixture, [
             'field' => 'date',
             'appValue' => $appDate,
             'sourceValue' => $sourceDate,
             'channel' => 'FBI_XLSX',
             'seenAt' => '2026-09-01T10:00:00+00:00',
             'autoApplied' => false,
-        ]);
+        ], $this->em);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->flush();
 
@@ -848,14 +850,14 @@ final class FixtureReviewApiTest extends WebTestCase
         // d'un extérieur / domicile in-window dont la source a fait foi (P4-199).
         $fixture = $this->plainFixture($club, $season, $team, $appDate);
         $this->scopeGucToClub($club->getId());
-        $fixture->putPendingDeviation([
+        $this->putPendingDeviationOn($fixture, [
             'field' => 'date',
             'appValue' => $appDate,
             'sourceValue' => $sourceDate,
             'channel' => 'FBI_XLSX',
             'seenAt' => '2026-09-01T10:00:00+00:00',
             'autoApplied' => true,
-        ]);
+        ], $this->em);
         $fixture->markReviewed(new DateTimeImmutable);
         $this->em->flush();
 
@@ -881,7 +883,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setKickoffTime(new DateTimeImmutable('15:30'));
         foreach ($entries as $entry) {
-            $fixture->putPendingDeviation($entry);
+            $this->putPendingDeviationOn($fixture, $entry, $this->em);
         }
         if (null !== $reviewedAt) {
             $fixture->markReviewed(new DateTimeImmutable($reviewedAt));
@@ -934,15 +936,15 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setVenueId($venue->getId());
         $fixture->setFbiVenueLabel('SALLE RAPHAEL DE BARROS');
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
-        $fixture->putPendingDeviation([
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
+        $this->putPendingDeviationOn($fixture, [
             'field' => 'venue',
             'appValue' => $venueName,
             'sourceValue' => 'SALLE RAPHAEL DE BARROS',
             'channel' => 'FBI_XLSX',
             'seenAt' => '2026-09-01T10:00:00+00:00',
             'autoApplied' => false,
-        ]);
+        ], $this->em);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->persist($fixture);
         $this->em->flush();
@@ -974,15 +976,15 @@ final class FixtureReviewApiTest extends WebTestCase
         $fixture->setOpponentLabel('Adversaire');
         $fixture->setVenueId($venue->getId());
         $fixture->setFbiVenueLabel($sourceLabel);
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
-        $fixture->putPendingDeviation([
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
+        $this->putPendingDeviationOn($fixture, [
             'field' => 'venue',
             'appValue' => $venueName,
             'sourceValue' => $sourceLabel,
             'channel' => 'FBI_XLSX',
             'seenAt' => '2026-09-01T10:00:00+00:00',
             'autoApplied' => false,
-        ]);
+        ], $this->em);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         $this->em->persist($fixture);
         $this->em->flush();
@@ -1029,14 +1031,14 @@ final class FixtureReviewApiTest extends WebTestCase
     private function reposeDateDeviation(Club $club, string $fixtureId): void
     {
         $fixture = $this->reloadFixture($club, $fixtureId);
-        $fixture->putPendingDeviation([
+        $this->putPendingDeviationOn($fixture, [
             'field' => 'date',
             'appValue' => '2026-10-04',
             'sourceValue' => '2026-10-11',
             'channel' => 'FBI_XLSX',
             'seenAt' => '2026-09-08T10:00:00+00:00',
             'autoApplied' => false,
-        ]);
+        ], $this->em);
         $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
         self::getContainer()->get(EntityManagerInterface::class)->flush();
     }
@@ -1058,7 +1060,8 @@ final class FixtureReviewApiTest extends WebTestCase
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $this->scopeGucToClub($club->getId());
         $row = $em->getConnection()->fetchAssociative(
-            'SELECT status, review_state, reviewed_at, match_date, pending_deviations FROM fixture WHERE id = ?',
+            'SELECT CASE WHEN t.state IN (\'SUBMITTED\', \'VALIDATED\') THEN t.state ELSE f.status END AS status, f.review_state, f.reviewed_at, f.match_date, COALESCE(t.pending_deviations::text, \'[]\') AS pending_deviations'
+            . ' FROM fixture f LEFT JOIN fixture_federal_tracking t ON t.fixture_id = f.id WHERE f.id = ?',
             [$fixtureId],
         );
         self::assertIsArray($row);

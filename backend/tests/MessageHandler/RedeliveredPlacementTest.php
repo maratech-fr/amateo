@@ -33,6 +33,7 @@ use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\PlacementLockProbeTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -80,6 +81,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use PlacementLockProbeTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const string T1 = 'Le placement automatique a été interrompu. Il pourra être relancé une fois le calcul interrompu terminé.';
@@ -127,7 +129,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $this->scopeGucToClub($clubId);
         $left = $this->freshEm()->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $left);
-        self::assertSame(FixtureStatus::UNPLACED, $left->getStatus(), 'le match laissé « à placer » n\'est pas reposé par une relecture');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($left), 'le match laissé « à placer » n\'est pas reposé par une relecture');
         $manual = $this->freshEm()->find(Fixture::class, $manualId);
         self::assertInstanceOf(Fixture::class, $manual);
         self::assertSame('17:30', $manual->getKickoffTime()?->format('H:i'), 'le match posé à la main reste à son heure');
@@ -291,7 +293,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $this->scopeGucToClub($clubId);
         $fixture = $this->freshEm()->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'le perdant n\'applique aucun placement');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture), 'le perdant n\'applique aucun placement');
         self::assertSame(0, $this->creditsUsed($clubId), 'le perdant ne consomme aucun crédit');
         self::assertSame([], array_filter(array_map(fn (int $i): ?string => $this->publishedStatus($i), array_keys($this->published)), static fn (?string $s): bool => 'COMPLETED' === $s), 'le perdant n\'annonce jamais COMPLETED');
         self::assertCount(0, $this->sentEmails, 'le perdant ne prévient personne');
@@ -439,7 +441,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $fixture->setMatchDate(new DateTimeImmutable('2026-10-10'));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adv manuel');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
         $fixture->setVenueId($venueId);
         $fixture->setKickoffTime(new DateTimeImmutable('17:30'));

@@ -8,6 +8,7 @@ use App\ApiResource\CompetitionResource;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Entity\Team;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
 use App\Service\ManagementAccessGuard;
@@ -61,7 +62,8 @@ class CompetitionStateProcessor extends AbstractStateProcessor
             $this->refuse(\sprintf('L\'équipe %s a déjà une compétition « %s ».', $team->getName(), $twin->getName()));
         }
 
-        $competition = $this->competitionRegistry->create($clubId, $resolvedSeasonId, $name, CompetitionType::from((string) $input->competitionType));
+        // Créée à la main : ses matchs ne sont pas suivis dans FBI (lot 7, PR 6b).
+        $competition = $this->competitionRegistry->create($clubId, $resolvedSeasonId, $name, CompetitionType::from((string) $input->competitionType), CompetitionSource::MANUAL);
         $competition->setStartDate($this->parseDate($input->startDate));
         $competition->setEndDate($this->parseDate($input->endDate));
         $this->competitionRegistry->engage($competition, $team->getId());

@@ -162,7 +162,8 @@ final class EntryDeadlineOutlook
         // à corriger = entrées OUVERTES du registre (filtres tenant+saison Doctrine).
         $toEnter = 0;
         foreach ($fixtures as $fixture) {
-            if (FixtureHomeAway::HOME === $fixture->getHomeAway() && FixtureStatus::PLACED === $this->followUp->stageOf($fixture)) {
+            // Un match que la fédération ne suit pas s'arrête à « Placé » : jamais « à saisir » (lot 7, PR 6b).
+            if (FixtureHomeAway::HOME === $fixture->getHomeAway() && $this->followUp->isToEnter($fixture)) {
                 ++$toEnter;
             }
         }
@@ -232,7 +233,7 @@ final class EntryDeadlineOutlook
             $status = $this->followUp->stageOf($fixture);
             if (FixtureStatus::UNPLACED === $status) {
                 $toPlace[$competitionId] = ($toPlace[$competitionId] ?? 0) + 1;
-            } elseif (FixtureStatus::PLACED === $status) {
+            } elseif (FixtureStatus::PLACED === $status && $this->followUp->isTracked($fixture)) {
                 $toEnter[$competitionId] = ($toEnter[$competitionId] ?? 0) + 1;
             }
         }

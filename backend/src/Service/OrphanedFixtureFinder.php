@@ -25,7 +25,10 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 final class OrphanedFixtureFinder
 {
-    public function __construct(private readonly EntityManagerInterface $entityManager) {}
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly FederalFollowUp $followUp,
+    ) {}
 
     /**
      * @return list<Fixture>
@@ -62,9 +65,8 @@ final class OrphanedFixtureFinder
     {
         $orphaned = $this->orphanedFixtures($clubId, $seasonId);
         $declared = 0;
-        $followUp = new FederalFollowUp;
         foreach ($orphaned as $fixture) {
-            if ($followUp->isEntered($fixture)) {
+            if ($this->followUp->isEntered($fixture)) {
                 ++$declared;
             }
         }

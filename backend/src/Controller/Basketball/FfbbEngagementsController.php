@@ -12,6 +12,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\TeamLevel;
 use App\Matches\CompetitionClassifier;
@@ -317,6 +318,8 @@ final class FfbbEngagementsController extends AbstractController
             $competitions = array_values($competitions);
 
             $competition->setFfbbCompetitionId($row['ffbbCompetitionId']);
+            // Lot 7, PR 6b — une compétition appariée à la fédération : ses matchs sont suivis dans FBI.
+            $competition->markFromFederation();
             $competition->setFfbbCompetitionName($row['competitionName']);
             // P4-195 — une coupe n'a pas de complétude « 2×(N−1) » : le détecteur
             // resterait sur « 1 / 68 » (mesuré, Coupe du Rhône). Journées null si le
@@ -519,7 +522,7 @@ final class FfbbEngagementsController extends AbstractController
         }
 
         $clubId = $this->resolveCurrentClubId($this->requestStack) ?? '';
-        $competition = $this->competitionRegistry->create($clubId, $seasonId, $canonicalName, CompetitionClassifier::classify($canonicalName));
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $canonicalName, CompetitionClassifier::classify($canonicalName), CompetitionSource::FBI);
         $this->competitionRegistry->engage($competition, $teamId);
         $competitions[] = $competition;
 

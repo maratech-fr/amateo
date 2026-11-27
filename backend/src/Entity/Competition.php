@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Matches\CompetitionRegistry;
 use App\Repository\CompetitionRepository;
@@ -59,6 +60,10 @@ class Competition implements TenantOwnedInterface
 
     #[ORM\Column(length: 20, enumType: CompetitionType::class)]
     private CompetitionType $competitionType;
+
+    /** FBI : ses matchs sont suivis dans FBI ; MANUAL : ils s'arrêtent à « Placé » ({@see CompetitionSource}). */
+    #[ORM\Column(length: 10, enumType: CompetitionSource::class)]
+    private CompetitionSource $source = CompetitionSource::MANUAL;
 
     /** La compétition d'office « Amicaux » de la saison, écrite par `FriendlyCompetitions` seulement. */
     #[ORM\Column(name: 'default_friendly', type: 'boolean', options: ['default' => false])]
@@ -193,6 +198,31 @@ class Competition implements TenantOwnedInterface
     public function setCompetitionType(CompetitionType $competitionType): self
     {
         $this->competitionType = $competitionType;
+
+        return $this;
+    }
+
+    public function getSource(): CompetitionSource
+    {
+        return $this->source;
+    }
+
+    public function setSource(CompetitionSource $source): self
+    {
+        $this->source = $source;
+
+        return $this;
+    }
+
+    /**
+     * La fédération range des matchs dans cette compétition : elle devient `FBI`. Jamais « Amicaux », la compétition
+     * d'office, qui reste `MANUAL` ; jamais de `FBI` vers `MANUAL`.
+     */
+    public function markFromFederation(): self
+    {
+        if (!$this->defaultFriendly) {
+            $this->source = CompetitionSource::FBI;
+        }
 
         return $this;
     }

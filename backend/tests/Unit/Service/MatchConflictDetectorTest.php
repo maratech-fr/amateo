@@ -14,7 +14,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
-use App\Enum\FixtureStatus;
+use App\Enum\PlacementStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Matches\EngagementView;
@@ -656,10 +656,10 @@ final class MatchConflictDetectorTest extends TestCase
         // détecteur ne regarde que le venueId, jamais le statut de placement — c'est
         // l'invariant sur lequel repose « rendre visible sans placer ».
         $left = $this->fixture('fx-1', self::TEAM_1, '2026-10-03', '15:00');
-        $left->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $left->setPlacement(PlacementStatus::UNPLACED);
         $left->setVenueId('venue-mateo');
         $right = $this->fixture('fx-2', self::TEAM_2, '2026-10-03', '16:00');
-        $right->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $right->setPlacement(PlacementStatus::UNPLACED);
         $right->setVenueId('venue-mateo');
 
         $conflicts = $this->detect([$left, $right], []);
@@ -674,7 +674,7 @@ final class MatchConflictDetectorTest extends TestCase
         // par alias à un gymnase fermé à la date du match alerte VENUE_UNAVAILABLE
         // (la DATE dans la plage suffit, statut et coup d'envoi indifférents).
         $fixture = $this->fixture('fx-1', self::TEAM_1, '2027-02-14', null);
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $fixture->setPlacement(PlacementStatus::UNPLACED);
         $fixture->setVenueId('venue-armand');
 
         $conflicts = $this->detect([$fixture], [], null, [], [], [$this->unavailability('venue-armand', '2027-02-04', '2027-02-28', 'travaux')]);
@@ -1012,7 +1012,7 @@ final class MatchConflictDetectorTest extends TestCase
     {
         // D8 : « domicile posé » : le gymnase et l'heure importés d'un match à placer ne sont pas une occupation.
         $unplaced = $this->competitionAt('fx-1', self::ORDINARY_WEDNESDAY, '18:30');
-        $unplaced->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $unplaced->setPlacement(PlacementStatus::UNPLACED);
         self::assertSame([], $this->overlapConflicts($unplaced));
 
         $away = $this->competitionAt('fx-2', self::ORDINARY_WEDNESDAY, '18:30');
@@ -2586,7 +2586,7 @@ final class MatchConflictDetectorTest extends TestCase
         $fixture = $this->fixture($id, self::TEAM_1, $date, $kickoff);
         $fixture->setVenueId('venue-mateo');
         $fixture->setCompetitionId('comp-1');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $fixture->setPlacement(PlacementStatus::PLACED);
 
         return $fixture;
     }

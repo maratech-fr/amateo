@@ -62,7 +62,8 @@ final class FriendlyAutoValidator
 
         $swept = 0;
         foreach ($fixtures as $fixture) {
-            if (!isset($friendlyCompetitionIds[(string) $fixture->getCompetitionId()])) {
+            // Lot 7, PR 6b — un amical que la fédération ne suit pas (posé à la main) s'arrête à « Placé ».
+            if (!isset($friendlyCompetitionIds[(string) $fixture->getCompetitionId()]) || !$this->followUp->isTracked($fixture)) {
                 continue;
             }
             if ($fixture->getMatchDate()->setTime(0, 0) >= $today) {

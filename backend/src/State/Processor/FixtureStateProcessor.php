@@ -155,15 +155,6 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if (null !== $input->opponentLabel) {
             $entity->setOpponentLabel($input->opponentLabel);
         }
-        if (null !== $input->status) {
-            $this->followUp->moveTo($entity, FixtureStatus::from($input->status), $now);
-            // P1-4 PR D — every status write through the API is the MANAGER's
-            // gesture: a placement becomes a MANUAL anchor (the solver never
-            // moves it again), an un-placement clears the marker.
-            $entity->setPlacementSource(
-                FixtureStatus::UNPLACED === $this->followUp->stageOf($entity) ? null : FixturePlacementSource::MANUAL,
-            );
-        }
         $entity->setVenueId('' === $input->venueId ? null : $input->venueId);
         $entity->setKickoffTime($this->parseTime($input->kickoffTime));
         if (FixturePlacementSource::SOLVER->value === $input->placementSource) {
@@ -174,6 +165,22 @@ class FixtureStateProcessor extends AbstractStateProcessor
         // (PR-3a) : REVIEWED + horodaté, quel que soit le statut de placement.
         $entity->markReviewed($now);
         $this->assertVenueAccessAllowed($entity);
+        // Le stade en dernier, une fois tous les refus passés : « saisi » ou « validé » écrit le suivi fédéral du
+        // match, qui exige le match persisté avant lui, sous son club et sa saison.
+        if (null !== $input->status) {
+            $stage = FixtureStatus::from($input->status);
+            $this->assertStageReachable($entity, $stage);
+            if (FixtureStatus::SUBMITTED === $stage || FixtureStatus::VALIDATED === $stage) {
+                $this->stampClubAndSeason($entity);
+            }
+            $this->followUp->moveTo($entity, $stage, $now);
+            // P1-4 PR D — every status write through the API is the MANAGER's
+            // gesture: a placement becomes a MANUAL anchor (the solver never
+            // moves it again), an un-placement clears the marker.
+            $entity->setPlacementSource(
+                FixtureStatus::UNPLACED === $this->followUp->stageOf($entity) ? null : FixturePlacementSource::MANUAL,
+            );
+        }
 
         return $entity;
     }
@@ -208,6 +215,10 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $this->assertMayBecomeFriendly($entity, $competitionBefore, $enteredBefore, $input->competitionId);
             $entity->setCompetitionId($input->competitionId);
         }
+        // Lot 7, PR 6b — un match déjà saisi ou validé ne quitte pas une compétition FBI pour une compétition hors FBI.
+        if ($enteredBefore && $competitionBefore !== $entity->getCompetitionId() && !$this->followUp->isTracked($entity)) {
+            $this->refuse('Ce match est déjà saisi dans FBI : il ne peut pas quitter sa compétition.');
+        }
         // L'équipe et la compétition RETENUES (renvoyées ou laissées telles quelles) désignent un engagement.
         $this->assertTeamEngaged($entity);
         if (null !== $input->matchDate) {
@@ -220,9 +231,11 @@ class FixtureStateProcessor extends AbstractStateProcessor
             $entity->setOpponentLabel($input->opponentLabel);
         }
         if (null !== $input->status) {
-            // D6 — « placer = traiter » : setStatus pose REVIEWED + horodaté quand
+            $stage = FixtureStatus::from($input->status);
+            $this->assertStageReachable($entity, $stage);
+            // D6 — « placer = traiter » : la porte pose REVIEWED + horodaté quand
             // le match passe placé sans écart pendant (UNPLACED ne change rien).
-            $this->followUp->moveTo($entity, FixtureStatus::from($input->status), $now);
+            $this->followUp->moveTo($entity, $stage, $now);
             // P1-4 PR D — every status write through the API is the MANAGER's
             // gesture: a placement becomes a MANUAL anchor (the solver never
             // moves it again), an un-placement clears the marker.
@@ -288,7 +301,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): FixtureResource
     {
         $competitionId = $entity->getCompetitionId();
-        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId));
+        $output = FixtureResource::fromEntity($entity, null === $competitionId ? null : $this->entityManager->find(Competition::class, $competitionId), $this->followUp);
         // D6 — même proposition floue que le provider (second appelant de fromEntity).
         if (FixtureHomeAway::HOME === $entity->getHomeAway() && null === $entity->getVenueId() && null !== $entity->getFbiVenueLabel()) {
             $output->suggestedVenueId = $this->venueAliasResolver->suggest($entity->getFbiVenueLabel());
@@ -491,6 +504,34 @@ class FixtureStateProcessor extends AbstractStateProcessor
         if ($known) {
             $this->refuse('Ce match est connu de la fédération : il reste dans sa compétition.');
         }
+    }
+
+    /**
+     * Lot 7, PR 6b — un match que la fédération ne suit pas (sa compétition n'est pas de source FBI) s'arrête à
+     * « Placé » : « saisi » et « validé » sont refusés, rien n'est écrit. Juge la compétition retenue par le geste.
+     */
+    private function assertStageReachable(Fixture $fixture, FixtureStatus $stage): void
+    {
+        if ((FixtureStatus::SUBMITTED === $stage || FixtureStatus::VALIDATED === $stage) && !$this->followUp->isTracked($fixture)) {
+            $this->refuse('Ce match n\'est pas suivi par la fédération : il s\'arrête à « Placé ».');
+        }
+    }
+
+    /**
+     * Le club et la saison d'un match neuf, ceux que la requête a résolus (`_club_id`, `_season_id`, posés par le
+     * serveur), avant que son suivi fédéral ne s'écrive à leur nom — {@see AbstractStateProcessor::processPost} les
+     * repose ensuite à l'identique.
+     */
+    private function stampClubAndSeason(Fixture $fixture): void
+    {
+        $request = $this->requestStack->getCurrentRequest();
+        $clubId = $request?->attributes->get('_club_id');
+        $seasonId = $request?->attributes->get('_season_id');
+        if (!\is_string($clubId) || '' === $clubId || !\is_string($seasonId) || '' === $seasonId) {
+            $this->refuse('Aucune saison en cours : créez d\'abord la saison.');
+        }
+        $fixture->setClubId($clubId);
+        $fixture->setSeasonId($seasonId);
     }
 
     /**

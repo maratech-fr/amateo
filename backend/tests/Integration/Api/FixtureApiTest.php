@@ -35,6 +35,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -56,6 +57,7 @@ final class FixtureApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const TEAM_ID = '11111111-1111-4111-8111-111111111111';
@@ -275,7 +277,7 @@ final class FixtureApiTest extends WebTestCase
         $reloaded = $this->em->getRepository(Fixture::class)->find($placed['id']);
         self::assertNotNull($reloaded);
         self::assertSame('22222222-2222-4222-8222-222222222222', $reloaded->getVenueId(), 'la salle n\'a pas été vidée');
-        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le statut n\'a pas bougé');
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($reloaded, $this->em), 'le statut n\'a pas bougé');
     }
 
     public function testCreatingWithSolverSourceIsRejected(): void
@@ -577,7 +579,7 @@ final class FixtureApiTest extends WebTestCase
         [$id, $body] = $this->placedOutOfAccess();
         $fixture = $this->em->find(Fixture::class, $id);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::VALIDATED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::VALIDATED, new DateTimeImmutable, $this->em);
         $this->em->flush();
 
         $this->putFixture($id, $body);
@@ -670,7 +672,7 @@ final class FixtureApiTest extends WebTestCase
         [$id, $body] = $this->placedOutOfAccess();
         $fixture = $this->em->find(Fixture::class, $id);
         self::assertInstanceOf(Fixture::class, $fixture);
-        $fixture->setStatus(FixtureStatus::UNPLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::UNPLACED, new DateTimeImmutable, $this->em);
         $this->em->flush();
 
         $this->putFixture($id, $body);
@@ -1218,7 +1220,9 @@ final class FixtureApiTest extends WebTestCase
 
     private function createCompetition(): string
     {
-        $competition = $this->competitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
+        // Un championnat de la fédération : ses matchs sont suivis (« Marquer saisi », « validé »).
+        $this->scopeGucToClub($this->club->getId());
+        $competition = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
 
         return $competition->getId();
     }

@@ -932,6 +932,9 @@ final class MatchPlacementContext extends BaseContext
             $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => $name, 'competitionType' => 'CHAMPIONSHIP'], $this->token),
             'championnat ' . $name,
         );
+        // Lot 7, PR 6b : le championnat de l'équipe vient de la fédération (source FBI) — ses matchs, même créés à la
+        // main, sont suivis : « saisi » s'y écrit. Une compétition créée par l'API naît MANUAL.
+        $this->dbalExec(\sprintf('UPDATE competition SET source = \'FBI\' WHERE id = \'%s\'', $this->competitionId), true);
         $this->fxSat = $this->createdId(
             $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire du championnat', 'competitionId' => $this->competitionId], $this->token),
             'match de championnat créé à la main',

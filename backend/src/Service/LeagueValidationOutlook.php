@@ -367,7 +367,8 @@ final class LeagueValidationOutlook
             return false;
         }
         $competitionId = $fixture->getCompetitionId();
-        if (null === $competitionId) {
+        // Lot 7, PR 6b — un match que la fédération ne suit pas s'arrête à « Placé » : jamais « validé ligue ».
+        if (null === $competitionId || !$this->followUp->isTracked($fixture)) {
             return false;
         }
 

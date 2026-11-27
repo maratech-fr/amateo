@@ -80,7 +80,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         name: 'import_fixtures',
     ),
 ], input: FixtureInput::class, paginationEnabled: true, paginationItemsPerPage: 100, provider: FixtureStateProvider::class, processor: FixtureStateProcessor::class)]
-#[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact', 'teamId' => 'exact', 'competitionId' => 'exact', 'homeAway' => 'exact', 'status' => 'exact'])]
+#[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact', 'teamId' => 'exact', 'competitionId' => 'exact', 'homeAway' => 'exact'])]
 #[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class FixtureResource
 {
@@ -123,6 +123,10 @@ class FixtureResource
 
     #[Groups(['read'])]
     public string $status = '';
+
+    /** Tracked by the federation (its competition comes from FBI): only such a match is entered, then validated, in FBI. */
+    #[Groups(['read'])]
+    public bool $fbiTracked = false;
 
     #[Groups(['read'])]
     public ?string $venueId = null;
@@ -236,9 +240,8 @@ class FixtureResource
     #[Groups(['read'])]
     public ?array $awayTravel = null;
 
-    public static function fromEntity(Fixture $entity, ?Competition $competition): self
+    public static function fromEntity(Fixture $entity, ?Competition $competition, FederalFollowUp $followUp): self
     {
-        $followUp = new FederalFollowUp;
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
@@ -252,6 +255,7 @@ class FixtureResource
         $dto->homeAway = $entity->getHomeAway()->value;
         $dto->opponentLabel = $entity->getOpponentLabel();
         $dto->status = $followUp->stageOf($entity)->value;
+        $dto->fbiTracked = $followUp->isTracked($entity);
         $dto->venueId = $entity->getVenueId();
         $dto->kickoffTime = $entity->getKickoffTime()?->format('H:i');
         $dto->externalRef = $entity->getExternalRef();

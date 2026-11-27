@@ -37,6 +37,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,6 +49,7 @@ use Doctrine\ORM\EntityManagerInterface;
 trait PlacementHoldingDecorTrait
 {
     use ProvisionsPeriodPlanTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -245,7 +247,7 @@ trait PlacementHoldingDecorTrait
     {
         $fixture = $this->baseFixture($teamId, null, FixtureHomeAway::HOME, $kickoff, $this->competition($teamId));
         $fixture->setVenueId($this->venueId);
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::SOLVER);
         $this->em->flush();
 
@@ -257,7 +259,7 @@ trait PlacementHoldingDecorTrait
     {
         $fixture = $this->baseFixture($teamId, $date, FixtureHomeAway::HOME, $kickoff, $this->competition($teamId));
         $fixture->setVenueId($this->venueId);
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable);
         $fixture->setPlacementSource(FixturePlacementSource::MANUAL);
         $this->em->flush();
 

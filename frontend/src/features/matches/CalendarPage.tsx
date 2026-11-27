@@ -263,10 +263,11 @@ export function CalendarPage() {
 
   const allFixtures = useMemo<Fixture[]>(() => fixtures.data ?? [], [fixtures.data]);
   const openCorrections = useMemo(() => fbiCorrections.data ?? [], [fbiCorrections.data]);
-  // « FBI à faire » GLOBAL (toutes semaines) : domiciles PLACED (à saisir) + entrées
-  // ouvertes du registre (à corriger). Calculé ici — la page charge déjà les fixtures.
+  // « FBI à faire » GLOBAL (toutes semaines) : domiciles PLACED suivis par la fédération (à saisir,
+  // même liste que `FbiEntryList`) + entrées ouvertes du registre (à corriger). Calculé ici — la page
+  // charge déjà les fixtures.
   const fbiTodoCount = useMemo(
-    () => allFixtures.filter((f) => "HOME" === f.homeAway && "PLACED" === f.status).length + openCorrections.length,
+    () => allFixtures.filter((f) => "HOME" === f.homeAway && false !== f.fbiTracked && "PLACED" === f.status).length + openCorrections.length,
     [allFixtures, openCorrections],
   );
   const windows = useMemo(() => leagueWindows.data?.items ?? [], [leagueWindows.data]);

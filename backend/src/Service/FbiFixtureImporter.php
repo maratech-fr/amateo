@@ -12,6 +12,7 @@ use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Enum\CompetitionSource;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
@@ -1312,6 +1313,8 @@ final class FbiFixtureImporter
      */
     private function hydrateFromRow(Fixture $fixture, array $row, Competition $competition, string $divisionName, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues, DateTimeImmutable $now, Club $club): void
     {
+        // Lot 7, PR 6b — la fédération range ce match dans la compétition : ses matchs sont suivis dans FBI.
+        $competition->markFromFederation();
         $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate($row['matchDate']);
         $fixture->setHomeAway($row['homeAway']);
@@ -1745,7 +1748,7 @@ final class FbiFixtureImporter
                 continue;
             }
 
-            $competition = $this->competitionRegistry->create($club->getId(), $team->getSeasonId(), $name, CompetitionClassifier::classify($name));
+            $competition = $this->competitionRegistry->create($club->getId(), $team->getSeasonId(), $name, CompetitionClassifier::classify($name), CompetitionSource::FBI);
             $this->competitionRegistry->engage($competition, $team->getId(), $label);
             $chosen[$chosenKey] = [$competition, $team->getId()];
             $dirty = true;

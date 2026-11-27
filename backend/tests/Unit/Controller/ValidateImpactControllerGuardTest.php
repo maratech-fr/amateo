@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Controller;
 
 use App\Controller\ValidateImpactController;
 use App\Entity\Schedule;
+use App\Matches\FederalFollowUp;
 use App\Service\OrphanedFixtureFinder;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
@@ -67,7 +68,7 @@ final class ValidateImpactControllerGuardTest extends TestCase
         // Le prédicat (final, non doublable) n'est jamais atteint sur un refus : il
         // court-circuite avant toute lecture d'impact. On en passe une instance réelle
         // sur l'EM mocké ; le code de statut est la preuve.
-        $finder = new OrphanedFixtureFinder($em);
+        $finder = new OrphanedFixtureFinder($em, new FederalFollowUp($em));
 
         $controller = new ValidateImpactController($em, $requestStack, $finder);
         // AbstractController::json() lit `$this->container->has('serializer')` — un

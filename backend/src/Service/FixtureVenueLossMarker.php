@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\FederalTracking;
 use App\Entity\Fixture;
-use App\Enum\FixtureStatus;
+use App\Enum\FederalState;
 use App\Enum\FixtureUnplacedReason;
+use App\Enum\PlacementStatus;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * P2-52 (RMM-10) — LE foyer unique du DÉPOINTAGE « le gymnase n'est plus affilié au club ».
  *
- * Un match qui perd sa salle repasse « à placer » : `venueId` NULL, `status` UNPLACED,
- * `placementSource` NULL (plus aucune ancre — il redevient plaçable), et la raison
+ * Un match qui perd sa salle repasse « à placer » : `venueId` NULL, placement UNPLACED, son suivi fédéral
+ * « à saisir » (dé-placer remet le suivi à « à saisir »), `placementSource` NULL (plus aucune ancre — il redevient plaçable), et la raison
  * PERSISTANTE `unplacedReason = venue_lost` (distincte de la raison volatile d'auto-placement).
  * La DATE et l'HEURE de coup d'envoi sont CONSERVÉES — repère modifiable pour le gestionnaire
  * (décision fondateur), jamais une salle réelle.
@@ -45,11 +47,16 @@ final class FixtureVenueLossMarker
             return 0;
         }
 
+        $entityManager->createQuery('UPDATE ' . FederalTracking::class . ' t SET t.state = :toEnter WHERE t.fixtureId IN (:ids)')
+            ->setParameter('toEnter', FederalState::TO_ENTER)
+            ->setParameter('ids', $fixtureIds)
+            ->execute();
+
         return (int) $entityManager->createQuery(
-            'UPDATE App\Entity\Fixture f SET f.venueId = NULL, f.status = :unplaced, '
+            'UPDATE ' . Fixture::class . ' f SET f.venueId = NULL, f.placement = :unplaced, '
             . 'f.placementSource = NULL, f.unplacedReason = :reason WHERE f.id IN (:ids)',
         )
-            ->setParameter('unplaced', FixtureStatus::UNPLACED)
+            ->setParameter('unplaced', PlacementStatus::UNPLACED)
             ->setParameter('reason', FixtureUnplacedReason::VENUE_LOST)
             ->setParameter('ids', $fixtureIds)
             ->execute();

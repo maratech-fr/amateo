@@ -29,6 +29,7 @@ use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ClubRole;
+use App\Enum\CompetitionSource;
 use App\Enum\CompetitionType;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -761,7 +762,8 @@ final class LoadTestClubSeeder
             $key = $match['teamId'] . '|' . $match['phase'];
             if (!isset($competitions[$key])) {
                 // Compétition puis engagement, par la porte, persistés avant les matchs (un flush).
-                $competition = $this->competitionRegistry->create($clubId, $seasonId, \sprintf('Championnat Phase %d', $match['phase']), CompetitionType::CHAMPIONSHIP);
+                // Un championnat de la ligue : ses matchs sont suivis dans FBI.
+                $competition = $this->competitionRegistry->create($clubId, $seasonId, \sprintf('Championnat Phase %d', $match['phase']), CompetitionType::CHAMPIONSHIP, CompetitionSource::FBI);
                 $this->competitionRegistry->engage($competition, $match['teamId']);
                 $competitions[$key] = ['competition' => $competition, 'min' => $match['date'], 'max' => $match['date']];
             }

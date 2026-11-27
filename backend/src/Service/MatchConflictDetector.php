@@ -19,6 +19,7 @@ use App\Enum\TeamLevel;
 use App\Matches\ConflictType;
 use App\Matches\CupKickoffRule;
 use App\Matches\EngagementView;
+use App\Matches\FederalFollowUp;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\DayHoldings;
 use App\Service\Conflicts\PersonConflicts;
@@ -180,7 +181,8 @@ final class MatchConflictDetector
      * sont PURES/stateless et instanciées ici : la façade {@see detect()} monte les
      * vues/fixtures et leur délègue chaque famille. Instanciées en interne (et non
      * injectées) pour garder le constructeur à 3 arguments — le test unitaire
-     * `MatchConflictDetectorTest` construit le détecteur à la main et ne doit pas changer.
+     * `MatchConflictDetectorTest` construit le détecteur à la main et ne doit pas changer. La porte du suivi
+     * fédéral, facultative, leur est passée : sans elle (ce test), le stade servi d'un match est son placement.
      */
     private readonly VenueConflicts $venueConflicts;
 
@@ -192,9 +194,10 @@ final class MatchConflictDetector
         private readonly MatchFootprint $footprint,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
+        private readonly ?FederalFollowUp $followUp = null,
     ) {
-        $this->venueConflicts = new VenueConflicts($this->effectiveScheduleResolver);
-        $this->ruleWindowConflicts = new RuleWindowConflicts;
+        $this->venueConflicts = new VenueConflicts($this->effectiveScheduleResolver, $this->followUp);
+        $this->ruleWindowConflicts = new RuleWindowConflicts($this->followUp);
         $this->personConflicts = new PersonConflicts($this->effectiveScheduleResolver);
     }
 
@@ -473,6 +476,8 @@ final class MatchConflictDetector
         array $groupsBySchedule = [],
         array $closedDatesByVenue = [],
     ): array {
+        // Le stade servi de chaque match (suivi fédéral) se lit en une lecture pour tout le radar.
+        $this->followUp?->prime($fixtures);
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
         // because the training side reads coaches and players differently (an
@@ -774,7 +779,7 @@ final class MatchConflictDetector
                 'type' => ConflictType::FRIENDLY_ON_MATCH_SLOT->value,
                 'severity' => 5,
                 'reasons' => $reasons,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
             if (\in_array('MATCH_SLOT_WINDOW', $reasons, true)) {
                 $conflict['venueId'] = $fixture->getVenueId();
@@ -930,7 +935,7 @@ final class MatchConflictDetector
             $items[] = [
                 'type' => ConflictType::AWAY_NO_FOOTPRINT->value,
                 'severity' => 7,
-                'fixture' => ConflictMoments::bareFixtureView($fixture),
+                'fixture' => ConflictMoments::bareFixtureView($fixture, $this->followUp),
             ];
         }
 

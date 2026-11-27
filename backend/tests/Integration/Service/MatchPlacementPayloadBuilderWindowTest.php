@@ -22,6 +22,7 @@ use App\Service\SeasonResolver;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,6 +48,7 @@ final class MatchPlacementPayloadBuilderWindowTest extends WebTestCase
 {
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -62,7 +64,7 @@ final class MatchPlacementPayloadBuilderWindowTest extends WebTestCase
         $outSolver = $this->createFixture($club->getId(), $season->getId(), $team->getId(), '2026-11-21');
         $outSolver->setVenueId($venue->getId());
         $outSolver->setKickoffTime(new DateTimeImmutable('16:00'));
-        $outSolver->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
+        $this->stageFixture($outSolver, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
         $outSolver->setPlacementSource(FixturePlacementSource::SOLVER);
         $outUnplaced = $this->createFixture($club->getId(), $season->getId(), $team->getId(), '2026-11-28');
         $this->em->flush();

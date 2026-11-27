@@ -41,6 +41,7 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Matches\FederalFollowUp;
 use App\Matches\FriendlyCompetitions;
 use App\Plans\PlanComposition;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -51,6 +52,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\DriverException;
@@ -78,6 +80,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -129,7 +132,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         self::assertNotNull($fixture);
         self::assertSame($clubA->getId(), $fixture->getClubId());
         self::assertSame($seasonA->getId(), $fixture->getSeasonId());
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture, $this->em));
     }
 
     public function testCompetitionCollectionIsScoped(): void
@@ -1387,7 +1390,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $this->scopeGucToClub($clubB->getId());
         $row = $em->getConnection()->fetchAssociative(
-            'SELECT review_state, match_date, pending_deviations FROM fixture WHERE id = ?',
+            'SELECT f.review_state, f.match_date, COALESCE(t.pending_deviations::text, \'[]\') AS pending_deviations FROM fixture f LEFT JOIN fixture_federal_tracking t ON t.fixture_id = f.id WHERE f.id = ?',
             [$foreign->getId()],
         );
         self::assertIsArray($row);
@@ -1462,7 +1465,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         // Lecture BRUTE sous le scope de B (la connexion dama partagée est scopée club).
         $this->scopeGucToClub($clubB->getId());
         $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
-        $row = $connection->fetchAssociative('SELECT status, placement_source FROM fixture WHERE id = ?', [$foreignId]);
+        $row = $connection->fetchAssociative('SELECT CASE WHEN t.state IN (\'SUBMITTED\', \'VALIDATED\') THEN t.state ELSE f.status END AS status, f.placement_source FROM fixture f LEFT JOIN fixture_federal_tracking t ON t.fixture_id = f.id WHERE f.id = ?', [$foreignId]);
         self::assertIsArray($row);
         self::assertSame('UNPLACED', $row['status'], 'la lecture de A ne valide jamais la rencontre de B');
         self::assertNull($row['placement_source'], 'aucune source de placement posée cross-club');
@@ -1497,8 +1500,8 @@ final class MatchTenantIsolationTest extends WebTestCase
         $fixture = $this->createFixture($club, $opponent);
         $this->scopeGucToClub($club->getId());
         $fixture->setVenueId('22222222-2222-4222-8222-222222222222');
-        $fixture->setStatus(FixtureStatus::PLACED, new DateTimeImmutable);
-        $fixture->putPendingDeviation([
+        $this->stageFixture($fixture, FixtureStatus::PLACED, new DateTimeImmutable, $this->em);
+        new FederalFollowUp($this->em)->deviations($fixture)->put([
             'field' => 'date',
             'appValue' => '2026-10-04',
             'sourceValue' => '2026-10-11',
@@ -1725,7 +1728,8 @@ final class MatchTenantIsolationTest extends WebTestCase
     {
         $this->scopeGucToClub($club->getId());
 
-        return $this->competitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
+        // Un championnat de la fédération (lot 7, PR 6b) : ses matchs sont suivis, « validé ligue » compris.
+        return $this->fbiCompetitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
     }
 
     /** Un engagement écrit en SQL brut, sous la RLS du club posé : seule la base peut alors refuser. */

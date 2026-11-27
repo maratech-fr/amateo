@@ -38,6 +38,7 @@ use App\Service\TenantConnectionContext;
 use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -67,6 +68,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
 {
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -102,7 +104,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
 
         $fixture = $this->em->getRepository(Fixture::class)->find($fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::PLACED, $fixture->getStatus());
+        self::assertSame(FixtureStatus::PLACED, $this->stageOfFixture($fixture, $this->em));
         self::assertSame(FixturePlacementSource::SOLVER, $fixture->getPlacementSource());
 
         // Crédit décompté AU SUCCÈS (club non démo → Découverte bridée).

@@ -33,6 +33,7 @@ use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\PlacementLockProbeTrait;
 use App\Tests\SeasonPlanOf;
+use App\Tests\StagesFixturesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -72,6 +73,7 @@ final class PlacementCreditIsPartOfTheResultTest extends KernelTestCase
     use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use PlacementLockProbeTrait;
+    use StagesFixturesTrait;
     use TenantGucTrait;
 
     private const string GENERIC_FAILURE = 'Le placement automatique a échoué. Réessayez.';
@@ -107,7 +109,7 @@ final class PlacementCreditIsPartOfTheResultTest extends KernelTestCase
         $this->scopeGucToClub($clubId);
         $fixture = $this->freshEm()->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture);
-        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'aucun placement posé : il s\'annule avec le statut');
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fixture), 'aucun placement posé : il s\'annule avec le statut');
         self::assertSame(3, $this->creditsOf($clubId), 'aucun crédit pris');
         self::assertNotContains('COMPLETED', $this->publishedStatuses(), 'l\'écran n\'est jamais réveillé sur un « terminé »');
     }
