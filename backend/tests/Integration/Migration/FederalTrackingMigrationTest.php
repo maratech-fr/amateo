@@ -183,6 +183,47 @@ final class FederalTrackingMigrationTest extends KernelTestCase
         self::assertSame(['UNPLACED', 'PLACED'], [$this->servedStageOf(self::FORGED), $this->servedStageOf($placed)], '« à placer » et « placé » restent servis tels quels');
     }
 
+    /** @return iterable<string, array{0: string, 1: string}> la colonne qui dit qu'un match vient de la fédération */
+    public static function federationMarks(): iterable
+    {
+        yield 'numéro FBI (import xlsx)' => ['external_ref', 'U13F-0042'];
+        yield 'rencontre du canal API' => ['ffbb_rencontre_id', '200000002871234'];
+    }
+
+    /**
+     * Une compétition sans identifiant fédéral dont un match placé, jamais saisi, vient de la fédération (numéro FBI ou
+     * rencontre du canal API) est FBI : son match est suivi, « à saisir ».
+     */
+    #[DataProvider('federationMarks')]
+    public function testACompetitionHoldingAMatchFromTheFederationIsFbi(string $column, string $value): void
+    {
+        $admin = self::frozenCaseConnection();
+        $this->forgeCompetition($admin, self::BARE_COMPETITION, 'Championnat sans identifiant', null);
+        $this->forgeFixture($admin, self::FORGED, self::BARE_COMPETITION, ['status' => 'PLACED', 'external_ref' => null, 'ffbb_rencontre_id' => null, $column => $value]);
+
+        $this->migrateOrFail($admin);
+
+        self::assertSame('FBI', $admin->fetchOne('SELECT source FROM competition WHERE id = ?', [self::BARE_COMPETITION]), 'un match venu de la fédération fait la compétition FBI');
+        self::assertSame(['TO_ENTER'], $admin->fetchFirstColumn('SELECT state FROM fixture_federal_tracking WHERE fixture_id = ?', [self::FORGED]), 'son match est suivi, à saisir');
+        self::assertSame('PLACED', $this->servedStageOf(self::FORGED));
+    }
+
+    /**
+     * Un amical posé à la main et déjà marqué saisi (avant la PR 4a, sans compétition ; versé dans « Amicaux » par la
+     * PR 4a) n'est pas une trace fédérale : « Amicaux » reste MANUAL, le match s'arrête à « placé », sans ligne de suivi.
+     */
+    public function testAnEnteredFriendlyPutByHandInAmicauxStopsAtPlaced(): void
+    {
+        $admin = self::frozenCaseConnection();
+        $this->forgeFixture($admin, self::FORGED, null, ['status' => 'SUBMITTED', 'home_away' => 'HOME', 'venue_id' => self::VENUE_NORD, 'kickoff_time' => '14:00', 'placement_source' => 'MANUAL', 'external_ref' => null, 'ffbb_rencontre_id' => null]);
+
+        $this->migrateOrFail($admin);
+
+        self::assertSame(['default_friendly' => true, 'source' => 'MANUAL'], $admin->fetchAssociative('SELECT c.default_friendly, c.source FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE f.id = ?', [self::FORGED]), 'le match est dans « Amicaux », MANUAL malgré son « saisi »');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [self::FORGED]), 'aucune ligne de suivi');
+        self::assertSame('PLACED', $this->servedStageOf(self::FORGED), 'il s\'arrête à « placé »');
+    }
+
     /**
      * Rien ne se perd hors FBI : un match d'une compétition sans trace fédérale qui portait encore un écart, un mémo
      * « FBI affiche encore … » ou un libellé de salle gardé reçoit une ligne de suivi « à saisir » qui les garde à
@@ -296,7 +337,7 @@ final class FederalTrackingMigrationTest extends KernelTestCase
      *
      * @param array<string, mixed> $columns
      */
-    private function forgeFixture(Connection $admin, string $id, string $competitionId, array $columns): void
+    private function forgeFixture(Connection $admin, string $id, ?string $competitionId, array $columns): void
     {
         $admin->executeStatement(
             'INSERT INTO fixture SELECT * FROM json_populate_record(NULL::fixture, (SELECT (row_to_json(f)::jsonb || ?::jsonb)::json FROM fixture f WHERE f.id = ?))',
