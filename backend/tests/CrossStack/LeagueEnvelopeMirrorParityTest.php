@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Enum\CompetitionType;
+use App\Matches\CupKickoffRule;
 use App\Service\MatchConflictDetector;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -63,6 +64,28 @@ final class LeagueEnvelopeMirrorParityTest extends TestCase
             $type = CompetitionType::from($case['competitionType']);
             self::assertSame($case['friendly'], $type->isFriendly(), \sprintf('PARITÉ ROMPUE (« %s ») : amical.', $case['name']));
             self::assertSame($case['cup'], CompetitionType::CUP === $type, \sprintf('PARITÉ ROMPUE (« %s ») : coupe.', $case['name']));
+        }
+    }
+
+    /**
+     * Lot 7 PR 4b — la règle des coupes, 08:00-21:00 bornes comprises, est une constante du serveur
+     * (`App\Matches\CupKickoffRule`, lue par le radar) et un miroir déclaré à l'écran (`lib/envelope.ts::cupKickoffInside`,
+     * `leagueEnvelope.parity.test.ts`) : les MÊMES bornes (`cupBounds`) et les MÊMES cas (`cupCases`) les traversent ;
+     * rendre une borne exclusive ou la déplacer d'un seul côté rougit ce côté-là.
+     */
+    public function testBackendCupKickoffRuleMatchesTheSharedCupCases(): void
+    {
+        $raw = file_get_contents(self::CASES);
+        self::assertIsString($raw, 'Illisible : ' . self::CASES);
+        $decoded = json_decode($raw, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+        self::assertSame(['kickoffMin' => CupKickoffRule::KICKOFF_MIN, 'kickoffMax' => CupKickoffRule::KICKOFF_MAX], $decoded['cupBounds'] ?? null, 'PARITÉ ROMPUE : les bornes des coupes du serveur divergent de cupBounds.');
+        /** @var list<array{name: string, kickoff: string, inside: bool}> $list */
+        $list = $decoded['cupCases'] ?? [];
+        self::assertNotEmpty($list, 'leagueEnvelope.parity.json ne porte plus aucun cas de coupe (cupCases).');
+
+        foreach ($list as $case) {
+            self::assertSame($case['inside'], CupKickoffRule::accepts($case['kickoff']), \sprintf('PARITÉ ROMPUE (« %s ») : règle des coupes.', $case['name']));
         }
     }
 

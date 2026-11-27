@@ -90,5 +90,16 @@
       "competitionId": "comp-nom-coupe", "competitionName": "Coupe Territoriale", "competitionType": "CHAMPIONSHIP",
       "friendly": false, "cup": false
     }
+  ],
+  "_cupComment": "Lot 7 PR 4b — cas de PARITÉ de la règle des coupes : une coupe n'a pas de fenêtre de ligue, son coup d'envoi se joue entre 08:00 et 21:00, intervalle FERMÉ (les deux bornes comprises), quel que soit le jour, férié compris. Consommé par leagueEnvelope.parity.test.ts (front, lib/envelope.ts::cupKickoffInside, bornes CUP_KICKOFF_MIN / CUP_KICKOFF_MAX) ET par LeagueEnvelopeMirrorParityTest.php (backend, App\\Matches\\CupKickoffRule::accepts, bornes KICKOFF_MIN / KICKOFF_MAX). `inside` est le verdict des deux côtés.",
+  "cupBounds": { "kickoffMin": "08:00", "kickoffMax": "21:00" },
+  "cupCases": [
+    { "name": "08:00, la borne basse — dedans", "kickoff": "08:00", "inside": true },
+    { "name": "21:00, la borne haute — dedans", "kickoff": "21:00", "inside": true },
+    { "name": "15:00, l'après-midi — dedans", "kickoff": "15:00", "inside": true },
+    { "name": "07:59, une minute trop tôt — dehors", "kickoff": "07:59", "inside": false },
+    { "name": "21:01, une minute trop tard — dehors", "kickoff": "21:01", "inside": false },
+    { "name": "21:30, le soir — dehors", "kickoff": "21:30", "inside": false },
+    { "name": "00:00, minuit — dehors", "kickoff": "00:00", "inside": false }
   ]
 }
