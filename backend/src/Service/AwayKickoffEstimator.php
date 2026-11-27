@@ -13,7 +13,7 @@ use DateTimeImmutable;
  * THE rule « which kickoff does an hour-less AWAY fixture borrow » (P1-4 PR C),
  * extracted (PR D) because it now has TWO consumers — the conflict radar and
  * the match-placement payload — and two copies of an estimation rule
- * inevitably diverge (§7.2.1).
+ * inevitably diverge.
  *
  * An AWAY fixture without a real hour borrows its team's HABITUAL kickoff when
  * a habit exists on the match's weekday; otherwise it stays footprint-less

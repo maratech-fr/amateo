@@ -51,9 +51,9 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    (Mercure, Redis, nginx…) monte **des deux côtés à la même version** — jamais d'écart dev/prod.
 3. Installer et lancer la **suite de la zone** :
    - `frontend/` : **dans le container**, jamais sur l'hôte — `make -C frontend test` (qui enchaîne
-     `lint` = eslint + `tsc -b --force`, puis vitest). ⚠️ **Rebuilder l'image tooling d'abord**
-     (`docker compose --profile tools build frontend-tooling`) : elle COPIE le code, donc sans
-     rebuild on valide une version périmée. Compléter par un `npx vite build` dans le même
+     `lint` = eslint + `tsc -b --force`, puis vitest ; `lint` rebâtit d'abord l'image tooling, qui
+     COPIE le code). Une commande lancée hors de ces cibles (`docker compose … run frontend-tooling`)
+     exige `make -C frontend install` avant. Compléter par un `npx vite build` dans le même
      container si le paquet touche la chaîne de build.
    - `backend/` : dans le container — `composer install`, puis `make -C backend tests-complete`
      (PHPStan + CS-Fixer + `phpunit tests/`, miroir exact du job CI ; il enchaîne lui-même
@@ -84,7 +84,7 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
 > dernière majeure. **Correctif** : `composer update <les paquets visés> --with-all-dependencies`
 > **dans le container**, ce qui conserve les montées voulues et ramène Symfony sur la LTS.
 > **Surtout PAS un pin dans `composer.json`** : il traiterait le symptôme en laissant croire que les
-> transitifs ne sont pas couverts (CLAUDE.md §5, P4-31 — récidive constatée le 2026-07-29).
+> transitifs ne sont pas couverts (CLAUDE.md §5).
 2. Réparer **notre code** pour suivre la nouvelle API — jamais figer/downgrader la version pour
    éviter la réparation. Qui répare : ce skill régénère lockfile et config lui-même ; toute
    réparation de code de production ou de test se confie à `neo` (`CLAUDE.md` §7 : tout code
@@ -101,8 +101,7 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    COMPLÈTE de `gh pr checks <n>` (`CLAUDE.md` §7, règle Git : deux lignes « skipping » admises,
    « Lot Gate » et « Main Verdict » ; toute autre bloque le merge ; le code retour ne compte pas) →
    `gh pr merge <n> --squash --delete-branch`. **Behat** : le merge attend
-   en plus le job CI `functional-tests` vert (required check de `main`, CLAUDE.md §7 étape 5) —
-   cohérent avec « Dependabot : merge autorisé si CI verte ».
+   en plus le job CI `functional-tests` vert (required check de `main`, CLAUDE.md §7 étape 5).
 2. `git checkout main && git pull` avant la PR suivante (chaque verdict se rend sur main à jour).
 3. Rien ne se merge sans le gate complet vert : `main` a ses required checks avec `strict` et
    `enforce_admins`. Les suites jouées en local (étape 1) servent à diagnostiquer et réparer avant
@@ -127,13 +126,12 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    l'ouverture d'une ligne demande le GO du fondateur (`CLAUDE.md` §7) ; référencer la proposition
    depuis l'entrée du journal.
 3. **Un lot qui change un CONTRAT PUBLIC laisse EN PLUS une ligne datée dans
-   `specs/courantes/etat-des-lieux.md` §3** (AUD-DOC-42, 2026-09-18) — `docs/upgrades.md` seul ne
+   `specs/courantes/etat-des-lieux.md` §3** — `docs/upgrades.md` seul ne
    suffit pas : ce fichier est le journal du *pourquoi technique*, l'état des lieux est celui du
    *livré produit*, et un contrat public qui bouge (schéma OpenAPI exposé au frontend, forme d'une
    réponse API, version d'un contrat backend⇄engine) est un changement produit même quand il n'est
-   voulu par personne. Exemple vécu : #900/#901 (2026-09-17) ont fait passer OpenAPI de 3.1 à 3.2
-   via la montée d'API Platform 4.4 — traité dans `docs/upgrades.md`, sans trace §3 avant cette
-   règle. Ne pas ajouter de ligne pour un lot qui ne touche aucun contrat exposé (dépendance
+   voulu par personne (ex. : une montée d'API Platform qui fait passer OpenAPI de 3.1 à 3.2).
+   Ne pas ajouter de ligne pour un lot qui ne touche aucun contrat exposé (dépendance
    interne, outillage, dev-only).
 
 ## Gardes-fous
@@ -147,5 +145,5 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
   Make — convention du dépôt (CLAUDE.md §3), et **toutes les cibles de `frontend/Makefile` passent par
   `docker compose`, sans exception**. Tester le frontend sur l'hôte valide une version de Node qui
   n'est celle de personne : ni celle de la CI (runners `setup-node`), ni celle de l'image tooling —
-  et fait conclure à tort qu'il faut agir sur le poste du fondateur (constaté 2026-07-29).
+  et fait conclure à tort qu'il faut agir sur le poste du fondateur.
 - Une seule PR à la fois — pas de merges parallèles (conflits de lockfile en cascade).

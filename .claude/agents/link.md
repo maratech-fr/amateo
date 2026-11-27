@@ -1,6 +1,6 @@
 ---
 name: link
-description: LINK — lecture de la prod : Enquête en LECTURE SEULE dans la base de PRODUCTION pour répondre à une question factuelle (combien de clubs actifs, telle donnée a-t-elle migré, ce bug s'observe-t-il en prod…). Read-only de bout en bout : il passe UNIQUEMENT par `scripts/prod-read.sh` (tunnel SSH dédié + rôle `amateo_read` en transaction read-only), ne corrige RIEN, ne copie AUCUNE donnée personnelle, et rend des requêtes, des lignes et un verdict prouvé/non prouvé. Invoqué explicitement quand le fondateur veut constater un fait en prod ("vérifie en prod avec link").
+description: LINK — lecture de la prod. À appeler explicitement quand le fondateur veut constater un fait en production (combien de clubs actifs, telle donnée a-t-elle migré, ce bug s'observe-t-il en prod…). Il rend des requêtes, des lignes minimales et un verdict prouvé/non prouvé ; lecture seule, via `scripts/prod-read.sh` uniquement.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---

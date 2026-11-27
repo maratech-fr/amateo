@@ -131,7 +131,7 @@ export function WizardPage() {
 
   // P4-58 (b) — coches « étape terminée » dans le rail : mêmes verdicts que les
   // gates (une source, useStepValidation — un rail qui compterait autrement que
-  // les portes ferait deux vérités, §7.2). Une coche n'apparaît qu'un verdict
+  // les portes ferait deux vérités). Une coche n'apparaît qu'un verdict
   // RENDU (pas pendant le chargement — fail-silent, jamais fail-vert). La
   // génération n'en porte pas : c'est l'action, pas une saisie à terminer.
   const teamsValidation = useStepValidation("teams");

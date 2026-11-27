@@ -1255,7 +1255,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
           {/* Génération en échec : la grille ne montre que les RÉSERVATIONS (pseudo-créneaux
               lecture seule) — on le dit, sinon elles passeraient pour un planning généré.
-              Et l'export ne les contient pas : il rend les créneaux du serveur (§7.2 pt 3). */}
+              Et l'export ne les contient pas : il rend les créneaux du serveur. */}
           {!showGenerationWaiting && isFailed && slots.length > 0 && 0 === generatedSlots.length ? (
             <NoticeBanner
               tone="destructive"

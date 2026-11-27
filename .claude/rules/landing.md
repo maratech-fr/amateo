@@ -31,8 +31,7 @@ paths:
   scripts) porte le MÊME `?v=` sur les huit pages**, `config.js` avant `site.js` avant le script de
   la page (gardes `LandingDiscoverabilityTest`) — à bumper ensemble. Les `url()` d'un fichier CSS
   sont relatifs à lui (`fonts/…`, `brand/…`).
-- **La marque s'écrit EN HTML ; liens, coordonnées et logo vivent dans `config.js`** (P4-391,
-  2026-10-31, remplace « config.js SEUL »). Un robot qui n'exécute pas le JS (moteur, aperçu de
+- **La marque s'écrit EN HTML ; liens, coordonnées et logo vivent dans `config.js`.** Un robot qui n'exécute pas le JS (moteur, aperçu de
   messagerie, IA) ne doit jamais lire « … » : `<title>`, `og:title`, `.brand`, `aria-label`,
   `<h1>` et JSON-LD portent le nom en clair dans le HTML servi, et AUCUN script ne réécrit plus
   la marque ni le titre. **Même règle pour les `href` des boutons d'appel** (inscription,
@@ -53,14 +52,14 @@ paths:
   sans slash final) — consommée par `system-pages/503.html`/`maintenance.html` pour pointer leur
   logotype cliquable vers la page de vente plutôt que vers l'app morte ; point unique, un
   changement de domaine ne touche que cette ligne.
-  **Exception P4-391 :** chaque `<img data-brand-logo>` porte aussi `src="assets/brand/mark.svg"` en dur, pour le rendu sans JS ; changer `logo` dans `config.js` impose donc de le changer aussi dans le HTML.
-  **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
+  **Exception :** chaque `<img data-brand-logo>` porte aussi `src="assets/brand/mark.svg"` en dur, pour le rendu sans JS ; changer `logo` dans `config.js` impose donc de le changer aussi dans le HTML.
+  **Le logo suit le même patron** : `config.js` clé `logo` (source définitive
   du handoff marque, `assets/brand/`) injecté par `site.js` sur chaque `[data-brand-logo]` — jamais
   un autre chemin d'asset que le repli ci-dessus. `config.js` est chargé par chaque page avec
   `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
-  l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
-  l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
-  **Le logotype recopie désormais le patron `BrandMark` de l'app (P4-274, 2026-09-29)** : `logo`
+  l'ancien fichier en cache et toute nouvelle clé lit `undefined` (logo cassé ;
+  l'injection est défensive, mais le `?v=` est ce qui rend le vrai logo tout de suite).
+  **Le logotype recopie le patron `BrandMark` de l'app** : `logo`
   pointe `assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du favicon
   `icon.svg`) — un mark sans fond — et le MOT (la marque, écrite dans le HTML, en minuscules par CSS) est rendu en TEXTE
   (`.logo-word`) ; repli
@@ -83,8 +82,7 @@ paths:
   piège du cache immuable : renommer le fichier à toute retouche visuelle). Détail :
   `specs/courantes/identite-visuelle-produit.md` § « Ce qui reste à venir ».
 - **Balisage JSON-LD `schema.org` (`<script type="application/ld+json">` dans `index.html`)** :
-  **STATIQUE, écrit dans le HTML** depuis P4-391 (il était injecté par script depuis `config.js`
-  avant, donc invisible à un robot sans JS) — un graphe `SoftwareApplication` (le produit) +
+  **STATIQUE, écrit dans le HTML** (un robot sans JS doit le lire) — un graphe `SoftwareApplication` (le produit) +
   `Organization` (l'éditeur). Sa description recopie la `<meta name="description">` (garde :
   `LandingDiscoverabilityTest`). `offers` est **omis volontairement** : seul le palier Découverte
   est public (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en
@@ -132,7 +130,7 @@ paths:
   `data-cta`) + burger : un `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ;
   le JS n'ajoute que le confort : miroir `aria-expanded`, fermeture au clic sur un lien du panneau ou
   hors du menu, Échap → ferme et rend le focus au burger). Le panneau porte les **cinq** liens de
-  navigation seulement (« Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Journal » — ajouté le 2026-11-15), jamais les
+  navigation seulement (« Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Journal »), jamais les
   deux boutons en double ; carte de 280 px calée sous le burger ≥641px, pleine largeur sous l'en-tête
   sticky ≤640px ; **pas de scroll-lock**. ≤440px le mot du logotype (`.logo-word`) est masqué
   visuellement, la marque restant portée par l'`aria-label` du lien. Chaque `href` est écrit en clair
@@ -181,12 +179,12 @@ paths:
 - **Captures de l'app servies : liste fermée `planning.png` et `matchs-conflits.jpg`**, toutes deux
   affichées par `fonctionnalites.html` (garde `testServedScreenshotsAreTheClosedList` : une image
   orpheline ou manquante sous `assets/` rougit). En ajouter une = le fichier, son `<img>` et la liste du test.
-- **Glissement d'ancre animé en JS, pas `scroll-behavior: smooth` (P4-258, 2026-09-29)** :
+- **Glissement d'ancre animé en JS, pas `scroll-behavior: smooth`** :
   `html { scroll-padding-top: 76px }` (en-tête sticky 64px + marge ; dans `site.css`) reste pour le saut natif
   (arrivée avec `#hash` dans l'URL, JS absent) ; le clic sur un lien `href="#…"` interne est
   intercepté et animé en `requestAnimationFrame` par `site.js` (easeOutCubic, décélération maîtrisée, coupé net
   si l'utilisateur reprend la main ; la cible est RECALCULÉE à chaque pas — une police ou une image
-  qui arrive en cours de route la déplace — puis un `scrollTo` final pose la position exacte) — `scroll-behavior: smooth` a été retiré, il aurait doublé le
+  qui arrive en cours de route la déplace — puis un `scrollTo` final pose la position exacte) — `scroll-behavior: smooth` est absent, il doublerait le
   lissage. Saut direct (pas d'animation) sous `prefers-reduced-motion: reduce`.
 - **Palette de la vitrine (jetons de `site.css`)** : `--teal` (`#46afac`, teal signature) est
   **décoratif seul** — il ne tient que 2,50:1 sur `--b-board`, sous la barre texte. Un texte teal
@@ -213,8 +211,8 @@ paths:
   de confidentialité de l'app pour le volet RGPD). **Aucun FORMULAIRE n'est posté sur cette page** —
   la démo passe par un `mailto:` (client de messagerie du visiteur, rien n'est posté côté serveur) :
   un futur formulaire de contact POSTÉ déclencherait, lui, l'obligation RGPD complète —
-  `business/administratif-mise-en-prod.md` §9. ⚠ **Nuance depuis P4-276 (mesure d'audience)** : la
-  page n'est plus « zéro donnée » au sens strict — Umami mesure l'audience **sans cookie** (IP
+  `business/administratif-mise-en-prod.md` §9. ⚠ **Nuance (mesure d'audience)** : la
+  page n'est pas « zéro donnée » au sens strict — Umami mesure l'audience **sans cookie** (IP
   hachée côté serveur, agrégats anonymes), donc **pas de bandeau de consentement** mais une
   **transparence écrite obligatoire** : paragraphe « Mesure d'audience » de `mentions-legales.html`,
   section de `PrivacyPage.tsx` (app), registre `docs/security/rgpd.md` §2. La phrase d'effacement

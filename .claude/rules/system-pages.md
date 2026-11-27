@@ -76,7 +76,7 @@ paths:
   vers la page tire en premier, l'URI vaut déjà `/system-pages/…` quand le matcher `/config.js`
   est enfin testé, et le bloc devient du **code mort** — la page sert alors son propre HTML au
   `<script src>`, `window.LANDING_CONFIG` reste indéfini, et l'écran tombe silencieusement sur son
-  repli sans marque. Vécu et corrigé le 2026-08-22 (revue sécu). **Se tranche au `caddy adapt`,
+  repli sans marque. **Se tranche au `caddy adapt`,
   jamais à la lecture** : le JSON adapté donne l'ordre réel des handlers.
   Le `status 200` explicite du config.js dans `handle_errors` est du même ordre — sans lui il
   hérite du 502/503/504 de la requête d'origine.
