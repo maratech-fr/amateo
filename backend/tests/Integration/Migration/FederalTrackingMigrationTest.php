@@ -95,6 +95,27 @@ final class FederalTrackingMigrationTest extends KernelTestCase
         yield 'extérieur validé sans gymnase' => ['VALIDATED', 'AWAY', null, null, null, 'UNPLACED', 'VALIDATED'];
     }
 
+    /** @return iterable<string, array{0: string, 1: string}> la colonne qui dit qu'un match vient de la fédération */
+    public static function federationMarks(): iterable
+    {
+        yield 'numéro FBI (import xlsx)' => ['external_ref', 'U13F-0042'];
+        yield 'rencontre du canal API' => ['ffbb_rencontre_id', '200000002871234'];
+    }
+
+    /** Une valeur JSON décodée, clés d'objet triées à tous les niveaux ; l'ordre d'une liste reste le sien. */
+    private static function keyOrderFree(mixed $value): mixed
+    {
+        if (!\is_array($value)) {
+            return $value;
+        }
+        $value = array_map(self::keyOrderFree(...), $value);
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
+    }
+
     /**
      * Un match d'une compétition FBI garde son stade servi ; son placement stocké et son état fédéral suivent la
      * règle du plan ; l'origine du placement ne bouge pas.
@@ -181,13 +202,6 @@ final class FederalTrackingMigrationTest extends KernelTestCase
         self::assertSame('MANUAL', $admin->fetchOne('SELECT source FROM competition WHERE default_friendly'), '« Amicaux » est MANUAL');
         self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id IN (?, ?)', [self::FORGED, $placed]), 'aucune ligne de suivi');
         self::assertSame(['UNPLACED', 'PLACED'], [$this->servedStageOf(self::FORGED), $this->servedStageOf($placed)], '« à placer » et « placé » restent servis tels quels');
-    }
-
-    /** @return iterable<string, array{0: string, 1: string}> la colonne qui dit qu'un match vient de la fédération */
-    public static function federationMarks(): iterable
-    {
-        yield 'numéro FBI (import xlsx)' => ['external_ref', 'U13F-0042'];
-        yield 'rencontre du canal API' => ['ffbb_rencontre_id', '200000002871234'];
     }
 
     /**
@@ -343,20 +357,6 @@ final class FederalTrackingMigrationTest extends KernelTestCase
             'INSERT INTO fixture SELECT * FROM json_populate_record(NULL::fixture, (SELECT (row_to_json(f)::jsonb || ?::jsonb)::json FROM fixture f WHERE f.id = ?))',
             [json_encode(['id' => $id, 'competition_id' => $competitionId, 'opponent_label' => 'Adversaire forgé'] + $columns, \JSON_THROW_ON_ERROR), self::MODEL_FIXTURE],
         );
-    }
-
-    /** Une valeur JSON décodée, clés d'objet triées à tous les niveaux ; l'ordre d'une liste reste le sien. */
-    private static function keyOrderFree(mixed $value): mixed
-    {
-        if (!\is_array($value)) {
-            return $value;
-        }
-        $value = array_map(self::keyOrderFree(...), $value);
-        if (!array_is_list($value)) {
-            ksort($value);
-        }
-
-        return $value;
     }
 
     /** @param callable(): (int|string) $statement */
