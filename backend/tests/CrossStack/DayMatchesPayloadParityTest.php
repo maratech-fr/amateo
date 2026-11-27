@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Entity\TeamMatchHabit;
 use App\Enum\MatchWeek;
 use App\Service\ConflictRadarLoader;
+use App\Tests\SeasonPlanOf;
 use Closure;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -110,6 +111,7 @@ final class DayMatchesPayloadParityTest extends KernelTestCase
     private function radarHolderOfKarimLine(string $fixtureId): ?string
     {
         $this->em->clear();
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), $this->season->getId());
         $radar = self::getContainer()->get(ConflictRadarLoader::class)->conflicts($this->club->getId(), $this->season->getId());
         foreach ($radar['held'] as $line) {
             if ('MATCH_TRAINING' === $line['type'] && $fixtureId === ($line['fixture']['fixtureId'] ?? null) && self::KARIM === $line['coachId']) {

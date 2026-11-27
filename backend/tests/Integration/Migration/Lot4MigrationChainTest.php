@@ -237,6 +237,8 @@ final class Lot4MigrationChainTest extends KernelTestCase
     {
         $played = $this->migrate();
         self::assertSame(self::LOT_MIGRATIONS, $played, 'la chaîne joue exactement les migrations du lot');
+        // Lot 5 : la procédure du lot capture la copie des versions gardées après les migrations (§6, étape 2).
+        self::assertSame(0, $this->console(['command' => 'app:plans:capture-version-states']), 'la capture réussit');
 
         $this->scopeGucToClub(self::ER_CLUB);
         $body = match ($rail) {

@@ -141,6 +141,8 @@ trait PlacementHoldingDecorTrait
         self::assertInstanceOf(SchedulePlan::class, $plan);
         $plan->setChosenScheduleId($schedule->getId());
         $this->em->flush();
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheDecorInForce(static::getContainer(), $planId);
 
         return $schedule->getId();
     }
@@ -156,6 +158,7 @@ trait PlacementHoldingDecorTrait
         $team->setIsActive(true);
         $this->em->persist($team);
         $this->em->flush();
+        SeasonPlanOf::keepTheSeasonInForce(static::getContainer(), $this->season->getId());
         static::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
@@ -337,6 +340,8 @@ trait PlacementHoldingDecorTrait
      */
     private function payload(?array $window = null): array
     {
+        // Le décor est fini : le socle en vigueur porte son état (lot 5, la porte lit la copie).
+        SeasonPlanOf::keepTheSeasonInForce(static::getContainer(), $this->season->getId());
         $this->em->clear();
 
         return self::getContainer()->get(MatchPlacementPayloadBuilder::class)->build($this->club, $this->season->getId(), $window)['payload'];

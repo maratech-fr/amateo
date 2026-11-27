@@ -506,6 +506,8 @@ final class MatchVisitDeltaParityTest extends WebTestCase
             'UPDATE schedule_plan SET chosen_schedule_id = :sched, updated_at = NOW() WHERE season_id = :sid AND type = \'SEASON\'',
             ['sched' => $scheduleId, 'sid' => $seasonId],
         );
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), $seasonId);
     }
 
     private function matchMatchFingerprint(string $coachId, string $fixtureA, string $fixtureB): string

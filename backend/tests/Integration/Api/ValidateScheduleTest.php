@@ -305,6 +305,8 @@ final class ValidateScheduleTest extends WebTestCase
         $this->em->persist($entry);
         $this->em->flush();
 
+        // Le socle en vigueur du décor porte l'état du décor (lot 5, la période naît de la copie en vigueur).
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), $season->getId());
         // Le geste « Adapter » : le plan naît AVEC sa grille, sans aucune version.
         $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         self::assertNotNull($planId);

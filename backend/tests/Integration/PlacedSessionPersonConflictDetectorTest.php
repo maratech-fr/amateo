@@ -88,7 +88,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
 
         self::assertTrue($result['seasonPlanChosen']);
         self::assertCount(1, $result['conflicts']);
@@ -119,7 +119,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Le cas réel : Anna sur deux séances, Bob tient la seconde. Personne n'est signalé. */
@@ -132,7 +132,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /**
@@ -148,7 +148,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90, $ctx['coach']);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90, $ctx['coach']);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Même case sans groupe : chacun ses coachs. Anna (A, C) est à deux endroits, le radar le signale. */
@@ -164,7 +164,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamB'], $ctx['gym1'], 2, '19:00', 90);
         $this->place($ctx, $teamC, $ctx['gym2'], 2, '19:00', 90);
 
-        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertNotSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Le cas des trois appelants : U9 = Anna + Bob, Anna joue ailleurs, U11-2 = Bob. Personne pour tout tenir. */
@@ -181,7 +181,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
         $this->place($ctx, $teamC, $this->thirdGym($ctx), 2, '18:00', 90);
 
-        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertNotSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Un second coach qui joue ailleurs au même moment ne tient rien : la séance n'a personne. */
@@ -196,7 +196,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertNotSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'Anna tient A, Bob y joue : B n\'a personne');
+        self::assertNotSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'Anna tient A, Bob y joue : B n\'a personne');
     }
 
     /** Retirer le lien fait disparaître le conflit : la détection suit les liens COURANTS. */
@@ -208,12 +208,12 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'témoin : le conflit existe tant que le lien est là');
+        self::assertCount(1, $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'témoin : le conflit existe tant que le lien est là');
 
         $this->em->remove($second);
         $this->em->flush();
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'lien retiré → plus de personne présente aux deux séances → plus de conflit');
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'lien retiré → plus de personne présente aux deux séances → plus de conflit');
     }
 
     /** MÊME gymnase = mutualisation voulue, jamais un conflit. */
@@ -225,7 +225,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym1'], 2, '18:00', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Créneaux ADJACENTS (fin de l'un = début de l'autre) : demi-ouverts, aucun chevauchement. */
@@ -237,7 +237,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '17:00', 90); // → 18h30
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:30', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Même chevauchement, jours DIFFÉRENTS. */
@@ -249,7 +249,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 3, '18:00', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Un JOUEUR (membership actif « joue aussi dans ») est détecté comme une personne présente. */
@@ -262,7 +262,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertCount(1, $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Un membership joueur INACTIF ne compte pas (la personne ne joue plus là). */
@@ -274,7 +274,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Le coach DÉSIGNÉ de la séance (slot.coachId) prime sur les coachs de l'équipe (repli planning). */
@@ -288,7 +288,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90, $bob);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'la séance de B est à Bob : Anna n\'y est pas, malgré son lien MAIN');
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'la séance de B est à Bob : Anna n\'y est pas, malgré son lien MAIN');
 
         // Témoin : sans coach désigné, le repli tombe sur les coachs de l'équipe (Anna) → conflit.
         $ctx2 = $this->seed();
@@ -296,7 +296,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->link($ctx2, $ctx2['teamB'], $ctx2['coach'], TeamCoachRole::MAIN);
         $this->place($ctx2, $ctx2['teamA'], $ctx2['gym1'], 2, '18:00', 90);
         $this->place($ctx2, $ctx2['teamB'], $ctx2['gym2'], 2, '18:00', 90);
-        self::assertCount(1, $this->detector->detect($ctx2['clubId'], $ctx2['seasonId'])['conflicts']);
+        self::assertCount(1, $this->detectInForce($ctx2['clubId'], $ctx2['seasonId'])['conflicts']);
     }
 
     // ── Chantier H : un retard toléré ouvert par un adjoint est un RELAIS, hors du compte de conflits ──
@@ -316,7 +316,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
 
         self::assertSame([], $result['conflicts'], 'la paire tolérée + adjoint dispo n\'est plus un conflit');
         self::assertCount(1, $result['relays'], 'elle est inscrite comme relais, hors du compte de conflits');
@@ -335,7 +335,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
         self::assertCount(1, $result['conflicts'], 'sans adjoint disponible, la tolérance ne fait pas de relais');
     }
 
@@ -352,7 +352,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 5, '20:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 5, '20:00', 90, $emma);
 
-        $conflicts = $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'];
+        $conflicts = $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'];
 
         self::assertCount(1, $conflicts);
         self::assertSame($ctx['coach'], $conflicts[0]['personId']);
@@ -369,7 +369,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 4, '20:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 5, '20:00', 90, $emma);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Retard toléré et adjointe libre : la séance où l'adjointe est nommée se lit comme un relais, pas comme un conflit. */
@@ -384,7 +384,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '19:00', 75);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, $emma, 30);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
 
         self::assertSame([], $result['conflicts']);
         self::assertCount(1, $result['relays']);
@@ -411,7 +411,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '20:00', 90, tolerance: 30);
         $this->place($ctx, $u17, $this->thirdGym($ctx), 2, '20:00', 90, $emma);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
 
         self::assertSame([], $result['relays'], 'Karim est pris par U17 : il n\'ouvre pas U15');
         self::assertContains($ctx['coach'], array_column($result['conflicts'], 'personId'));
@@ -427,7 +427,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90, $emma);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts']);
     }
 
     /** Emma joue dans deux équipes : être nommée adjointe sur l'une n'en fait pas une coach, aucun coach ne la remplace sur le terrain. */
@@ -444,7 +444,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90, $emma);
         $this->place($ctx, $ctx['teamB'], $ctx['gym2'], 2, '18:00', 90);
 
-        self::assertContains($emma, array_column($this->detector->detect($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'personId'));
+        self::assertContains($emma, array_column($this->detectInForce($ctx['clubId'], $ctx['seasonId'])['conflicts'], 'personId'));
     }
 
     /** Aucune version pointée → pas de planning en vigueur : seasonPlanChosen false, rien scanné. */
@@ -454,7 +454,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->link($ctx, $ctx['teamA'], $ctx['coach'], TeamCoachRole::MAIN);
         $this->link($ctx, $ctx['teamB'], $ctx['coach'], TeamCoachRole::MAIN);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId']);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId']);
         self::assertFalse($result['seasonPlanChosen']);
         self::assertSame([], $result['conflicts']);
     }
@@ -468,12 +468,12 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->link($ctxB, $ctxB['teamB'], $ctxB['coach'], TeamCoachRole::MAIN);
         $this->place($ctxB, $ctxB['teamA'], $ctxB['gym1'], 2, '18:00', 90);
         $this->place($ctxB, $ctxB['teamB'], $ctxB['gym2'], 2, '18:00', 90);
-        self::assertCount(1, $this->detector->detect($ctxB['clubId'], $ctxB['seasonId'])['conflicts'], 'témoin : B a bien son conflit');
+        self::assertCount(1, $this->detectInForce($ctxB['clubId'], $ctxB['seasonId'])['conflicts'], 'témoin : B a bien son conflit');
 
         // ... club A n'a rien, et ne voit jamais celui de B.
         $ctxA = $this->seed();
         $this->scopeGucToClub($ctxA['clubId']);
-        self::assertSame([], $this->detector->detect($ctxA['clubId'], $ctxA['seasonId'])['conflicts']);
+        self::assertSame([], $this->detectInForce($ctxA['clubId'], $ctxA['seasonId'])['conflicts']);
     }
 
     // ── Une séance sans coach au début est dite sur la version affichée, qu'elle soit ou non en vigueur ─────
@@ -661,11 +661,11 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $work = $this->workVersion($ctx);
         $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
-        $onWork = $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $work);
+        $onWork = $this->detectInForce($ctx['clubId'], $ctx['seasonId'], $work);
         self::assertCount(1, $onWork['absences']);
         self::assertSame($work->getId(), $onWork['absences'][0]['scheduleId']);
 
-        self::assertSame([], $this->detector->detect($ctx['clubId'], $ctx['seasonId'])['absences'], 'sans version affichée : la version pointée, vide ici');
+        self::assertSame([], $this->detectInForce($ctx['clubId'], $ctx['seasonId'])['absences'], 'sans version affichée : la version pointée, vide ici');
     }
 
     /** Aucune version pointée n'empêche pas de signaler une absence sur la version de travail affichée. */
@@ -677,7 +677,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $work = $this->workVersion($ctx);
         $this->place([...$ctx, 'scheduleId' => $work->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
-        $result = $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $work);
+        $result = $this->detectInForce($ctx['clubId'], $ctx['seasonId'], $work);
 
         self::assertFalse($result['seasonPlanChosen']);
         self::assertCount(1, $result['absences']);
@@ -703,7 +703,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place([...$ctx, 'scheduleId' => $period->getId()], $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
 
         self::assertSame([], $this->detectOnDisplayed($ctx)['absences'], 'le planning annuel ne lit que les règles permanentes');
-        self::assertCount(1, $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $period)['absences']);
+        self::assertCount(1, $this->detectInForce($ctx['clubId'], $ctx['seasonId'], $period)['absences']);
     }
 
     protected function setUp(): void
@@ -714,10 +714,22 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
     }
 
     /**
-     * @param array{clubId: string, seasonId: string, scheduleId: string|null} $ctx
-     *
      * @return array{seasonPlanChosen: bool, conflicts: list<mixed>, relays: list<mixed>, absences: list<array<string, mixed>>}
      */
+    /**
+     * Le radar sur le décor tel qu'il est : la version en vigueur du décor porte la copie de son état (lot 5, la porte
+     * lit la copie).
+     *
+     * @return array<string, mixed>
+     */
+    private function detectInForce(string $clubId, string $seasonId, ?Schedule $schedule = null): array
+    {
+        $this->scopeGucToClub($clubId);
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), $seasonId);
+
+        return $this->detector->detect($clubId, $seasonId, $schedule);
+    }
+
     private function detectOnDisplayed(array $ctx): array
     {
         $this->em->clear();
@@ -725,7 +737,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
         self::assertInstanceOf(Schedule::class, $schedule);
 
-        return $this->detector->detect($ctx['clubId'], $ctx['seasonId'], $schedule);
+        return $this->detectInForce($ctx['clubId'], $ctx['seasonId'], $schedule);
     }
 
     /** @param array{clubId: string, seasonId: string} $ctx */

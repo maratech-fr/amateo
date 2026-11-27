@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -71,6 +72,9 @@ final class ConstraintWriteOnValidatedPlanTest extends WebTestCase
         $this->em->persist($schedule);
         $provisioner->linkSchedule($schedule);
         $this->em->flush();
+        // Lot 5 : une version terminée porte la copie de son état, prise à sa naissance.
+        $states = $container->get(PlanStates::class);
+        $states->store($schedule, $states->capture($schedule->getSchedulePlanId()));
 
         // JWT Bearer du gestionnaire — l'API est stateless (le front l'envoie en cookie ;
         // Bearer accepté pour scripts/tests), donc on l'attache à CHAQUE requête.

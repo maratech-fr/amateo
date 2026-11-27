@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Assert;
@@ -47,6 +48,9 @@ trait ChoosesPlanVersionTrait
             'seed: la version n\'a pu être pointée — son plan existe-t-il ?',
         );
         $em->flush();
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon) — celle du décor à cet instant.
+        $states = $container->get(PlanStates::class);
+        $states->store($schedule, $states->capture($schedule->getSchedulePlanId()));
     }
 
     /**

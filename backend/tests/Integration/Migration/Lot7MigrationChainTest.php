@@ -10,6 +10,7 @@ use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
 use App\Tests\FrozenSchemaDatabaseTrait;
 use App\Tests\Integration\EngineRequestReferenceTest;
+use App\Tests\SeasonPlanOf;
 use DAMA\DoctrineTestBundle\PHPUnit\SkipDatabaseRollback;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -137,6 +138,9 @@ final class Lot7MigrationChainTest extends KernelTestCase
         }
 
         $this->scopeGucToClub(self::ER_CLUB);
+        // Lot 5 : le socle en vigueur du décor figé (né avant les copies) reçoit la copie de son état, comme la capture
+        // de la procédure du lot.
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), self::ER_SEASON);
         $this->assertReference($expectedFile ?? $reference, $this->runPlacement(null));
     }
 

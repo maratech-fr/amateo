@@ -63,6 +63,8 @@ trait EngineRequestMatchesNetDecorTrait
         Assert::assertInstanceOf(Team::class, $team);
         $team->setSportCategoryId(self::ER_NET_CATEGORY_U13)->setLevel(TeamLevel::DEPARTEMENTAL)->setGender(Gender::F);
         $em->flush();
+        // Le socle en vigueur du décor porte l'état du décor (lot 5).
+        SeasonPlanOf::keepTheDecorInForce(static::getContainer(), $this->erSeasonPlanId());
     }
 
     /** Référence 16 : deux équipes dans une division importée. */

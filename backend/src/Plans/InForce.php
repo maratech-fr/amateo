@@ -27,9 +27,8 @@ use Symfony\Component\DependencyInjection\Attribute\AutowireServiceClosure;
  * pointeur d'une période se lit ailleurs.
  *
  * Règles de lecture :
- * - aucun socle validé, ou une version en vigueur sans copie (née avant le lot, que la conversion n'a pas
- *   capturée) : les lignes de travail (niveau saison : celles de la saison ; niveau plan : celles du plan de
- *   saison) ;
+ * - aucun socle validé : les lignes de travail (niveau saison : celles de la saison ; niveau plan : celles du plan
+ *   de saison). Une version en vigueur sans copie lève : jamais un repli sur le travail ;
  * - une famille que porte la copie de la version en vigueur ({@see PlanStates}) : les lignes de la copie, moins
  *   celles dont l'équipe, le gymnase ou le coach a été supprimé depuis ({@see PlanStates::withoutDeadReferences}),
  *   leurs champs froids pris dans la copie, le libre lu sur la ligne vivante (une ligne supprimée depuis renaît de la
@@ -121,7 +120,7 @@ final readonly class InForce
         }
         $planStates = ($this->planStates)();
         if (!$planStates->has($versionId)) {
-            return $live;
+            throw new LogicException(\sprintf('La version en vigueur %s du plan de saison %s n\'a pas de copie de son état : la porte de l\'en vigueur ne la lit pas.', $versionId, $this->soclePlan->idOf($seasonId)));
         }
         $copy = $planStates->withoutDeadReferences($this->soclePlan->idOf($seasonId), $planStates->of($versionId))->toArray();
         $key = $this->familyKey($familyClass);

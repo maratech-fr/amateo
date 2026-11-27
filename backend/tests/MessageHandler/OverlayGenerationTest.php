@@ -196,6 +196,8 @@ final class OverlayGenerationTest extends KernelTestCase
         self::assertInstanceOf(SchedulePlan::class, $seasonPlan);
         $seasonPlan->setChosenScheduleId($socle->getId());
         $em->flush();
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheDecorInForce(self::getContainer(), $seasonPlan->getId());
 
         // La version SOURCE (COMPLETED) et SON placement — c'est lui qu'on doit retrouver épinglé.
         $source = new Schedule;
@@ -327,6 +329,8 @@ final class OverlayGenerationTest extends KernelTestCase
         self::assertInstanceOf(SchedulePlan::class, $seasonPlan);
         $seasonPlan->setChosenScheduleId($socle->getId());
         $em->flush();
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheDecorInForce(self::getContainer(), $seasonPlan->getId());
 
         $socleSlot = new ScheduleSlotTemplate;
         $socleSlot->setClubId($club->getId());
