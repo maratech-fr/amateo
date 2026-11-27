@@ -34,6 +34,7 @@ use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -331,6 +332,50 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['ffbbCompetitionId' => FfbbHttpClientStub::COUPE_FFBB_ID]), 'the already-paired competition is reused, never duplicated');
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['ffbbRencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]);
         self::assertSame($competitionId, $fixture?->getCompetitionId());
+    }
+
+    /**
+     * Promesse (lot 7, PR 3b, étape 2 du canal API) : une compétition de l'équipe sans référence fédérale (effacée par
+     * un réappariement), dont le nom ne diffère de celui de la coupe que par la casse et les accents, est ré-adoptée —
+     * sa référence reposée, le match y entre — jamais une seconde compétition de ce nom pour l'équipe. La comparaison
+     * est celle de la porte, normalisée ; son jumeau pour `POST /api/competitions` est
+     * `CompetitionUniquenessTest::testASecondCompetitionOfTheSameNameForATeamIsRefusedAtTheDoor`.
+     */
+    public function testACupCompetitionNamedDifferentlyOnlyByCaseAndAccentsIsReAdopted(): void
+    {
+        [$token, , $clubId] = $this->register('FRCUP5');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $this->scopeGucToClub($clubId);
+        $twin = $this->competitionFor($team->getId(), 'u18 Masculin Coupe du Rhône', CompetitionType::CUP);
+
+        self::assertSame(1, $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]])['created']);
+
+        $connection = $this->scoped($clubId);
+        self::assertSame([$twin->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune seconde compétition de ce nom pour l\'équipe');
+        self::assertSame(FfbbHttpClientStub::COUPE_FFBB_ID, $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$twin->getId()]), 'sa référence fédérale est reposée');
+        self::assertSame($twin->getId(), $connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]), 'le match entre dans la compétition ré-adoptée');
+    }
+
+    /**
+     * Promesse (étape 2 du canal API, son refus gardé) : la compétition de même nom normalisé qui porte DÉJÀ une autre
+     * référence fédérale n'est jamais ré-adoptée — sa référence n'est pas écrasée, aucune compétition n'est créée, la
+     * rencontre reste sans compétition.
+     */
+    public function testACupCompetitionOfTheSameNameCarryingAnotherFederalRefIsNeverOverwritten(): void
+    {
+        [$token, , $clubId] = $this->register('FRCUP6');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $this->scopeGucToClub($clubId);
+        $other = $this->competitionFor($team->getId(), 'u18 Masculin Coupe du Rhône', CompetitionType::CUP, static fn ($c) => $c->setFfbbCompetitionId('autre-coupe'));
+
+        $this->apply($token, [], [['rencontreId' => FfbbHttpClientStub::RENCONTRE_COUPE_1_ID, 'teamId' => $team->getId()]]);
+
+        $connection = $this->scoped($clubId);
+        self::assertSame('autre-coupe', $connection->fetchOne('SELECT ffbb_competition_id FROM competition WHERE id = ?', [$other->getId()]), 'la référence de l\'autre coupe n\'est pas écrasée');
+        self::assertSame([$other->getId()], $connection->fetchFirstColumn('SELECT competition_id FROM engagement WHERE team_id = ?', [$team->getId()]), 'aucune compétition n\'est créée');
+        self::assertNull($connection->fetchOne('SELECT competition_id FROM fixture WHERE ffbb_rencontre_id = ?', [FfbbHttpClientStub::RENCONTRE_COUPE_1_ID]) ?: null, 'la rencontre reste sans compétition');
     }
 
     public function testApplyReFetchesServerAndIgnoresForgedOrForeignCreations(): void
@@ -822,6 +867,13 @@ final class FfbbRencontresApiTest extends WebTestCase
         // elle fuirait sur les tests suivants.
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    private function scoped(string $clubId): Connection
+    {
+        $this->scopeGucToClub($clubId);
+
+        return $this->em->getConnection();
     }
 
     /** @return array<string, string> */
