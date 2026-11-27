@@ -3018,6 +3018,42 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame('SALLE AUTRE', $other['unresolvedDeviations'][0]['fields']['venue']['file']);
     }
 
+    /**
+     * Le libellé gardé par « Garder l'appli » s'éteint dès qu'une salle est posée sur le match, quel que soit
+     * l'écrivain (ici une écriture directe de l'entité, flushée) ; un dépointage (salle retirée) le laisse. Depuis la
+     * PR 6b du lot 7 le libellé vit dans le suivi fédéral : la règle tient au flush (`KeptVenueLabelListener`). Jumeau
+     * sans base : `FixtureTest::testSettingANonNullVenueClearsTheKeptVenueLabel` (la règle sur la ligne de suivi seule).
+     */
+    public function testPuttingAVenueOnTheMatchClearsTheKeptLabelAndRemovingItKeepsIt(): void
+    {
+        $jdr = $this->createVenue('GYMNASE JDR');
+        $debarros = $this->createVenueWithAliases('Debarros', ['salle raphael de barros']);
+        $fixture = $this->unplacedHomeWithVenue('UV05', $jdr, 'OLD LABEL');
+        $this->importMapped(
+            [['D2', 'UV05', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE RAPHAEL DE BARROS']],
+            null,
+            [['fixtureId' => $fixture->getId(), 'field' => 'venue', 'choice' => 'keep_app']],
+        );
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV05']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertSame('salle raphael de barros', $this->keptVenueLabelOfFixture($fixture), 'témoin : le libellé est gardé');
+
+        $fixture->setVenueId(null);
+        $this->em->flush();
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV05']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertSame('salle raphael de barros', $this->keptVenueLabelOfFixture($fixture), 'retirer la salle laisse le libellé gardé');
+
+        $fixture->setVenueId($debarros);
+        $this->em->flush();
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'UV05']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertNull($this->keptVenueLabelOfFixture($fixture), 'poser une salle éteint le libellé gardé');
+    }
+
     public function testTakeFileOnAnUnplacedVenueFollowsAConfirmedAlias(): void
     {
         $jdr = $this->createVenue('GYMNASE JDR');
