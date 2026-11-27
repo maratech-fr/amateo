@@ -397,7 +397,14 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $this->assertReference('placement-18-suivi-federal', $this->runPlacement(null));
     }
 
-    /** Les coupes, pour une équipe à fenêtre de ligue le samedi seulement et pour une équipe sans aucune fenêtre. */
+    /**
+     * Les coupes, pour une équipe à fenêtre de ligue le samedi seulement et pour une équipe sans aucune fenêtre. Un
+     * domicile de coupe n'est jamais confié au moteur (lot 7, PR 4b, Q7) : non placé, il est absent ; posé par le
+     * système, c'est une ancre ; posé à la main, il l'était déjà. La référence a changé à la PR 4b : les trois domiciles
+     * de coupe non placés sortent, celui posé par le système devient une ancre, et l'occupation d'entraînement du
+     * mercredi 11 mars part avec eux (plus aucun match à placer ce jour-là). « Coupe Territoriale U13 », rangée
+     * championnat, garde son domicile à placer : la nature décide, jamais le nom.
+     */
     public function testPlacementWithCups(): void
     {
         $this->seedSocleInForce();

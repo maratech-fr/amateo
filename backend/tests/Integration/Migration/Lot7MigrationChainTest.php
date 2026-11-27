@@ -32,6 +32,12 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * sans compétition y est versé, « Amical PNF » devient amicale — la référence 17 change en conséquence (le domicile
  * non placé de « Amical PNF » sort de la demande, celui posé par le système devient une ancre), les autres non.
  *
+ * Depuis la PR 4b, un domicile de coupe n'est plus confié au moteur (Q7) : la conversion range « Coupe Territoriale
+ * U13 », stockée championnat avant la PR 4a, en coupe, si bien que son domicile non placé sort AUSSI de la demande. Le
+ * décor de {@see EngineRequestReferenceTest}, écrit après la conversion, la garde championnat (le nom ne décide pas) :
+ * la référence 19 a donc ici son propre fichier, `placement-19-coupes-converties`, qui ne diffère de `placement-19-coupes`
+ * que par ce match.
+ *
  * Jumeau : `Lot4MigrationChainTest` (références 1 à 15, schéma d'avant le lot 4) joue aussi cette migration.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le groupe `phase1` est requis.
@@ -53,9 +59,10 @@ final class Lot7MigrationChainTest extends KernelTestCase
 
     /**
      * Les références du filet des matchs, et ce que la conversion doit avoir fait de leurs compétitions : par
-     * compétition du décor, l'équipe qui y est engagée (une seule, Q8).
+     * compétition du décor, l'équipe qui y est engagée (une seule, Q8), et le fichier de référence attendu quand il
+     * diffère du nom de la référence.
      *
-     * @return iterable<string, array{0: string, 1: array<string, string>}>
+     * @return iterable<string, array{0: string, 1: array<string, string>, 2?: string}>
      */
     public static function references(): iterable
     {
@@ -68,12 +75,12 @@ final class Lot7MigrationChainTest extends KernelTestCase
         yield 'placement-16-deux-equipes-une-division' => ['placement-16-deux-equipes-une-division', $base + ['c0e90000-0000-4000-8000-000000000161' => $u13, 'c0e90000-0000-4000-8000-000000000162' => $u13f2]];
         yield 'placement-17-amicaux' => ['placement-17-amicaux', $base + ['c0e90000-0000-4000-8000-000000000171' => $sm1]];
         yield 'placement-18-suivi-federal' => ['placement-18-suivi-federal', $base];
-        yield 'placement-19-coupes' => ['placement-19-coupes', $base + ['c0e90000-0000-4000-8000-000000000191' => $u13, 'c0e90000-0000-4000-8000-000000000192' => $u15, 'c0e90000-0000-4000-8000-000000000193' => $u13]];
+        yield 'placement-19-coupes' => ['placement-19-coupes', $base + ['c0e90000-0000-4000-8000-000000000191' => $u13, 'c0e90000-0000-4000-8000-000000000192' => $u15, 'c0e90000-0000-4000-8000-000000000193' => $u13], 'placement-19-coupes-converties'];
     }
 
     /** @param array<string, string> $engagedTeamByCompetition */
     #[DataProvider('references')]
-    public function testTheMigratedDecorGivesTheReferencePlacementRequest(string $reference, array $engagedTeamByCompetition): void
+    public function testTheMigratedDecorGivesTheReferencePlacementRequest(string $reference, array $engagedTeamByCompetition, ?string $expectedFile = null): void
     {
         $admin = self::frozenCaseConnection();
         $fixturesBefore = $admin->fetchAllKeyValue('SELECT id, concat_ws(\'|\', team_id, competition_id) FROM fixture ORDER BY id');
@@ -107,7 +114,7 @@ final class Lot7MigrationChainTest extends KernelTestCase
         self::assertSame(array_keys($fixturesBefore), array_keys($fixturesAfter), 'aucun match ne s\'ajoute ni ne part');
 
         $this->scopeGucToClub(self::ER_CLUB);
-        $this->assertReference($reference, $this->runPlacement(null));
+        $this->assertReference($expectedFile ?? $reference, $this->runPlacement(null));
     }
 
     protected function setUp(): void
