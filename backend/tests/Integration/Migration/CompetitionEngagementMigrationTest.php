@@ -165,7 +165,9 @@ final class CompetitionEngagementMigrationTest extends KernelTestCase
         $admin->executeStatement('UPDATE fixture SET team_id = ? WHERE id = ?', [self::U15, 'f1c70000-0000-4000-8000-000000000161']);
         self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM fixture f JOIN competition c ON c.id = f.competition_id WHERE f.team_id <> c.team_id'), 'témoin : un match hors de l\'équipe de sa compétition');
 
-        $this->assertTheConversionIsCancelled($admin);
+        // Le motif nommé, pas seulement un échec : sans l'arrêt, la clé du match vers l'engagement ferait échouer la
+        // conversion aussi, sans dire pourquoi.
+        $this->assertTheConversionIsCancelled($admin, 'hors de l\'équipe de leur compétition');
     }
 
     /**
@@ -186,7 +188,7 @@ final class CompetitionEngagementMigrationTest extends KernelTestCase
         }
         self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM competition WHERE team_id = ? AND id IN (\'c0e90000-0000-4000-8000-0000000000a1\', \'c0e90000-0000-4000-8000-0000000000a2\')', [self::U15]), 'témoin : deux lignes de U15 M, noms jumeaux');
 
-        $this->assertTheConversionIsCancelled($admin);
+        $this->assertTheConversionIsCancelled($admin, 'ne diffèrent que par la casse ou les accents');
     }
 
     protected function setUp(): void
@@ -207,13 +209,14 @@ final class CompetitionEngagementMigrationTest extends KernelTestCase
         self::assertNotSame([], $played, 'la migration de la PR 3b est jouée');
     }
 
-    private function assertTheConversionIsCancelled(Connection $admin): void
+    private function assertTheConversionIsCancelled(Connection $admin, string $reason): void
     {
         $competitions = (int) $admin->fetchOne('SELECT COUNT(*) FROM competition');
 
         [$code, $output, $played] = $this->runFrozenMigrations();
 
         self::assertNotSame(0, $code, 'la conversion refuse ce décor : ' . $output);
+        self::assertStringContainsString($reason, $output, 'l\'arrêt nomme son motif');
         self::assertSame([], $played, 'la migration n\'est pas enregistrée');
         self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.engagement\')'), 'aucun engagement n\'est écrit');
         self::assertTrue(self::frozenColumnExists($admin, 'competition', 'team_id'), 'la compétition garde son équipe');
