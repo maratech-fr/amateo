@@ -354,6 +354,40 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
     }
 
     /**
+     * Lot 7, PR 6b : un amical posé à la main, rangé dans la vraie « Amicaux » (hors FBI), n'est jamais balayé une fois
+     * passé — `swept` ne le compte pas et il garde son stade. Jumeau de bout en bout : le scénario « Un amical posé à la
+     * main s'arrête à « Placé » » (`un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature`), qui lit le
+     * stade ; ici le compte, que la porte (sans effet sur un match non suivi) ne protège pas.
+     */
+    public function testAPastHandMadeFriendlyInAmicauxIsNeverSwept(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $fixture = new Fixture;
+        $fixture->setClubId($clubId);
+        $fixture->setSeasonId($seasonId);
+        $fixture->setTeamId($team->getId());
+        $fixture->setCompetitionId($this->friendlyCompetitionIdFor($team->getId(), $clubId, $seasonId));
+        $fixture->setMatchDate(new DateTimeImmutable('2020-09-19'));
+        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setOpponentLabel('Amical à la main');
+        $this->em->persist($fixture);
+        $this->em->flush();
+        $fixtureId = $fixture->getId();
+
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(200);
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame(0, $data['swept'] ?? -1, 'un amical hors FBI n\'est jamais balayé');
+        $this->em->clear();
+        $fresh = $this->em->find(Fixture::class, $fixtureId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::UNPLACED, $this->stageOfFixture($fresh, $this->em), 'il garde son stade');
+    }
+
+    /**
      * NR (D4) — le balayage ne touche PAS un amical FUTUR (pas encore joué) ni un amical passé
      * portant un ÉCART en attente (jamais tranché en balayage) : les deux restent UNPLACED.
      */
