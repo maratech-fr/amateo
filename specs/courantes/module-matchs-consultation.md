@@ -95,7 +95,11 @@ le layout — la nav des onglets reste inchangée.
   regarde plus — ligue, club et équipe se comportent désormais pareil, seul un gymnase indisponible
   reste un refus dur côté client. Divergent PAR CONCEPTION : l'exemption amical (front `!isFriendly`
   vs backend saut des compétitions `FRIENDLY`) et la résolution équipe↔fenêtre (déjà serveur, servie
-  depuis la COPIE club — §1).
+  depuis la COPIE club — §1). Une COUPE n'a pas de fenêtre de ligue : `resolveEnvelope` rend une
+  enveloppe active `cup: true` (08:00–21:00, tout jour, férié compris, `cupKickoffInside`), un amical
+  aucune enveloppe ; `PlacementPanel` remplace alors `EnvelopeHint` par `CupHint` (« samedi ou dimanche
+  au choix » le week-end, « date imposée » en semaine, avertissement hors horaires) — règle du radar :
+  `module-matchs-radar-et-placement.md` § Coupes.
 - **Grille week-end** (`WeekendGrid`) : un match placé démarre au coup d'envoi et dure le match
   (`matchMinutes` résolu) ; il **s'enchaîne** avec un match suivant même gymnase/jour dont le coup
   d'envoi tombe ≤ 30 min après sa fin — au-delà, le trou reste visible. **Case « À confirmer »**

@@ -12,10 +12,12 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\TeamCoach;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
+use App\Enum\CompetitionType;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
 use App\Matches\ConflictType;
+use App\Matches\CupKickoffRule;
 use App\Matches\EngagementView;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\DayHoldings;
@@ -115,7 +117,11 @@ use DateTimeImmutable;
  *   day/kickoff sit outside every resolved league window (same
  *   LeagueEnvelopeResolver join as the solver). A team unmapped FOR LACK OF A
  *   LEVEL is no longer silent — it is named by TEAM_LEVEL_MISSING (P4-288); a team
- *   that HAS a level but no declared window still stays silent here.
+ *   that HAS a level but no declared window still stays silent here. A CUP is never
+ *   judged against the league (lot 7 PR 4b).
+ * - CUP_KICKOFF_OUT_OF_HOURS (3, lot 7 PR 4b): a placed HOME cup whose kickoff sits
+ *   outside 08:00–21:00 (bounds included, any day, public holiday included —
+ *   {@see CupKickoffRule}). Manual placement stays PERMITTED.
  * - CLUB_RULE_VIOLATION (3, P4-272 ③): a placed HOME fixture whose kickoff violates
  *   a HARD club match rule covering the match day. HARD rules ONLY (a PREFERRED rule
  *   never makes a violation); friendlies exempt (like the league envelope). Manual
@@ -541,17 +547,23 @@ final class MatchConflictDetector
         $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
         // Lot 7, PR 4a — un amical est un match d'une compétition AMICALE : exempté de l'enveloppe de ligue, des
         // règles du club et des interdictions de gymnase, signalé sur un créneau de match.
+        // Lot 7, PR 4b — une coupe n'a pas de fenêtre de ligue : elle obéit à sa seule règle de coup d'envoi.
         $friendlyIds = [];
+        $cupIds = [];
         foreach ($competitions as ['competition' => $competition]) {
             if ($competition->getCompetitionType()->isFriendly()) {
                 $friendlyIds[$competition->getId()] = true;
+            }
+            if (CompetitionType::CUP === $competition->getCompetitionType()) {
+                $cupIds[$competition->getId()] = true;
             }
         }
         $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule, closedDatesByVenue: $closedDatesByVenue);
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
-            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays, $friendlyIds),
+            ...$this->ruleWindowConflicts->leagueWindowViolations($activeFixtures, $envelope, $publicHolidays, $friendlyIds + $cupIds),
+            ...$this->ruleWindowConflicts->cupKickoffViolations($activeFixtures, $cupIds),
             ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules, $friendlyIds),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam, $friendlyIds),
             ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),

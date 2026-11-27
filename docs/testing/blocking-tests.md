@@ -480,6 +480,12 @@ de libellés que le test unitaire du classifieur, qui ne gate pas] : « Amical �
 reste championnat ; une compétition d'office « Amicaux » par saison, saison sans match comprise ; chaque match sans
 compétition y est versé avec l'engagement de son équipe ; une compétition déjà nommée « Amicaux » n'est pas prise
 pour la compétition d'office. Obligatoire jusqu'à l'application en production) ·
+`Integration/Service/ConflictRadarLeagueWindowTest` (axe *constraint semantics*, lot conception 7 PR 4b — la
+copie club de la fenêtre de ligue borne un domicile de championnat [hors fenêtre : violation ; dedans ou sans copie :
+rien] et jamais une coupe ; une coupe est jugée sur son seul coup d'envoi, 08:00 et 21:00 compris, un mercredi comme
+un samedi, un jour férié compris, et porte hors de ces bornes « coupe hors horaires » en gravité 3, bornes servies,
+empreinte par match ; un championnat ne la porte jamais. Jumeau par l'API : `les-conflits-d-un-match-disent-la-verite.feature`.
+Chute attendue si la coupe revient à la fenêtre de ligue, si une borne devient exclusive ou si le férié l'efface) ·
 `Integration/Service/LoadedVersionPointerTest` (axe *planning lifecycle*, lot conception 4 PR 2 — la version
 chargée du socle est rangée sur son plan de saison, un seul pointeur pour tous les plans : « Charger » et une
 génération terminée la déplacent, et seule la version que le plan pointe se modifie [409

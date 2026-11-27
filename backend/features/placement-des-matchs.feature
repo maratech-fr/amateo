@@ -20,17 +20,18 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
 
   Scénario: Une ouverture datée suffit à poser un match un mercredi, à la main comme en automatique
     Le gestionnaire ne veut pas ouvrir tous les mercredis pour une coupe : il ouvre ce gymnase, ce
-    jour-là, de telle heure à telle heure. Le refus d'avant devient une pose, et le solveur lit la même
-    ouverture pour l'autre match du jour.
+    jour-là, de telle heure à telle heure. Le refus d'avant devient une pose de la coupe à la main (une
+    coupe n'est jamais confiée au solveur), et le solveur lit la même ouverture pour le match de
+    championnat remis ce jour-là.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables
     Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
-    Et deux matchs à domicile le même mercredi, un par équipe, et aucune autre fenêtre d'accès le mercredi
-    Alors poser le premier à la main ce mercredi à 18h00 est refusé, faute d'accès ce jour-là
+    Et une coupe de la première équipe et un match de championnat remis de la seconde, à domicile le même mercredi, et aucune autre fenêtre d'accès le mercredi
+    Alors poser la coupe à la main ce mercredi à 18h00 est refusé, faute d'accès ce jour-là
     Quand j'ouvre ce gymnase ce mercredi de 18h00 à 22h00 pour une coupe
-    Alors poser le premier à la main ce mercredi à 18h00 est accepté
+    Alors poser la coupe à la main ce mercredi à 18h00 est accepté
     Quand je lance le placement des matchs
-    Alors le second match du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l'ouverture
+    Alors le match de championnat du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l'ouverture
 
   Scénario: Deux domiciles à deux heures d'écart tiennent dans le même gymnase
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
@@ -231,3 +232,18 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je le pose à la main le samedi à 15h00 sur ce gymnase, puis le marque « saisi »
     Alors le ranger dans « Amicaux » est refusé : « Ce match est connu de la fédération : il reste dans sa compétition. »
     Et ce match est toujours un match de championnat
+
+  Scénario: « Placer » ne propose jamais une coupe : la coupe à placer attend la main, celle déjà posée par le système ne bouge pas
+    Une coupe n'a pas de fenêtre de ligue et le solveur ne sait pas choisir son jour : le gestionnaire la
+    place à la main. Le placement automatique ne la reçoit jamais à placer, ni non placée, ni déjà posée
+    par le système, qui reste où elle est. Le championnat du même samedi, lui, est placé.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et une coupe à domicile de la première équipe le samedi, sans créneau posé
+    Et un match de championnat à domicile de la seconde équipe le samedi à placer
+    Et une coupe de la seconde équipe déjà posée par le solveur sur un autre samedi dans ce gymnase, à 20h00
+    Quand je lance le placement des matchs
+    Alors la coupe sans créneau n'est jamais proposée au solveur et reste sans créneau
+    Et la coupe déjà posée par le solveur n'a pas bougé, toujours à 20h00 dans ce gymnase
+    Et le match de championnat du samedi est placé par le solveur

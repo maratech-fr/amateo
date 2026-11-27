@@ -15920,7 +15920,8 @@
                                                             "COMPETITION_INCOMPLETE",
                                                             "AWAY_NO_FOOTPRINT",
                                                             "FRIENDLY_ON_MATCH_SLOT",
-                                                            "TEAM_LEVEL_MISSING"
+                                                            "TEAM_LEVEL_MISSING",
+                                                            "CUP_KICKOFF_OUT_OF_HOURS"
                                                         ]
                                                     },
                                                     "coachId": {
@@ -16160,6 +16161,14 @@
                                                                 }
                                                             }
                                                         }
+                                                    },
+                                                    "kickoffMin": {
+                                                        "type": "string",
+                                                        "description": "CUP_KICKOFF_OUT_OF_HOURS: the earliest kickoff of a cup, \u00ab HH:MM \u00bb (bound included)"
+                                                    },
+                                                    "kickoffMax": {
+                                                        "type": "string",
+                                                        "description": "CUP_KICKOFF_OUT_OF_HOURS: the latest kickoff of a cup, \u00ab HH:MM \u00bb (bound included)"
                                                     },
                                                     "competitionId": {
                                                         "type": "string",

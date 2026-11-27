@@ -10,10 +10,12 @@ import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
+import { dayLabelLong } from "@/shared/lib/days";
+import { formatMinutes } from "@/shared/lib/time";
 import type { ReadState } from "@/shared/lib/readState";
 
 import type { Conflict, Fixture, PlaceFixtureInput, TeamMatchHabit, Venue, VenueClosure, VenueMatchWindow } from "./api";
-import { isFriendlyFixture, isInEnvelope, isoWeekday } from "./lib/envelope";
+import { CUP_KICKOFF_MAX, CUP_KICKOFF_MIN, cupKickoffInside, isFriendlyFixture, isInEnvelope, isoWeekday, timeToMinutes } from "./lib/envelope";
 import type { EnvelopeResult } from "./lib/envelope";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { applicableWindows, dateInsideClosure, hasWeeklyAccess, matchVenueIds, proposedOpeningRange, venueAccessError } from "./lib/matchAccess";
@@ -82,8 +84,32 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** La règle d'une coupe (lot 7, PR 4b) : samedi ou dimanche au choix le week-end, date imposée en semaine, coup d'envoi 08:00–21:00. */
+function CupHint({ matchDate, kickoff }: { matchDate: string; kickoff: string }) {
+  const min = formatMinutes(timeToMinutes(CUP_KICKOFF_MIN));
+  const max = formatMinutes(timeToMinutes(CUP_KICKOFF_MAX));
+  if ("" !== kickoff && !cupKickoffInside(kickoff)) {
+    return (
+      <p className="flex items-start gap-1 text-xs text-warning">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        {MATCHES_TEXTS.panelCupOut(min, max)}
+      </p>
+    );
+  }
+  const day = isoWeekday(matchDate);
+  return (
+    <p className="flex items-start gap-1 text-xs text-muted-foreground">
+      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+      {6 === day || 7 === day ? MATCHES_TEXTS.panelCupWeekend(dayLabelLong(6), dayLabelLong(7), min, max) : MATCHES_TEXTS.panelCupWeekday(min, max)}
+    </p>
+  );
+}
+
 /** Envelope guidance line: HARD when the team maps, advisory reference otherwise. */
-function EnvelopeHint({ envelope, kickoff }: { envelope: EnvelopeResult; kickoff: string }) {
+function EnvelopeHint({ envelope, kickoff, matchDate }: { envelope: EnvelopeResult; kickoff: string; matchDate: string }) {
+  if (true === envelope.cup) {
+    return <CupHint matchDate={matchDate} kickoff={kickoff} />;
+  }
   if (envelope.mapped && envelope.holiday) {
     return (
       <p className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -336,7 +362,7 @@ export function PlacementPanel({
                 {MATCHES_TEXTS.panelHabit(habit.kickoffTime, null !== habit.venueId ? (venues.find((v) => v.id === habit.venueId)?.name ?? "?") : null)}
               </p>
             ) : null}
-            {hasKickoff ? <EnvelopeHint envelope={envelope} kickoff={kickoff} /> : null}
+            {hasKickoff || true === envelope.cup ?<EnvelopeHint envelope={envelope} kickoff={kickoff} matchDate={fixture.matchDate} /> : null}
             {/* D2 — le geste s'appuie sur quatre lectures du club (accès match,
                 indisponibilités, fermetures du calendrier, enveloppe ligue). Tant qu'elles ne sont pas prêtes,
                 le placement est SUSPENDU : un échec ne doit jamais se lire « aucune

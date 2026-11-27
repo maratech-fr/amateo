@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) et PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit), PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26), PR 3b (compétition et engagement séparés, livrée le 2026-11-27) PR 4a (la nature écrite une fois, amical compris ; seul le non-amical engage, livrée le 2026-11-27) et PR 4b (la coupe a sa règle, livrée le 2026-11-27) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
@@ -9,8 +9,8 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b et 4a livrées (§4, « Écarts au plan, tels que livrés »), les quatre autres à faire.
-- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b et 4a sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2, 3a, 3b, 4a et 4b livrées (§4, « Écarts au plan, tels que livrés »), les quatre autres à faire.
+- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1, 2, 3a, 3b, 4a et 4b sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
 | PR du lot 7 | Fichiers partagés avec | Contrainte |
@@ -415,6 +415,21 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 
 **Contrôle visuel (`switch`)** : panneau d'une coupe un samedi, un mercredi, et hors horaires ; ligne « Coupe hors horaires » dans l'onglet Conflits ; grille avec une coupe marquée.
 
+**PR 4b livrée le 2026-11-27** sur `lot/conception`, non déployée.
+
+**Écarts au plan, tels que livrés (PR 4b)**
+- (1) **La référence 19 a deux formes.** Dérivée à la main d'abord (les trois domiciles de coupe non placés sortent, celui posé par le système devient une ancre, l'occupation d'entraînement du mercredi 11 mars part avec eux), puis confirmée par le code réel : `placement-19-coupes.json` (décor de `EngineRequestReferenceTest`, où « Coupe Territoriale U13 » reste championnat, la nature décide, jamais le nom, et garde son domicile à placer) et `placement-19-coupes-converties.json` (chaîne de `Lot7MigrationChainTest` : la migration 4a range « Coupe Territoriale U13 » en coupe, son domicile sort aussi). Les deux ne diffèrent que par ce match. Références 5, 6, 16, 17, 18 à l'octet.
+- (2) **Un step bloquant neuf**, contre « aucun step neuf » : `Integration/Service/ConflictRadarLeagueWindowTest` (axe sens des contraintes) rejoint le step `Blocking suite` de `ci.yml` et `docs/testing/blocking-tests.md`. Raison : le Lot Gate ne joue pas Behat ; sans lui, une coupe rejugée contre la ligue passerait.
+- (3) Les Exemples du scénario retourné portent aussi le jour férié, la pose libre hors horaires et « coupe samedi 18:00 » : trois cas repliés dans le même `Plan du scénario`, pas trois scénarios.
+- (4) Côté écran, `resolveEnvelope` rend un amical sans enveloppe (`mapped: false`) et une coupe avec une enveloppe active (`mapped: true`, `cup: true`, `windows` vide, tout jour), `timeOk` = `cupKickoffInside`.
+- (5) `HandPlaced::is` lit la compétition par `EntityManager::find` : un N+1 possible par match (une requête par fixture hors identité déjà chargée), sans enjeu de sécurité. Il remplace `FriendlyCompetitions::friendlyIdsOf` dans `MatchPlacementPayloadBuilder`.
+- (6) Le retour du moteur ne peut plus écrire non plus sur un amical (`MatchPlacementResultApplier`, par `HandPlaced`) ; rien ne change en pratique, le moteur n'en reçoit plus.
+- (7) Sans saison choisie, un amical n'est plus envoyé « à placer » : l'ancienne lecture passait par la saison, `HandPlaced` n'en dépend pas.
+- (8) `MatchPlacementResultApplierTest` est neuf et **non bloquant** (groupe `integration`) : placer des matchs n'est pas un axe §7.1.
+- (9) Le plafond `frontend/act-warnings-ceiling.json` passe de 27 à 23 (mesuré sur deux runs). `conflictLabels.test.ts` est adapté mécaniquement (le 15ᵉ type).
+- (10) Contrôle visuel : les icônes de l'indication de coupe (`CupHint`, `PlacementPanel`) sont corrigées après les captures ; `matches.spec.ts` joué (7 passés). Captures dans `captures/lot7-pr4b/` (ignoré par git).
+- (11) Observation antérieure à la PR, hors périmètre : le bouton « Rendre au système » déborde de quelques pixels dans la carte du panneau d'un match posé (`PlacementPanel.tsx`, vers la ligne 411). Limite écrite (§11), non corrigée.
+
 ### PR 5 · « Le repli de ligue est dit » (`neo`, backend et un bandeau)
 
 **Change** : l'écran des contraintes de match, section « Ligue », affiche un bandeau permanent, ton information, quand la ligue du club n'est pas au catalogue. Aucun lecteur de règle ne bouge.
@@ -617,7 +632,7 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 - **Zones** : backend, frontend. **Engine : aucun fichier.** Landing, system-pages : aucun.
 - **Autorisés** : `backend/src/{Matches,Entity,Enum,Repository,Service,Service/Basketball,Service/Fbi,Service/Conflicts,Controller,Controller/Basketball,ApiResource,Dto,State,Export,Deletion,OpenApi,Seed}`, `backend/src/Command/EngineRequestsRecordCommand.php`, `backend/src/Service/TeamEngagementGuard.php` (PR 4a seulement), `backend/migrations`, `backend/tests`, `backend/features`, `frontend/src/features/matches`, `frontend/tests/e2e/matches.spec.ts`.
 - **Interdits** : `engine/`, `engine/CONTRACT_VERSION`, `Service/EngineClient.php`, `Service/EngineRequestComposer.php`, `Service/ScheduleConstraintBuilder.php`, `MessageHandler/PlaceMatchesHandler.php`, `Service/MatchPlacementLock.php`, `EventListener/TenantFilterListener.php`, `Doctrine/Filter/`, `Access/`, `security.yaml`, `State/Processor/TeamStateProcessor.php`, `Service/Fbi/FbiArrivalReview.php` et la règle de date de l'import (`FbiFixtureImporter.php:1428-1485`), le Wizard (`TeamsStep.tsx` lit `isEngaged`, non modifié), `landing/`. Aucune route nouvelle.
-- **Axes §7.1** : isolation entre clubs (3b, 6b) ; **périmètre engagé (3b, 4a : la règle change)** ; contrat backend-moteur et chaîne de génération (3a à 6b ; demande modifiée à 4a et à 4b) ; sens des contraintes (4a, 4b). NR nommés par PR, tous dans des tests déjà au step bloquant (C28). **Aucun step `ci.yml` neuf** ; les lignes `blocking-tests.md:190` et `:191` sont réécrites à la PR 4a.
+- **Axes §7.1** : isolation entre clubs (3b, 6b) ; **périmètre engagé (3b, 4a : la règle change)** ; contrat backend-moteur et chaîne de génération (3a à 6b ; demande modifiée à 4a et à 4b) ; sens des contraintes (4a, 4b). NR nommés par PR, tous dans des tests déjà au step bloquant (C28), sauf un : la PR 4b ajoute `ConflictRadarLeagueWindowTest` au step bloquant (écarts de la PR 4b). Les lignes `blocking-tests.md:190` et `:191` sont réécrites à la PR 4a.
 - **Contre-revue** : `smith` est passé sur la v1 et sur la v3 ; cette v4 intègre ses deux verdicts, puis les décisions du fondateur du 2026-11-23. Plafond atteint : pas de v5.
 - **`/security-review`** : systématique sur les PR 3b, 4a, 4b et 6b. Sujets : isolation entre clubs (deux tables neuves, RLS, clés composées, identifiants forgés) ; purge et RGPD (registre « à corriger », déclaration `OnDelete`) ; données de la fédération ; données lues par la demande de placement ; périmètre engagé contourné par changement de compétition ou par reclassement. PR 1, 2, 3a, 5 et 6a : hors liste.
 - **Tests d'abus** : nommés par PR (3b : quatre ; 4a : six, dont trois du périmètre et deux du reclassement ; 6b : trois). Pas de cadrage `oracle`, donc pas de section « Signaux » héritée.
@@ -638,6 +653,7 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 - Le jour d'une coupe n'est jamais contrôlé par le radar : l'application ne connaît pas la date du tirage en dehors de la date du match.
 - **Le choix samedi ou dimanche d'une coupe ne tient que si FBI le porte** : un dépôt le défait sur une coupe non placée, et dans la semaine du match sur une coupe placée (C58).
 - Après « Placer », une coupe reste dans la liste « à placer » sans motif affiché, comme un amical (Q7).
+- Le bouton « Rendre au système » déborde de quelques pixels dans la carte du panneau d'un match posé (`PlacementPanel.tsx`) : observé à la PR 4b, antérieur à elle.
 - Le badge « nouveau conflit » peut s'allumer une fois après la PR 4b (coupe hors horaires) : la référence de visite n'est pas convertie.
 - Une compétition « Amical … » déjà placée par le système garde son créneau, sans contrôle de fenêtre.
 - Un amical posé à la main puis déclaré dans FBI arrive une seconde fois par l'import ; c'est déjà le cas.

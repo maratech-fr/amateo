@@ -11,6 +11,7 @@ import type { CoachGender } from "@/shared/lib/coachWording";
 import { frDateShortNoYear, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLong } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
+import { formatMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
 import type { Coach, Conflict, ConflictCore, ConflictSideRole, HeldConflict, LeagueKickoffWindow, Team, Venue, VenueAccessWindow } from "./api";
@@ -19,6 +20,7 @@ import { sideRoleWord } from "./lib/conflictLabels";
 import { buildConflictSideLines, type ConflictOverlapLine, type ConflictSideKind, type ConflictSideLine, type ConflictSideModel } from "./lib/conflictSideLines";
 import { sortConflictsByDate } from "./lib/conflictOrder";
 import { groupBySeverity, type DiagnosticGroup } from "./lib/diagnostic";
+import { timeToMinutes } from "./lib/envelope";
 import { MATCHES_TEXTS } from "./texts";
 
 /**
@@ -78,6 +80,8 @@ function conflictTitle(conflict: ConflictCore, coaches: Map<string, Coach>): str
       return MATCHES_TEXTS.friendlyOnMatchSlotTitle;
     case "TEAM_LEVEL_MISSING":
       return MATCHES_TEXTS.teamLevelMissingTitle;
+    case "CUP_KICKOFF_OUT_OF_HOURS":
+      return MATCHES_TEXTS.cupKickoffOutOfHoursTitle;
     default:
       return MATCHES_TEXTS.venueUnavailableConflictTitle(conflict.label);
   }
@@ -147,6 +151,11 @@ function conflictSummary(conflict: ConflictCore, teams: Map<string, Team>, venue
   if ("LEAGUE_WINDOW_VIOLATION" === conflict.type && conflict.fixture) {
     const windows = ((conflict.windows ?? []) as LeagueKickoffWindow[]).map((w) => `${w.kickoffMin}–${w.kickoffMax}`).join(", ");
     return `Match ${teamName(teams, conflict.fixture.teamId)} du ${frDateWeekdayNoYear(conflict.fixture.matchDate)} à ${conflict.fixture.kickoffTime ?? "?"} (fenêtres : ${windows}) — dérogation à demander tôt`;
+  }
+  if ("CUP_KICKOFF_OUT_OF_HOURS" === conflict.type && conflict.fixture) {
+    // Les bornes servies par le radar, formatées comme toute heure.
+    const bound = (value: string | undefined) => formatMinutes(timeToMinutes(value));
+    return MATCHES_TEXTS.cupKickoffOutOfHoursSummary(teamName(teams, conflict.fixture.teamId), frDateWeekdayNoYear(conflict.fixture.matchDate), conflict.fixture.kickoffTime ?? "?", bound(conflict.kickoffMin), bound(conflict.kickoffMax));
   }
   if ("CLUB_RULE_VIOLATION" === conflict.type && conflict.fixture) {
     const labels = (conflict.rules ?? []).map((r) => `« ${clubRuleLabel(r)} »`).join(", ");

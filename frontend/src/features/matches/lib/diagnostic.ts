@@ -37,7 +37,7 @@ const GROUP_TITLES: Record<number, string> = {
 const SEVERITY_3_GROUPS: { key: string; title: string; types: readonly string[] }[] = [
   { key: "3-person", title: "Personne", types: ["MATCH_MATCH", "MATCH_TRAINING", "MATCH_COACH_UNAVAILABLE"] },
   { key: "3-venue", title: "Gymnase", types: ["TEAM_VENUE_FORBIDDEN"] },
-  { key: "3-rule", title: "Règle", types: ["CLUB_RULE_VIOLATION"] },
+  { key: "3-rule", title: "Règle", types: ["CLUB_RULE_VIOLATION", "CUP_KICKOFF_OUT_OF_HOURS"] },
 ];
 
 const OTHERS_TITLE = "Autres";

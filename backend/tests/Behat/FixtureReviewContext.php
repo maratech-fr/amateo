@@ -50,6 +50,11 @@ final class FixtureReviewContext extends BaseContext
     /** Le match de plus de la seconde équipe, apporté par le re-dépôt qui ne porte qu'elle (lot 7, PR 3b). */
     private const string DUO_EXTRA_REF = 'BHR-3003';
 
+    /** Lot 7, PR 4b : une division de coupe (le classifieur la fait naître coupe) et le numéro de son domicile. */
+    private const string CUP_DIVISION = 'BEHAT COUPE REVIEW';
+
+    private const string CUP_EXTERNAL_REF = 'BHR-4001';
+
     private string $token = '';
 
     private string $duoTeamId = '';
@@ -82,6 +87,9 @@ final class FixtureReviewContext extends BaseContext
     private string $competitionId = '';
 
     private string $matchWindowId = '';
+
+    /** L'accès match du dimanche, ouvert pour qu'une coupe s'y pose. */
+    private string $sundayWindowId = '';
 
     private string $matchDate = '';
 
@@ -700,6 +708,96 @@ final class FixtureReviewContext extends BaseContext
         throw new RuntimeException('l\'écart de date à trancher aurait dû rester intact');
     }
 
+    // ── Lot 7, PR 4b : le club choisit le dimanche d'une coupe, le fichier FBI garde la main sur la date ──
+
+    #[Given('un accès match le samedi et le dimanche sur « GYM BEHAT »')]
+    public function unAccesMatchLeSamediEtLeDimanche(): void
+    {
+        $this->unAccesMatchSurGymBehat();
+        $this->sundayWindowId = $this->createdId(
+            $this->apiPost('venue_match_windows', ['venueId' => $this->venueId, 'dayOfWeek' => 7, 'startTime' => '14:00', 'endTime' => '18:00'], $this->token),
+            'accès match du dimanche',
+        );
+    }
+
+    #[When('je dépose un fichier FBI d\'une coupe avec un match à domicile le samedi au gymnase « GYM BEHAT » à 15h30')]
+    public function jeDeposeUneCoupe(): void
+    {
+        $this->depositMatch($this->matchDate, 'HOME', 'Adversaire Coupe', self::VENUE_NAME, [['division' => self::CUP_DIVISION, 'teamId' => $this->teamId]], self::CUP_EXTERNAL_REF, self::CUP_DIVISION);
+        $this->fixtureId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::CUP_EXTERNAL_REF),
+            admin: true,
+        );
+        if ('' === $this->fixtureId) {
+            throw new RuntimeException('la coupe importée est introuvable après le dépôt');
+        }
+    }
+
+    #[Then('la division de coupe a fait naître une coupe')]
+    public function laDivisionDeCoupeAFaitNaitreUneCoupe(): void
+    {
+        $type = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['competitionType'] ?? null;
+        if ('CUP' !== $type) {
+            throw new RuntimeException(\sprintf('la division « %s » aurait dû faire naître une coupe, nature servie « %s »', self::CUP_DIVISION, \is_string($type) ? $type : 'absente'));
+        }
+    }
+
+    /** « Modifier le match », champ Date : l'écran renvoie le match tel qu'il est, la date changée (C52, C54). */
+    #[When('/^je passe la coupe au dimanche par « Modifier le match », (?P<gesture>sans la placer|et la place au gymnase « GYM BEHAT » à 15h30)$/u')]
+    public function jePasseLaCoupeAuDimanche(string $gesture): void
+    {
+        $current = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
+        $sunday = new DateTimeImmutable($this->matchDate)->modify('+1 day')->format('Y-m-d');
+        $body = [
+            'teamId' => $this->teamId,
+            'competitionId' => $current['competitionId'] ?? null,
+            'matchDate' => $sunday,
+            'homeAway' => 'HOME',
+            'opponentLabel' => \is_string($current['opponentLabel'] ?? null) ? $current['opponentLabel'] : 'Adversaire Coupe',
+            'venueId' => $current['venueId'] ?? null,
+            'kickoffTime' => $current['kickoffTime'] ?? null,
+        ];
+        if (str_starts_with($gesture, 'et la place')) {
+            $body = ['venueId' => $this->venueId, 'kickoffTime' => '15:30', 'status' => 'PLACED'] + $body;
+        }
+        $result = $this->apiPut(\sprintf('fixtures/%s', $this->fixtureId), $body, $this->token);
+        if (200 !== $result['status'] || $sunday !== ($result['json']['matchDate'] ?? null)) {
+            throw new RuntimeException(\sprintf('passer la coupe au dimanche a répondu %d : %s', $result['status'], json_encode($result['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->rescheduledDate = $sunday;
+    }
+
+    #[When('je re-dépose le même fichier de coupe')]
+    public function jeReDeposeLaCoupe(): void
+    {
+        $this->depositMatch($this->matchDate, 'HOME', 'Adversaire Coupe', self::VENUE_NAME, null, self::CUP_EXTERNAL_REF, self::CUP_DIVISION);
+    }
+
+    #[Then('la coupe est revenue au samedi du fichier')]
+    public function laCoupeEstRevenueAuSamedi(): void
+    {
+        $date = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['matchDate'] ?? null;
+        if ($date !== $this->matchDate) {
+            throw new RuntimeException(\sprintf('une coupe non placée suit la date du fichier : « %s » au lieu du samedi « %s »', \is_string($date) ? $date : 'inconnue', $this->matchDate));
+        }
+    }
+
+    #[Then('la coupe garde son dimanche, placée, et l\'écart de date est à trancher')]
+    public function laCoupeGardeSonDimanche(): void
+    {
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
+        if (($json['matchDate'] ?? null) !== $this->rescheduledDate || !\in_array($json['status'] ?? null, ['PLACED', 'VALIDATED'], true) || ($json['venueId'] ?? null) !== $this->venueId) {
+            throw new RuntimeException(\sprintf('la coupe placée aurait dû garder son dimanche « %s » dans « GYM BEHAT » : %s', $this->rescheduledDate, json_encode(['matchDate' => $json['matchDate'] ?? null, 'status' => $json['status'] ?? null], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->assertReviewState('OUT_OF_SYNC');
+        foreach (\is_array($json['pendingDeviations'] ?? null) ? $json['pendingDeviations'] : [] as $deviation) {
+            if (\is_array($deviation) && 'date' === ($deviation['field'] ?? null) && false === ($deviation['autoApplied'] ?? null)) {
+                return;
+            }
+        }
+        throw new RuntimeException('l\'écart de date de la coupe placée aurait dû rester à trancher');
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -722,8 +820,10 @@ final class FixtureReviewContext extends BaseContext
         }
         // La compétition part avec l'équipe (cascade teams → competitions) : les matchs
         // ayant été supprimés juste au-dessus, l'équipe n'est plus engagée et se supprime.
-        if ('' !== $this->matchWindowId) {
-            $this->apiDelete(\sprintf('venue_match_windows/%s', $this->matchWindowId), $this->token);
+        foreach ([$this->matchWindowId, $this->sundayWindowId] as $windowId) {
+            if ('' !== $windowId) {
+                $this->apiDelete(\sprintf('venue_match_windows/%s', $windowId), $this->token);
+            }
         }
         if ('' !== $this->teamId) {
             $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
@@ -830,12 +930,12 @@ final class FixtureReviewContext extends BaseContext
      *
      * @param list<array{division: string, teamId: string}>|null $mappings
      */
-    private function depositMatch(string $date, string $homeAway, string $opponent, string $salle, ?array $mappings, string $externalRef = self::EXTERNAL_REF): void
+    private function depositMatch(string $date, string $homeAway, string $opponent, string $salle, ?array $mappings, string $externalRef = self::EXTERNAL_REF, string $division = self::DIVISION): void
     {
         $equipe1 = 'HOME' === $homeAway ? $this->clubName : $opponent;
         $equipe2 = 'HOME' === $homeAway ? $opponent : $this->clubName;
         $rows = [[
-            self::DIVISION,
+            $division,
             $externalRef,
             $equipe1,
             $equipe2,

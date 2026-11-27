@@ -76,6 +76,13 @@ final class MatchPlacementContext extends BaseContext
 
     private string $friendlyId = '';
 
+    /** Lot 7, PR 4b : la coupe sans créneau, la coupe posée par le solveur, le championnat du même samedi. */
+    private string $cupId = '';
+
+    private string $placedCupId = '';
+
+    private string $championshipId = '';
+
     private string $coachId = '';
 
     private string $teamCoachAId = '';
@@ -995,8 +1002,12 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Given('deux matchs à domicile le même mercredi, un par équipe, et aucune autre fenêtre d\'accès le mercredi')]
-    public function deuxMatchsUnMercredi(): void
+    /**
+     * Lot 7, PR 4b : la première équipe joue une coupe (posée à la main, jamais confiée au solveur), la seconde un
+     * match de championnat remis ce mercredi (celui que le solveur pose dans l'ouverture).
+     */
+    #[Given('une coupe de la première équipe et un match de championnat remis de la seconde, à domicile le même mercredi, et aucune autre fenêtre d\'accès le mercredi')]
+    public function uneCoupeEtUnMatchRemisUnMercredi(): void
     {
         $this->wednesday = new DateTimeImmutable($this->saturday, new DateTimeZone('Europe/Paris'))->modify('next wednesday')->format('Y-m-d');
         $windows = $this->apiGet('venue_match_windows?itemsPerPage=100', $this->token);
@@ -1016,7 +1027,7 @@ final class MatchPlacementContext extends BaseContext
             'compétition',
         );
         $secondCompetition = $this->createdId(
-            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Coupe jetable B', 'competitionType' => 'CUP'], $this->token),
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Championnat jetable B', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
             'compétition B',
         );
         $this->fxSat = $this->createdId(
@@ -1024,12 +1035,12 @@ final class MatchPlacementContext extends BaseContext
             'premier match du mercredi',
         );
         $this->fxSat2 = $this->createdId(
-            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->wednesday, 'homeAway' => 'HOME', 'opponentLabel' => 'Coupe B', 'competitionId' => $secondCompetition], $this->token),
-            'second match du mercredi',
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->wednesday, 'homeAway' => 'HOME', 'opponentLabel' => 'Match remis B', 'competitionId' => $secondCompetition], $this->token),
+            'match de championnat remis du mercredi',
         );
     }
 
-    #[Then('poser le premier à la main ce mercredi à 18h00 est refusé, faute d\'accès ce jour-là')]
+    #[Then('poser la coupe à la main ce mercredi à 18h00 est refusé, faute d\'accès ce jour-là')]
     public function poserLePremierEstRefuse(): void
     {
         $response = $this->poserLePremierMercredi();
@@ -1047,7 +1058,7 @@ final class MatchPlacementContext extends BaseContext
         );
     }
 
-    #[Then('poser le premier à la main ce mercredi à 18h00 est accepté')]
+    #[Then('poser la coupe à la main ce mercredi à 18h00 est accepté')]
     public function poserLePremierEstAccepte(): void
     {
         $response = $this->poserLePremierMercredi();
@@ -1056,16 +1067,98 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
-    #[Then('le second match du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l\'ouverture')]
+    #[Then('le match de championnat du mercredi est posé par le solveur dans ce gymnase, à 19h45 dans l\'ouverture')]
     public function leSecondMatchEstPoseDansLOuverture(): void
     {
         $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->fxSat2), $this->token)['json'];
         if ('PLACED' !== ($fixture['status'] ?? null) || 'SOLVER' !== ($fixture['placementSource'] ?? null) || $this->venueId !== ($fixture['venueId'] ?? null)) {
-            throw new RuntimeException(\sprintf('le second match n\'est pas posé par le solveur dans ce gymnase : %s', json_encode($fixture, \JSON_THROW_ON_ERROR)));
+            throw new RuntimeException(\sprintf('le match de championnat remis n\'est pas posé par le solveur dans ce gymnase : %s', json_encode($fixture, \JSON_THROW_ON_ERROR)));
         }
         $kickoff = $fixture['kickoffTime'] ?? '';
         if (!\is_string($kickoff) || !str_starts_with($kickoff, '19:45')) {
             throw new RuntimeException(\sprintf('coup d\'envoi attendu à 19:45, juste après le premier match de l\'ouverture : « %s »', \is_string($kickoff) ? $kickoff : '?'));
+        }
+    }
+
+    #[Given('une coupe à domicile de la première équipe le samedi, sans créneau posé')]
+    public function uneCoupeSansCreneau(): void
+    {
+        $competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe jetable', 'competitionType' => 'CUP'], $this->token),
+            'coupe de la première équipe',
+        );
+        $this->cupId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire coupe', 'competitionId' => $competitionId], $this->token),
+            'coupe sans créneau',
+        );
+    }
+
+    #[Given('un match de championnat à domicile de la seconde équipe le samedi à placer')]
+    public function unChampionnatDeLaSecondeEquipeAPlacer(): void
+    {
+        $this->competitionId2 = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Championnat jetable B', 'competitionType' => 'CHAMPIONSHIP'], $this->token),
+            'championnat de la seconde équipe',
+        );
+        $this->championshipId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $this->saturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire championnat', 'competitionId' => $this->competitionId2], $this->token),
+            'championnat du samedi',
+        );
+    }
+
+    /**
+     * Posée PAR LE SOLVEUR à 20h00, hors de la fenêtre d'accès 14h00-18h00 (pointage SQL, comme le match « déjà posé
+     * par le solveur sur un autre week-end ») : re-résolue, elle bougerait ou finirait sans créneau ; ancre, elle reste.
+     */
+    #[Given('une coupe de la seconde équipe déjà posée par le solveur sur un autre samedi dans ce gymnase, à 20h00')]
+    public function uneCoupeDejaPoseeParLeSolveur(): void
+    {
+        $competitionId = $this->createdId(
+            $this->apiPost('competitions', ['teamId' => $this->secondTeamId, 'name' => 'Coupe jetable B', 'competitionType' => 'CUP'], $this->token),
+            'coupe de la seconde équipe',
+        );
+        $otherSaturday = new DateTimeImmutable($this->saturday, new DateTimeZone('Europe/Paris'))->modify('+7 days')->format('Y-m-d');
+        $this->placedCupId = $this->createdId(
+            $this->apiPost('fixtures', ['teamId' => $this->secondTeamId, 'matchDate' => $otherSaturday, 'homeAway' => 'HOME', 'opponentLabel' => 'Adversaire coupe B', 'competitionId' => $competitionId], $this->token),
+            'coupe posée par le solveur',
+        );
+        $this->dbalExec(
+            \sprintf('UPDATE fixture SET status=\'PLACED\', placement_source=\'SOLVER\', venue_id=\'%s\', kickoff_time=\'20:00:00\' WHERE id=\'%s\'', $this->venueId, $this->placedCupId),
+            admin: true,
+        );
+    }
+
+    #[Then('la coupe sans créneau n\'est jamais proposée au solveur et reste sans créneau')]
+    public function laCoupeSansCreneauNEstJamaisProposee(): void
+    {
+        $unplaced = $this->placeResult['unplaced'] ?? [];
+        foreach (\is_array($unplaced) ? $unplaced : [] as $entry) {
+            if (\is_array($entry) && ($entry['matchId'] ?? null) === $this->cupId) {
+                throw new RuntimeException('la coupe figure dans les non-plaçables : le solveur l\'a reçue, il ne devait jamais la recevoir');
+            }
+        }
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->cupId), $this->token)['json'];
+        if ('UNPLACED' !== ($fixture['status'] ?? null) || null !== ($fixture['venueId'] ?? null)) {
+            throw new RuntimeException(\sprintf('la coupe aurait dû rester sans créneau : %s', json_encode(['status' => $fixture['status'] ?? null, 'placementSource' => $fixture['placementSource'] ?? null, 'venueId' => $fixture['venueId'] ?? null], \JSON_THROW_ON_ERROR)));
+        }
+    }
+
+    #[Then('la coupe déjà posée par le solveur n\'a pas bougé, toujours à 20h00 dans ce gymnase')]
+    public function laCoupeDejaPoseeNAPasBouge(): void
+    {
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->placedCupId), $this->token)['json'];
+        $kickoff = $fixture['kickoffTime'] ?? null;
+        if (!\is_string($kickoff) || !str_starts_with($kickoff, '20:00') || $this->venueId !== ($fixture['venueId'] ?? null) || 'PLACED' !== ($fixture['status'] ?? null) || 'SOLVER' !== ($fixture['placementSource'] ?? null)) {
+            throw new RuntimeException(\sprintf('la coupe posée par le solveur a été rendue au solveur : %s', json_encode(['status' => $fixture['status'] ?? null, 'placementSource' => $fixture['placementSource'] ?? null, 'venueId' => $fixture['venueId'] ?? null, 'kickoffTime' => $kickoff], \JSON_THROW_ON_ERROR)));
+        }
+    }
+
+    #[Then('le match de championnat du samedi est placé par le solveur')]
+    public function leChampionnatDuSamediEstPlace(): void
+    {
+        $fixture = $this->apiGet(\sprintf('fixtures/%s', $this->championshipId), $this->token)['json'];
+        if ('PLACED' !== ($fixture['status'] ?? null) || 'SOLVER' !== ($fixture['placementSource'] ?? null)) {
+            throw new RuntimeException(\sprintf('témoin : le championnat du samedi n\'est pas placé par le solveur (statut « %s ») — le placement a-t-il tourné ?', \is_string($fixture['status'] ?? null) ? $fixture['status'] : 'inconnu'));
         }
     }
 
@@ -1465,7 +1558,7 @@ final class MatchPlacementContext extends BaseContext
             return;
         }
 
-        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId, $this->awayId, $this->homeId, $this->nightAnchorId] as $id) {
+        foreach ([$this->fxSat, $this->fxSat2, $this->fxSun, $this->friendlyId, $this->awayId, $this->homeId, $this->nightAnchorId, $this->cupId, $this->placedCupId, $this->championshipId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }

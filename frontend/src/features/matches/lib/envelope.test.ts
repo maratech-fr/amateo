@@ -108,3 +108,50 @@ describe("resolveEnvelope — jour férié", () => {
     expect(isInEnvelope(env, "20:00")).toBe(false);
   });
 });
+
+/**
+ * Lot 7, PR 4b — la nature du match (`competitionType`) décide de sa règle : un championnat obéit à la fenêtre de
+ * ligue de son équipe ; une coupe n'en a pas et se joue entre 08:00 et 21:00, tout jour, férié compris, équipe
+ * cadrée ou non ; un amical n'a aucune enveloppe. La coupe hors horaires est une enveloppe ACTIVE (`mapped`) que la
+ * grille marque comme un match hors fenêtre (`CalendarPage`, `envelope.mapped && !isInEnvelope`). Jumeau serveur :
+ * `ConflictRadarLeagueWindowTest` (le radar juge la coupe sur ses heures, jamais sur la ligue).
+ */
+describe("resolveEnvelope — la nature du match décide de sa règle", () => {
+  const WEDNESDAY = "2026-10-07"; // la fenêtre de ligue de l'équipe n'ouvre que le samedi
+  const HOLIDAY = "2026-11-11";
+  const cup = (over: Partial<Fixture> = {}): Fixture => fixture({ competitionId: "comp-coupe", competitionType: "CUP", ...over });
+
+  it("une coupe un mercredi à 20:00 est dans sa règle : la fenêtre de ligue ne la juge pas", () => {
+    const env = resolveEnvelope(cup({ matchDate: WEDNESDAY }), { "team-1": ["w-1"] }, [window()], []);
+    expect(isInEnvelope(env, "20:00")).toBe(true);
+  });
+
+  it("une coupe un samedi à 21:30 sort de ses horaires, et la grille la marque", () => {
+    const env = resolveEnvelope(cup(), { "team-1": ["w-1"] }, [window()], []);
+    expect(env.mapped).toBe(true);
+    expect(isInEnvelope(env, "21:30")).toBe(false);
+    expect(isInEnvelope(env, "21:00")).toBe(true);
+  });
+
+  it("une coupe d'une équipe sans fenêtre de ligue garde ses horaires", () => {
+    const env = resolveEnvelope(cup({ matchDate: WEDNESDAY }), { "team-1": [] }, [window()], []);
+    expect(env.mapped).toBe(true);
+    expect(isInEnvelope(env, "08:00")).toBe(true);
+    expect(isInEnvelope(env, "07:45")).toBe(false);
+  });
+
+  it("un jour férié, la borne des coupes tient", () => {
+    const env = resolveEnvelope(cup({ matchDate: HOLIDAY }), { "team-1": ["w-1"] }, [window()], [HOLIDAY]);
+    expect(isInEnvelope(env, "21:30")).toBe(false);
+  });
+
+  it("un championnat un mercredi à 20:00 reste hors de sa fenêtre de ligue", () => {
+    const env = resolveEnvelope(fixture({ matchDate: WEDNESDAY, competitionId: "comp-champ", competitionType: "CHAMPIONSHIP" }), { "team-1": ["w-1"] }, [window()], []);
+    expect(isInEnvelope(env, "20:00")).toBe(false);
+  });
+
+  it("un amical n'a aucune enveloppe : hors de la fenêtre de ligue, il reste libre", () => {
+    const env = resolveEnvelope(fixture({ competitionId: "comp-amicaux", competitionType: "FRIENDLY" }), { "team-1": ["w-1"] }, [window()], []);
+    expect(isInEnvelope(env, "20:00")).toBe(true);
+  });
+});

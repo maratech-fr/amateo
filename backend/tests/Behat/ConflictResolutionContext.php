@@ -25,6 +25,9 @@ use RuntimeException;
  * décor est retiré en fin de scénario (les lignes de résolution comprises, sinon elles resteraient
  * en orphelines — elles ne sont jamais nettoyées à la volée, par conception). La grille du club réel
  * n'est jamais touchée.
+ *
+ * Lot 7, PR 4b : un statut posé sur un conflit qu'une règle neuve fait disparaître (le « hors fenêtre ligue » d'une
+ * coupe) reste en base, invisible, et ne se rattache pas au conflit neuf de la coupe (« coupe hors horaires »).
  */
 final class ConflictResolutionContext extends BaseContext
 {
@@ -32,6 +35,11 @@ final class ConflictResolutionContext extends BaseContext
 
     /** Dans la MÊME saison que « aujourd'hui » réel (2026-2027) → socle courant en vigueur. */
     private const string PINNED_NOW = '2026-12-01T09:00:00';
+
+    /** Catégorie DISTINCTIVE (aucune vraie équipe ne la porte) : la fenêtre de ligue du décor ne cadre qu'elle. */
+    private const string CUP_CATEGORY_NAME = 'BEHAT Coupe traitée';
+
+    private const string CUP_SATURDAY = '2027-01-16';
 
     private string $token = '';
 
@@ -57,6 +65,16 @@ final class ConflictResolutionContext extends BaseContext
 
     /** @var list<array<string, mixed>> Conflits rendus par le dernier GET du radar. */
     private array $conflicts = [];
+
+    /** Lot 7, PR 4b : la coupe du samedi, sa catégorie distinctive et l'empreinte de son ancien conflit de ligue. */
+    private string $cupFixtureId = '';
+
+    private string $cupCategoryId = '';
+
+    /** @var array<string, mixed> le corps qui a posé la coupe, rejoué par « Modifier le match » */
+    private array $cupBody = [];
+
+    private string $staleFingerprint = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -194,6 +212,137 @@ final class ConflictResolutionContext extends BaseContext
         }
     }
 
+    /**
+     * Lot 7, PR 4b : une équipe jetable de catégorie distinctive, niveau régional, cadrée par une fenêtre de ligue le
+     * samedi de 10h00 à 10h30 (copie club posée en SQL, comme dans `ConflictTruthContext`), et sa coupe à domicile le
+     * samedi 16 janv. 2027 à 18h00, sans gymnase : hors de la fenêtre de ligue, dans les horaires d'une coupe.
+     */
+    #[Given('une coupe à domicile d\'une équipe jetable un samedi à 18h00, hors de la fenêtre de ligue de son équipe')]
+    public function uneCoupeHorsDeLaFenetreDeLigue(): void
+    {
+        $this->dbalExec(\sprintf('DELETE FROM club_league_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+        $this->dbalExec(\sprintf('DELETE FROM sport_category WHERE club_id=\'%s\' AND name=\'%s\' AND NOT EXISTS (SELECT 1 FROM team t WHERE t.sport_category_id = sport_category.id)', $this->clubId, self::CUP_CATEGORY_NAME), admin: true);
+        $clone = $this->dbalScalar(
+            \sprintf('SELECT sport_category_id || \'|\' || priority_tier_id || \'|\' || COALESCE(tier_order::text, \'0\') AS behatval FROM team WHERE club_id=\'%s\' LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        $parts = '' === $clone ? [] : explode('|', $clone);
+        if (3 !== \count($parts)) {
+            throw new RuntimeException('impossible de cloner une catégorie/palier valide (le club a-t-il des équipes seedées ?)');
+        }
+        [$sportCategoryId, $priorityTierId, $tierOrder] = $parts;
+        $this->teamId = $this->idOf($this->apiPost('teams', [
+            'name' => 'Équipe jetable (coupe traitée)',
+            'sportCategoryId' => $sportCategoryId,
+            'priorityTierId' => (int) $priorityTierId,
+            'tierOrder' => (int) $tierOrder,
+        ], $this->token), 'équipe jetable');
+
+        $this->cupCategoryId = $this->dbalScalar('SELECT gen_random_uuid()::text AS behatval', admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO sport_category (id, version, created_at, updated_at, club_id, sport_id, name, is_custom, sort_order)'
+            . ' SELECT \'%s\', 1, now(), now(), club_id, sport_id, \'%s\', true, 0 FROM sport_category WHERE id=\'%s\'',
+            $this->cupCategoryId,
+            self::CUP_CATEGORY_NAME,
+            $sportCategoryId,
+        ), admin: true);
+        $this->dbalExec(\sprintf('UPDATE team SET sport_category_id=\'%s\', level=\'REGIONAL\' WHERE id=\'%s\'', $this->cupCategoryId, $this->teamId), admin: true);
+        $seasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM team WHERE id=\'%s\'', $this->teamId), admin: true);
+        $clubLeague = $this->dbalScalar(\sprintf('SELECT COALESCE(league, \'\') AS behatval FROM club WHERE id=\'%s\'', $this->clubId), admin: true);
+        $hasWindows = '' !== $this->dbalScalar(\sprintf('SELECT id AS behatval FROM league_match_window WHERE league=\'%s\' LIMIT 1', $clubLeague), admin: true);
+        $this->dbalExec(\sprintf(
+            'INSERT INTO club_league_window (id, version, created_at, updated_at, club_id, season_id, league, category, level, gender, day_of_week, kickoff_min, kickoff_max)'
+            . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', \'REGIONAL\', NULL, 6, \'10:00\', \'10:30\')',
+            $this->clubId,
+            $seasonId,
+            ('' !== $clubLeague && $hasWindows) ? $clubLeague : 'AURA',
+            self::CUP_CATEGORY_NAME,
+        ), admin: true);
+
+        $competitionId = $this->idOf(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe du Rhône (coupe traitée)', 'competitionType' => 'CUP'], $this->token),
+            'compétition coupe',
+        );
+        $this->cupBody = [
+            'teamId' => $this->teamId,
+            'competitionId' => $competitionId,
+            'matchDate' => self::CUP_SATURDAY,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire coupe',
+            'kickoffTime' => '18:00',
+        ];
+        $this->cupFixtureId = $this->idOf($this->apiPost('fixtures', $this->cupBody, $this->token), 'coupe du samedi');
+    }
+
+    /**
+     * Le statut d'hier, quand une coupe était jugée contre la ligue : l'API refuse aujourd'hui une empreinte que le radar
+     * ne porte pas, la ligne d'avant est donc posée en SQL, telle que la table la gardait.
+     */
+    #[Given('un statut « Dérogation demandée » posé autrefois sur le « hors fenêtre ligue » de cette coupe')]
+    public function unStatutPoseAutrefois(): void
+    {
+        $this->staleFingerprint = 'LEAGUE_WINDOW_VIOLATION:' . $this->cupFixtureId;
+        $this->dbalExec(\sprintf(
+            'INSERT INTO conflict_resolution (id, version, created_at, updated_at, club_id, season_id, fingerprint, status, note, updated_by)'
+            . ' SELECT gen_random_uuid(), 1, now() - interval \'30 days\', now() - interval \'30 days\', f.club_id, f.season_id, \'%s\', \'DEROGATION_REQUESTED\', \'Dérogation demandée à la ligue\', u.id'
+            . ' FROM fixture f, app_user u WHERE f.id=\'%s\' AND u.email=\'%s\'',
+            $this->staleFingerprint,
+            $this->cupFixtureId,
+            self::USER_EMAIL,
+        ), admin: true);
+        if ('1' !== $this->staleCount()) {
+            throw new RuntimeException('le statut d\'autrefois n\'a pas été posé');
+        }
+    }
+
+    #[When('je relis le radar des matchs')]
+    public function jeRelisLeRadar(): void
+    {
+        $this->rafraichirConflits();
+    }
+
+    #[Then('le « hors fenêtre ligue » traité de la coupe n\'est plus sur le radar, et son statut reste en base')]
+    public function leConflitTraiteDeLaCoupeAPeriDuRadar(): void
+    {
+        if (null !== $this->conflitParEmpreinte($this->staleFingerprint)) {
+            throw new RuntimeException('le « hors fenêtre ligue » de la coupe est encore sur le radar : une coupe n\'est plus jugée contre la fenêtre de ligue');
+        }
+        foreach ($this->conflicts as $conflict) {
+            $fixtureBlock = $conflict['fixture'] ?? null;
+            if (\is_array($fixtureBlock) && $this->cupFixtureId === ($fixtureBlock['fixtureId'] ?? null) && null !== ($conflict['resolution'] ?? null)) {
+                throw new RuntimeException(\sprintf('le statut d\'autrefois s\'est rattaché au conflit %s de la coupe', \is_string($conflict['type'] ?? null) ? $conflict['type'] : '?'));
+            }
+        }
+        if ('1' !== $this->staleCount()) {
+            throw new RuntimeException('le statut d\'autrefois a été supprimé ou réécrit : sa ligne doit rester en base, invisible');
+        }
+    }
+
+    #[When('je repousse le coup d\'envoi de la coupe à 21h30')]
+    public function jeRepousseLeCoupDEnvoi(): void
+    {
+        $response = $this->apiPut(\sprintf('fixtures/%s', $this->cupFixtureId), ['kickoffTime' => '21:30'] + $this->cupBody, $this->token);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('« Modifier le match » a répondu %d (200 attendu) : %s', $response['status'], json_encode($response['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->rafraichirConflits();
+    }
+
+    #[Then('la coupe porte « coupe hors horaires », « à traiter »')]
+    public function laCoupePorteCoupeHorsHorairesATraiter(): void
+    {
+        $conflict = $this->conflitParEmpreinte('CUP_KICKOFF_OUT_OF_HOURS:' . $this->cupFixtureId);
+        if (null === $conflict) {
+            throw new RuntimeException('la coupe à 21h30 ne porte pas « coupe hors horaires » (empreinte CUP_KICKOFF_OUT_OF_HOURS:<match>)');
+        }
+        if (null !== ($conflict['resolution'] ?? null)) {
+            throw new RuntimeException(\sprintf('le conflit neuf aurait dû naître « à traiter » (aucune résolution), il porte %s', json_encode($conflict['resolution'], \JSON_UNESCAPED_UNICODE)));
+        }
+        if (null !== $this->conflitParEmpreinte($this->staleFingerprint)) {
+            throw new RuntimeException('le « hors fenêtre ligue » de la coupe est revenu sur le radar');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -202,6 +351,15 @@ final class ConflictResolutionContext extends BaseContext
         }
 
         $this->releaseClock();
+
+        // Lot 7, PR 4b : le statut d'autrefois (introuvable par l'API, le radar ne porte plus son empreinte), la coupe,
+        // puis la copie de fenêtre et la catégorie distinctives, une fois l'équipe partie (plus bas).
+        if ('' !== $this->staleFingerprint) {
+            $this->dbalExec(\sprintf('DELETE FROM conflict_resolution WHERE fingerprint=\'%s\'', $this->staleFingerprint), admin: true);
+        }
+        if ('' !== $this->cupFixtureId) {
+            $this->apiDelete(\sprintf('fixtures/%s', $this->cupFixtureId), $this->token);
+        }
 
         // Les lignes de résolution d'abord (sinon elles restent orphelines une fois les
         // rencontres supprimées — jamais nettoyées à la volée, par conception).
@@ -217,6 +375,10 @@ final class ConflictResolutionContext extends BaseContext
         }
         if ('' !== $this->teamId) {
             $this->apiDelete(\sprintf('teams/%s', $this->teamId), $this->token);
+        }
+        if ('' !== $this->cupCategoryId) {
+            $this->dbalExec(\sprintf('DELETE FROM club_league_window WHERE category=\'%s\'', self::CUP_CATEGORY_NAME), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM sport_category WHERE id=\'%s\'', $this->cupCategoryId), admin: true);
         }
         if ('' !== $this->memberUserId) {
             $this->dbalExec(\sprintf('DELETE FROM club_user WHERE user_id=\'%s\'', $this->memberUserId), admin: true);
@@ -281,6 +443,12 @@ final class ConflictResolutionContext extends BaseContext
         }
 
         return null;
+    }
+
+    /** Le nombre de lignes du statut d'autrefois (« 1 » : posé et intact). */
+    private function staleCount(): string
+    {
+        return $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM conflict_resolution WHERE fingerprint=\'%s\' AND status=\'DEROGATION_REQUESTED\'', $this->staleFingerprint), admin: true);
     }
 
     private function resolutionPath(string $fingerprint): string

@@ -384,51 +384,89 @@ final class ConflictTruthContext extends BaseContext
         ), admin: true);
     }
 
-    #[Given('une rencontre de coupe à domicile ce samedi, coup d\'envoi le soir hors de la fenêtre')]
-    public function uneRencontreDeCoupeADomicileHorsFenetre(): void
+    /**
+     * Lot 7, PR 4b : une rencontre à domicile, coupe ou championnat, posée par l'API avec son coup d'envoi et sans
+     * gymnase (le radar juge un domicile sur son coup d'envoi). Jours du décor : le samedi 16 janv. 2027 de la fenêtre
+     * de ligue, le dimanche 17, le mercredi 20 (aucune fenêtre ce jour-là), Noël 2026 (férié national seedé, après
+     * l'horloge épinglée). « Déplacée au dimanche » : posée le samedi, puis « Modifier le match », champ Date, comme
+     * le gestionnaire choisit son dimanche.
+     */
+    #[Given('/^une rencontre (?P<nature>de coupe|de championnat) à domicile (?P<day>un mercredi|le samedi|le dimanche|un jour férié|le samedi, déplacée au dimanche par « Modifier le match »), coup d\'envoi à (?P<hour>\d{2})h(?P<minute>\d{2})$/u')]
+    public function uneRencontreADomicileAvecSonCoupDEnvoi(string $nature, string $day, string $hour, string $minute): void
     {
-        // Une COUPE (competitionType CUP) → la rencontre PORTE une compétition, elle
-        // n'est jamais un amical (competitionId non null).
+        $cup = 'de coupe' === $nature;
         $this->cupCompetitionId = $this->idOf(
-            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe du Rhône (vérité conflits)', 'competitionType' => 'CUP'], $this->token),
-            'compétition coupe',
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => $cup ? 'Coupe du Rhône (vérité conflits)' : 'Championnat jetable (vérité conflits)', 'competitionType' => $cup ? 'CUP' : 'CHAMPIONSHIP'], $this->token),
+            $cup ? 'compétition coupe' : 'compétition championnat',
         );
-        // Coup d'envoi 18:00 le samedi → hors de la fenêtre 10:00-10:30 : violation
-        // de ligue (HOME + coup d'envoi suffisent au détecteur, sans placement).
-        $this->cupFixtureId = $this->idOf(
-            $this->apiPost('fixtures', [
-                'teamId' => $this->teamId,
-                'matchDate' => $this->cupSaturday,
-                'homeAway' => 'HOME',
-                'opponentLabel' => 'Adversaire coupe',
-                'competitionId' => $this->cupCompetitionId,
-                'kickoffTime' => '18:00',
-            ], $this->token),
-            'rencontre de coupe',
-        );
+        $saturday = new DateTimeImmutable($this->cupSaturday);
+        $date = match ($day) {
+            'un mercredi' => $saturday->modify('+4 days')->format('Y-m-d'),
+            'le dimanche' => $saturday->modify('+1 day')->format('Y-m-d'),
+            'un jour férié' => '2026-12-25',
+            default => $this->cupSaturday,
+        };
+        $body = [
+            'teamId' => $this->teamId,
+            'matchDate' => $date,
+            'homeAway' => 'HOME',
+            'opponentLabel' => $cup ? 'Adversaire coupe' : 'Adversaire championnat',
+            'competitionId' => $this->cupCompetitionId,
+            'kickoffTime' => $hour . ':' . $minute,
+        ];
+        $this->cupFixtureId = $this->idOf($this->apiPost('fixtures', $body, $this->token), 'rencontre ' . $nature);
+
+        if (!str_contains($day, 'déplacée au dimanche')) {
+            return;
+        }
+        $sunday = $saturday->modify('+1 day')->format('Y-m-d');
+        $moved = $this->apiPut(\sprintf('fixtures/%s', $this->cupFixtureId), ['matchDate' => $sunday] + $body, $this->token);
+        if (200 !== $moved['status'] || $sunday !== ($moved['json']['matchDate'] ?? null)) {
+            throw new RuntimeException(\sprintf('« Modifier le match » n\'a pas porté la coupe au dimanche (HTTP %d) : %s', $moved['status'], json_encode($moved['json'], \JSON_UNESCAPED_UNICODE)));
+        }
     }
 
-    #[Given('une rencontre de coupe à domicile un mercredi, coup d\'envoi à 20h00')]
-    public function uneRencontreDeCoupeUnMercredi(): void
+    #[Then('/^le radar porte sur ce match (?P<verdict>aucun conflit de règle|« coupe hors horaires », en gravité 3, entre 08:00 et 21:00|« hors fenêtre ligue »)$/u')]
+    public function leRadarPorteSurCeMatch(string $verdict): void
     {
-        // Lot 7, filet des matchs : la coupe obéit aujourd'hui à la fenêtre de ligue de son équipe.
-        // L'équipe n'en a que le samedi : un mercredi n'a aucune fenêtre, tout coup d'envoi en sort.
-        $this->cupCompetitionId = $this->idOf(
-            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe du Rhône (vérité conflits)', 'competitionType' => 'CUP'], $this->token),
-            'compétition coupe',
-        );
-        $wednesday = new DateTimeImmutable($this->cupSaturday)->modify('+4 days')->format('Y-m-d');
-        $this->cupFixtureId = $this->idOf(
-            $this->apiPost('fixtures', [
-                'teamId' => $this->teamId,
-                'matchDate' => $wednesday,
-                'homeAway' => 'HOME',
-                'opponentLabel' => 'Adversaire coupe du mercredi',
-                'competitionId' => $this->cupCompetitionId,
-                'kickoffTime' => '20:00',
-            ], $this->token),
-            'rencontre de coupe du mercredi',
-        );
+        $league = $this->conflictTypesOf($this->cupFixtureId, ['LEAGUE_WINDOW_VIOLATION']);
+        $cupItems = array_values(array_filter(
+            $this->conflicts,
+            fn (mixed $conflict): bool => \is_array($conflict) && 'CUP_KICKOFF_OUT_OF_HOURS' === ($conflict['type'] ?? null) && \is_array($conflict['fixture'] ?? null) && $this->cupFixtureId === ($conflict['fixture']['fixtureId'] ?? null),
+        ));
+
+        if ('« hors fenêtre ligue »' === $verdict) {
+            if ([] === $league || [] !== $cupItems) {
+                throw new RuntimeException(\sprintf('un championnat hors de sa fenêtre de ligue doit porter « hors fenêtre ligue » et jamais « coupe hors horaires » (ligue : %d, coupe : %d)', \count($league), \count($cupItems)));
+            }
+
+            return;
+        }
+        if ([] !== $league) {
+            throw new RuntimeException('une coupe est jugée contre la fenêtre de ligue : « hors fenêtre ligue » porté par la coupe');
+        }
+        if ('aucun conflit de règle' === $verdict) {
+            if ([] !== $cupItems) {
+                throw new RuntimeException(\sprintf('une coupe dans ses horaires porte « coupe hors horaires » : %s', json_encode($cupItems, \JSON_UNESCAPED_UNICODE)));
+            }
+
+            return;
+        }
+        if (1 !== \count($cupItems)) {
+            throw new RuntimeException(\sprintf('« coupe hors horaires » attendu une fois sur la coupe, obtenu %d', \count($cupItems)));
+        }
+        $item = $cupItems[0];
+        if (3 !== ($item['severity'] ?? null) || '08:00' !== ($item['kickoffMin'] ?? null) || '21:00' !== ($item['kickoffMax'] ?? null)) {
+            throw new RuntimeException(\sprintf('« coupe hors horaires » attendu en gravité 3, bornes 08:00 et 21:00 : %s', json_encode($item, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('le radar ne signale jamais ce match comme un amical sur un créneau de match')]
+    public function leRadarNeSignaleJamaisCeMatchCommeUnAmical(): void
+    {
+        if ([] !== $this->conflictTypesOf($this->cupFixtureId, ['FRIENDLY_ON_MATCH_SLOT'])) {
+            throw new RuntimeException('le match est signalé comme un amical sur un créneau de match : une coupe ou un championnat est un vrai match');
+        }
     }
 
     #[Given('une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d\'envoi viole un jour ordinaire')]
@@ -754,36 +792,6 @@ final class ConflictTruthContext extends BaseContext
         $reasons = $found['reasons'] ?? null;
         if (!\is_array($reasons) || !\in_array('MATCH_WEEKEND', $reasons, true)) {
             throw new RuntimeException(\sprintf('l\'alerte n\'invoque pas MATCH_WEEKEND (raisons : %s)', \is_array($reasons) ? implode(',', array_map(strval(...), $reasons)) : 'aucune'));
-        }
-    }
-
-    #[Then('le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau')]
-    public function leRadarSignaleLaCoupeHorsFenetre(): void
-    {
-        $leagueViolation = null;
-        $friendlyOnCup = null;
-        foreach ($this->conflicts as $conflict) {
-            if (!\is_array($conflict)) {
-                continue;
-            }
-            $fixtureBlock = $conflict['fixture'] ?? null;
-            $fixtureId = \is_array($fixtureBlock) ? ($fixtureBlock['fixtureId'] ?? null) : null;
-            if ($fixtureId !== $this->cupFixtureId) {
-                continue;
-            }
-            if ('LEAGUE_WINDOW_VIOLATION' === ($conflict['type'] ?? null)) {
-                $leagueViolation = $conflict;
-            }
-            if ('FRIENDLY_ON_MATCH_SLOT' === ($conflict['type'] ?? null)) {
-                $friendlyOnCup = $conflict;
-            }
-        }
-
-        if (null === $leagueViolation) {
-            throw new RuntimeException('aucune violation de fenêtre de ligue ne porte la coupe — elle n\'a pas été soumise à l\'enveloppe (traitée en amical ?)');
-        }
-        if (null !== $friendlyOnCup) {
-            throw new RuntimeException('la coupe est signalée FRIENDLY_ON_MATCH_SLOT — une coupe est un VRAI match, jamais un amical');
         }
     }
 

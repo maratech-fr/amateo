@@ -37,28 +37,12 @@
             "currentKickoff": "16:00"
         },
         {
-            "id": "f1c70000-0000-4000-8000-000000000191",
-            "teamId": "7ea00000-0000-4000-8000-000000000001",
-            "date": "2026-03-07",
-            "kind": "TO_PLACE",
-            "currentVenueId": null,
-            "currentKickoff": null
-        },
-        {
-            "id": "f1c70000-0000-4000-8000-000000000192",
-            "teamId": "7ea00000-0000-4000-8000-000000000001",
-            "date": "2026-03-11",
-            "kind": "TO_PLACE",
-            "currentVenueId": null,
-            "currentKickoff": null
-        },
-        {
             "id": "f1c70000-0000-4000-8000-000000000193",
             "teamId": "7ea00000-0000-4000-8000-000000000001",
             "date": "2026-03-14",
-            "kind": "TO_PLACE",
-            "currentVenueId": "be0e0000-0000-4000-8000-000000000001",
-            "currentKickoff": "15:00"
+            "kind": "FIXED",
+            "venueId": "be0e0000-0000-4000-8000-000000000001",
+            "kickoff": "15:00"
         },
         {
             "id": "f1c70000-0000-4000-8000-000000000194",
@@ -74,14 +58,6 @@
             "date": "2026-03-21",
             "kind": "AWAY",
             "kickoff": "16:00"
-        },
-        {
-            "id": "f1c70000-0000-4000-8000-000000000196",
-            "teamId": "7ea00000-0000-4000-8000-000000000002",
-            "date": "2026-03-11",
-            "kind": "TO_PLACE",
-            "currentVenueId": null,
-            "currentKickoff": null
         },
         {
             "id": "f1c70000-0000-4000-8000-000000000197",
@@ -191,14 +167,7 @@
             "type": "NOT_SIMULTANEOUS"
         }
     ],
-    "trainingOccupancies": [
-        {
-            "date": "2026-03-11",
-            "start": "18:00",
-            "end": "19:30",
-            "coachId": "c0ac0000-0000-4000-8000-000000000001"
-        }
-    ],
+    "trainingOccupancies": [],
     "publicHolidays": [],
     "clubRules": [
         {

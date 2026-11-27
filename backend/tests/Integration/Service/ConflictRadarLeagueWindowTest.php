@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\Fixture;
+use App\Entity\PublicHoliday;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -16,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Plans\PlanComposition;
+use App\Service\ConflictFingerprinter;
 use App\Service\ConflictRadarLoader;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\SeasonResolver;
@@ -25,6 +27,7 @@ use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -43,7 +46,16 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * gestionnaire → copie via l'API `club_league_windows` reste prouvé par
  * {@see LeagueMatchWindowsApiTest} ; ici on prouve la LECTURE
  * de cette copie par le radar.
+ *
+ * Lot 7, PR 4b (axe *sens des contraintes*) : la fenêtre de ligue borne un domicile de CHAMPIONNAT, jamais une coupe.
+ * Une coupe obéit à sa seule règle : un coup d'envoi entre 08:00 et 21:00, bornes comprises, quel que soit le jour
+ * (férié compris) ; hors de ces bornes, le radar porte « coupe hors horaires » (`CUP_KICKOFF_OUT_OF_HOURS`, gravité 3,
+ * bornes servies, empreinte par match). Jumeau de bout en bout, par l'API :
+ * `features/les-conflits-d-un-match-disent-la-verite.feature`, plan « Une coupe obéit à son horaire, jamais à la
+ * fenêtre de ligue ». Ce filet-ci est au step bloquant (`ci.yml`, `docs/testing/blocking-tests.md`) : le « Lot Gate »
+ * ne joue pas Behat.
  */
+#[Group('phase1')]
 #[Group('integration')]
 final class ConflictRadarLeagueWindowTest extends WebTestCase
 {
@@ -62,6 +74,21 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
 
     /** Un samedi (ISO 6) à venir, pour échapper au drop « déjà joué » (D1 règle 3). */
     private string $saturday;
+
+    /**
+     * Les bornes 08:00 et 21:00 sont comprises, un mercredi sans fenêtre de ligue comme un samedi.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: bool}>
+     */
+    public static function cupKickoffs(): iterable
+    {
+        yield 'mercredi 20:00, dedans' => ['wednesday', '20:00', false];
+        yield 'samedi 08:00, borne basse comprise' => ['saturday', '08:00', false];
+        yield 'samedi 21:00, borne haute comprise' => ['saturday', '21:00', false];
+        yield 'dimanche 07:45, trop tôt' => ['sunday', '07:45', true];
+        yield 'samedi 21:01, trop tard' => ['saturday', '21:01', true];
+        yield 'mercredi 21:30, trop tard' => ['wednesday', '21:30', true];
+    }
 
     public function testCorrectedClubWindowOutsideKickoffRaisesLeagueWindowViolation(): void
     {
@@ -101,6 +128,67 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
             $this->hasLeagueWindowViolation($fixture->getId()),
             'sans copie `club_league_window`, aucune LEAGUE_WINDOW_VIOLATION ne doit naître',
         );
+    }
+
+    /** Hors de la fenêtre de ligue du samedi, dans ses horaires : une coupe ne porte aucun conflit de règle. */
+    public function testACupOutsideTheLeagueWindowButWithinItsHoursRaisesNothing(): void
+    {
+        $this->clubWindow('10:00', '10:30');
+        $cup = $this->homeCompetitionFixture('18:00', CompetitionType::CUP);
+
+        self::assertFalse($this->hasLeagueWindowViolation($cup->getId()), 'une coupe n\'est jamais jugée contre la fenêtre de ligue');
+        self::assertSame([], $this->cupKickoffItems($cup->getId()), 'une coupe à 18:00 est dans ses horaires');
+    }
+
+    #[DataProvider('cupKickoffs')]
+    public function testACupIsJudgedOnItsKickoffHoursOnly(string $day, string $kickoff, bool $flagged): void
+    {
+        $this->clubWindow('10:00', '10:30');
+        $date = new DateTimeImmutable($this->saturday)->modify(match ($day) {
+            'wednesday' => '+4 days',
+            'sunday' => '+1 day',
+            default => '+0 day',
+        })->format('Y-m-d');
+        $cup = $this->homeCompetitionFixture($kickoff, CompetitionType::CUP, $date);
+
+        self::assertFalse($this->hasLeagueWindowViolation($cup->getId()), 'une coupe n\'est jamais jugée contre la fenêtre de ligue');
+        $items = $this->cupKickoffItems($cup->getId());
+        if (!$flagged) {
+            self::assertSame([], $items, \sprintf('une coupe à %s est dans ses horaires', $kickoff));
+
+            return;
+        }
+        self::assertCount(1, $items, \sprintf('une coupe à %s est « coupe hors horaires »', $kickoff));
+        self::assertSame(3, $items[0]['severity'] ?? null, 'gravité 3');
+        self::assertSame('08:00', $items[0]['kickoffMin'] ?? null, 'la borne basse est servie');
+        self::assertSame('21:00', $items[0]['kickoffMax'] ?? null, 'la borne haute est servie');
+        self::assertSame('CUP_KICKOFF_OUT_OF_HOURS:' . $cup->getId(), new ConflictFingerprinter()->fingerprint($items[0]), 'empreinte : le type et le match');
+    }
+
+    /** Un jour férié, la fenêtre de ligue s'efface, la borne des coupes non. */
+    public function testTheCupBoundHoldsOnAPublicHoliday(): void
+    {
+        $this->clubWindow('10:00', '10:30');
+        $holiday = $this->em->getRepository(PublicHoliday::class)->findOneBy(['zone' => 'NATIONAL', 'date' => new DateTimeImmutable($this->saturday)]);
+        if (!$holiday instanceof PublicHoliday) {
+            $this->em->persist(new PublicHoliday()->setZone('NATIONAL')->setDate(new DateTimeImmutable($this->saturday))->setLabel('Férié de test'));
+            $this->em->flush();
+        }
+        $championship = $this->homeCompetitionFixture('18:00');
+        $cup = $this->homeCompetitionFixture('21:30', CompetitionType::CUP);
+
+        self::assertFalse($this->hasLeagueWindowViolation($championship->getId()), 'témoin : le radar voit le férié (la fenêtre de ligue du samedi s\'efface)');
+        self::assertCount(1, $this->cupKickoffItems($cup->getId()), 'la borne des coupes vaut aussi un jour férié');
+    }
+
+    /** Le championnat du même décor reste borné par la fenêtre de ligue : la règle des coupes ne déborde pas. */
+    public function testAChampionshipIsNeverJudgedOnTheCupHours(): void
+    {
+        $this->clubWindow('10:00', '10:30');
+        $championship = $this->homeCompetitionFixture('21:30');
+
+        self::assertTrue($this->hasLeagueWindowViolation($championship->getId()), 'un championnat hors fenêtre de ligue reste signalé');
+        self::assertSame([], $this->cupKickoffItems($championship->getId()), 'un championnat ne porte jamais « coupe hors horaires »');
     }
 
     protected function setUp(): void
@@ -183,18 +271,18 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
         $this->em->flush();
     }
 
-    private function homeCompetitionFixture(string $kickoff): Fixture
+    private function homeCompetitionFixture(string $kickoff, CompetitionType $type = CompetitionType::CHAMPIONSHIP, ?string $date = null): Fixture
     {
-        $competition = $this->competitionFor($this->team->getId(), 'Coupe du Rhône ' . uniqid('', true), CompetitionType::CUP);
+        $competition = $this->competitionFor($this->team->getId(), (CompetitionType::CUP === $type ? 'Coupe du Rhône ' : 'Régionale U17 ') . uniqid('', true), $type);
 
         $fixture = new Fixture;
         $fixture->setClubId($this->club->getId());
         $fixture->setSeasonId($this->season->getId());
         $fixture->setTeamId($this->team->getId());
         $fixture->setCompetitionId($competition->getId());
-        $fixture->setMatchDate(new DateTimeImmutable($this->saturday));
+        $fixture->setMatchDate(new DateTimeImmutable($date ?? $this->saturday));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
-        $fixture->setOpponentLabel('Adversaire coupe');
+        $fixture->setOpponentLabel('Adversaire');
         $fixture->setKickoffTime(new DateTimeImmutable($kickoff));
         $this->em->persist($fixture);
         $this->em->flush();
@@ -217,5 +305,21 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
         }
 
         return false;
+    }
+
+    /** @return list<array<string, mixed>> les « coupe hors horaires » que le radar porte sur ce match */
+    private function cupKickoffItems(string $fixtureId): array
+    {
+        $radar = $this->radar->conflicts($this->club->getId(), $this->season->getId());
+        $items = [];
+        foreach ($radar['conflicts'] as $conflict) {
+            /** @var array<string, mixed> $fixture */
+            $fixture = $conflict['fixture'] ?? [];
+            if ('CUP_KICKOFF_OUT_OF_HOURS' === ($conflict['type'] ?? null) && ($fixture['fixtureId'] ?? null) === $fixtureId) {
+                $items[] = $conflict;
+            }
+        }
+
+        return $items;
     }
 }

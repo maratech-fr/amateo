@@ -91,7 +91,7 @@ matchs applique la même tenue (§3, « Un coach tient la séance »).
 est vérifiée sur les deux jours. Résolution déterministe par la période la plus ÉTROITE en cas de
 chevauchement de périodes.
 
-**Écran Conflits, gravité 3 en trois groupes** (fondateur, 2026-11-02 ; `lib/diagnostic.ts` `groupBySeverity`, table de présentation, la gravité reste celle du serveur) : « Personne » (`MATCH_MATCH`, `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`), puis « Gymnase » (`TEAM_VENUE_FORBIDDEN`), puis « Règle » (`CLUB_RULE_VIOLATION`) ; un type de gravité 3 absent de la table tombe sous « Autres ». Chaque groupe porte sa propre clé (`DiagnosticGroup.key`), la gravité seule ne l'identifie plus.
+**Écran Conflits, gravité 3 en trois groupes** (fondateur, 2026-11-02 ; `lib/diagnostic.ts` `groupBySeverity`, table de présentation, la gravité reste celle du serveur) : « Personne » (`MATCH_MATCH`, `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`), puis « Gymnase » (`TEAM_VENUE_FORBIDDEN`), puis « Règle » (`CLUB_RULE_VIOLATION`, `CUP_KICKOFF_OUT_OF_HOURS`) ; un type de gravité 3 absent de la table tombe sous « Autres ». Chaque groupe porte sa propre clé (`DiagnosticGroup.key`), la gravité seule ne l'identifie plus.
 
 **D1 (échauffement salle seule, hors des conflits de PERSONNE)** : la fenêtre SALLE (sans
 échauffement) sert `VENUE_OVERLAP`/`MATCH_SLOT_WINDOW` — deux matchs enchaînés à 2 h d'écart ne
@@ -113,8 +113,20 @@ conflit, même règle que pour un coach.
 **Amicaux** (match d'une compétition `FRIENDLY`, « Amicaux » d'office ou « Amical … » fédérale) : jamais comparés aux fenêtres ligue, jamais soumis aux
 fenêtres/week-ends de match (ni solveur ni garde de placement manuel — juste un avertissement) ;
 seule famille qui les concerne : `FRIENDLY_ON_MATCH_SLOT` (§ échelle ci-dessous). Une rencontre de
-coupe porte une vraie `Competition` `CUP` (résolue au canal API/à l'appariement) et redevient un
-match à part entière.
+coupe porte une vraie `Competition` `CUP` (résolue au canal API/à l'appariement) et reste un
+match à part entière pour le gymnase (accès match) et les règles du club.
+
+**Coupes** (compétition `CUP`, la nature décide, jamais le nom) : jamais comparées aux fenêtres de
+ligue (`RuleWindowConflicts::leagueWindowViolations` les exempte comme les amicaux). Leur règle :
+un coup d'envoi entre 08:00 et 21:00, bornes comprises, quel que soit le jour et férié compris
+(`App\Matches\CupKickoffRule`) ; le week-end le club choisit samedi ou dimanche, en semaine la date
+est imposée, et le radar ne juge jamais le jour. Un domicile posé hors de ces heures porte
+`CUP_KICKOFF_OUT_OF_HOURS` (« Coupe hors horaires », gravité 3, groupe « Règle », champs `kickoffMin`
+et `kickoffMax`, empreinte `TYPE:fixtureId` bornes exclues, `RuleWindowConflicts::cupKickoffViolations`) ;
+la pose à la main reste permise, elle est signalée. Un statut de traitement posé sur l'ancien
+« hors fenêtre ligue » d'une coupe reste en base sans s'afficher. Miroir déclaré à l'écran :
+`matches/lib/envelope.ts::cupKickoffInside`, cas partagés `leagueEnvelope.parity.json` (`cupCases`),
+gardés par `LeagueEnvelopeMirrorParityTest`.
 
 **Jours fériés** (PR2, Q1 option c, décision fondateur 2026-10-27 : un match fixé par la ligue un
 jour férié n'est pas un week-end libre — la ligue a posé ce jour EXPRÈS) : `ConflictRadarLoader`
@@ -163,8 +175,8 @@ solveur de placement (§3, diagnostic `league_envelope_unresolved` déjà exista
 `TEAM_LEVEL_MISSING:{teamId}` (`ConflictFingerprinter`).
 
 **Échelle de sévérité (1..7, émise par le serveur)** : 1 `VENUE_OVERLAP` · 2
-`LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` +
-`CLUB_RULE_VIOLATION` (P4-272 ③ — un domicile placé dont le coup d'envoi viole une règle CLUB
+`LEAGUE_WINDOW_VIOLATION` (équipe mappée seulement, ni amical ni coupe) · 3 clash dur `MATCH_MATCH`/`MATCH_TRAINING` +
+`CUP_KICKOFF_OUT_OF_HOURS` (coupe hors 08:00–21:00) + `CLUB_RULE_VIOLATION` (P4-272 ③ — un domicile placé dont le coup d'envoi viole une règle CLUB
 **HARD** couvrant son jour ; une règle PREFERRED ne fait jamais de violation, seulement un nudge
 côté solveur — champ additif `rules`, les règles violées ; amicaux exemptés comme l'enveloppe
 ligue) + `TEAM_VENUE_FORBIDDEN` (P4-272 ④, même gravité — décision fondateur : un domicile placé
@@ -510,9 +522,11 @@ membre — dédupliquée par `(gymnase, date)` pour qu'un troisième candidat ch
 pénalisé deux fois (`_place_matches`, `match_placement/__init__.py`).
 
 **Ancres — `Fixture.placementSource`** : geste manuel API → `MANUAL` ; `MANUAL` + `SUBMITTED`/
-`VALIDATED` = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical n'est **jamais**
-proposé au solveur (« un amical n'est pas sur un créneau de match ») : placé+ancré → FIXED (gymnase
-protégé), sinon simplement absent du payload — le contrat n'a pas bougé pour cette raison, la place
+`VALIDATED` = **FIXED**, ne bouge jamais ; `SOLVER` = re-plaçable. Un amical et une coupe ne sont **jamais**
+proposés au solveur (`App\Matches\HandPlaced`, lu par `MatchPlacementPayloadBuilder` et
+`MatchPlacementResultApplier` ; le solveur ne sait pas choisir le samedi ou le dimanche d'une coupe) :
+placé+ancré, ou posé par le système → FIXED (gymnase protégé), sinon simplement absent du payload ;
+le retour du moteur n'écrit jamais dessus — le contrat n'a pas bougé pour cette raison, la place
 laissée libre est couverte par `FRIENDLY_ON_MATCH_SLOT` (§2), pas par une contrainte moteur.
 
 Le backend PROJETTE (occupations d'entraînement datées, heure extérieure estimée, enveloppe ligue

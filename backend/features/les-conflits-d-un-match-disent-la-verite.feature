@@ -111,34 +111,36 @@ Fonctionnalité: Les conflits d'un match disent la vérité
   Scénario: Un match un jour férié ne crie jamais hors fenêtre de ligue (PR2)
     Un match fixé par la ligue un jour férié n'est pas un week-end libre : la ligue a posé ce jour
     exprès. Le radar ne lève donc jamais de violation de fenêtre de ligue pour un match un jour
-    férié, là où le même coup d'envoi un jour ordinaire serait hors de la fenêtre autorisée. Décor
-    identique à la coupe hors fenêtre, mais la rencontre tombe un jour férié officiel du territoire.
+    férié, là où le même coup d'envoi un jour ordinaire serait hors de la fenêtre autorisée. La
+    rencontre est un championnat, et elle tombe un jour férié officiel du territoire.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
     Et une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d'envoi viole un jour ordinaire
     Quand je demande les conflits des matchs
     Alors le radar ne signale jamais ce match férié hors fenêtre de ligue
 
-  Scénario: Une rencontre de coupe hors fenêtre de ligue est un vrai match, jamais un amical (P4-194)
-    Une coupe PORTE une compétition (elle n'est jamais un amical à competitionId null) : le radar la
-    soumet à l'enveloppe de ligue comme un championnat — hors de la fenêtre autorisée elle crie une
-    violation de fenêtre —, et ne la signale JAMAIS comme un amical posé sur un créneau de match.
+  Plan du scénario: Une coupe obéit à son horaire, jamais à la fenêtre de ligue ; le championnat reste borné par la ligue
+    Une coupe n'a pas de fenêtre de ligue. Le week-end, le club choisit samedi ou dimanche ; en semaine la date
+    est imposée ; dans tous les cas, férié compris, le coup d'envoi se joue entre 08:00 et 21:00, bornes
+    comprises. Hors de ces heures, le radar dit « coupe hors horaires ». Une coupe reste un vrai match : elle
+    n'est jamais signalée comme un amical. L'équipe n'a de fenêtre de ligue que le samedi de 10h00 à 10h30.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe, un coach et un gymnase jetables
     Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
-    Et une rencontre de coupe à domicile ce samedi, coup d'envoi le soir hors de la fenêtre
+    Et une rencontre <nature> à domicile <jour>, coup d'envoi à <heure>
     Quand je demande les conflits des matchs
-    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
+    Alors le radar porte sur ce match <verdict>
+    Et le radar ne signale jamais ce match comme un amical sur un créneau de match
 
-  Scénario: Une coupe à domicile un mercredi, jour sans fenêtre de ligue, est signalée hors fenêtre de ligue
-    La coupe obéit aujourd'hui à l'enveloppe de ligue de son équipe, comme un championnat : l'équipe
-    n'a de fenêtre que le samedi, un coup d'envoi un mercredi soir en sort.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une équipe, un coach et un gymnase jetables
-    Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
-    Et une rencontre de coupe à domicile un mercredi, coup d'envoi à 20h00
-    Quand je demande les conflits des matchs
-    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
+    Exemples:
+      | nature         | jour                                                   | heure | verdict                                                     |
+      | de coupe       | un mercredi                                            | 20h00 | aucun conflit de règle                                      |
+      | de coupe       | le samedi                                              | 18h00 | aucun conflit de règle                                      |
+      | de coupe       | le samedi                                              | 21h30 | « coupe hors horaires », en gravité 3, entre 08:00 et 21:00 |
+      | de coupe       | le dimanche                                            | 07h45 | « coupe hors horaires », en gravité 3, entre 08:00 et 21:00 |
+      | de coupe       | un jour férié                                          | 21h30 | « coupe hors horaires », en gravité 3, entre 08:00 et 21:00 |
+      | de coupe       | le samedi, déplacée au dimanche par « Modifier le match » | 15h00 | aucun conflit de règle                                   |
+      | de championnat | un mercredi                                            | 20h00 | « hors fenêtre ligue »                                      |
 
   Scénario: Un entraînement dans le gymnase du match est signalé, le match reste placé
     Le radar lit le planning EFFECTIF ce jour-là : la séance d'une autre équipe au même gymnase, sur la

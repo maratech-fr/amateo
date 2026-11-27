@@ -76,7 +76,8 @@ final class ConflictFingerprinter
             // gymnase interdit » — le gymnase EST fixé sur la fixture de toute façon).
             // VENUE_TRAINING_OVERLAP : une seule fixture porte le signal ; la liste des séances
             // est EXCLUE de l'identité (une séance de plus ne crée pas un « Nouveau » conflit).
-            ConflictType::LEAGUE_WINDOW_VIOLATION, ConflictType::CLUB_RULE_VIOLATION, ConflictType::TEAM_VENUE_FORBIDDEN, ConflictType::ACCESS_WINDOW_LOST, ConflictType::VENUE_TRAINING_OVERLAP, ConflictType::AWAY_NO_FOOTPRINT, ConflictType::FRIENDLY_ON_MATCH_SLOT => \sprintf(
+            // CUP_KICKOFF_OUT_OF_HOURS : une seule fixture, ses bornes sont EXCLUES de l'identité.
+            ConflictType::LEAGUE_WINDOW_VIOLATION, ConflictType::CLUB_RULE_VIOLATION, ConflictType::CUP_KICKOFF_OUT_OF_HOURS, ConflictType::TEAM_VENUE_FORBIDDEN, ConflictType::ACCESS_WINDOW_LOST, ConflictType::VENUE_TRAINING_OVERLAP, ConflictType::AWAY_NO_FOOTPRINT, ConflictType::FRIENDLY_ON_MATCH_SLOT => \sprintf(
                 '%s:%s',
                 $type,
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),

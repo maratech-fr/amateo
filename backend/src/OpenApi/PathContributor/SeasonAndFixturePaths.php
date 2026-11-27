@@ -184,6 +184,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 'kickoffMin' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open lower bound)'],
                                 'kickoffMax' => ['type' => 'string', 'nullable' => true, 'description' => '« HH:MM » or null (open upper bound)'],
                             ]]],
+                            'kickoffMin' => ['type' => 'string', 'description' => 'CUP_KICKOFF_OUT_OF_HOURS: the earliest kickoff of a cup, « HH:MM » (bound included)'],
+                            'kickoffMax' => ['type' => 'string', 'description' => 'CUP_KICKOFF_OUT_OF_HOURS: the latest kickoff of a cup, « HH:MM » (bound included)'],
                             'competitionId' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the paired competition whose fixture count is checked'],
                             'competitionName' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the competition name'],
                             'teamId' => ['type' => 'string', 'description' => 'COMPETITION_INCOMPLETE: the team of that competition'],

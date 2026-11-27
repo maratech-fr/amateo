@@ -61,7 +61,7 @@ cité et VERT). Chacun énonce ce qu'il protège et le scénario qu'il autoriser
   prouvées au bon niveau (famille `testTwoHomeMatches*`/`testMatchOnItsOwnTeamTrainingStaysSilent`/
   `testPastMatchesAreDroppedFromEveryFamily…`). **Repli FAIT (PR4b)** des 6 scénarios géométriques (match sur sa
   propre équipe, deux matchs 2 h même gymnase, match déjà joué, échauffement 2ᵉ domicile même/deux gymnases,
-  recouvrement réel) ; les 6 scénarios SERVEUR (heure murale, amical week-end, coupe hors fenêtre, conflits de
+  recouvrement réel) ; les 6 scénarios SERVEUR (heure murale, amical week-end, coupe hors horaires, conflits de
   personne joueuse/coache) restent — le chemin radar→détection de bout en bout y vit.
 - **`Unit/Service/MatchConflictDetectorTest`** étendu (chantier H) — la famille `MATCH_COACH_UNAVAILABLE`
   (coup d'envoi dans l'indisponibilité déclarée d'un coach PRINCIPAL, sévérité 3 ou 5 selon domicile-extérieur,
@@ -85,7 +85,7 @@ cité et VERT). Chacun énonce ce qu'il protège et le scénario qu'il autoriser
   séance, le match de l'autre reste sur son idéal, contre le VRAI moteur.
 - **`Integration/Service/ConflictRadarLeagueWindowTest`** (écrit PR4b, falsifié 2 sens) — la copie club
   `club_league_window` corrigée par le gestionnaire est LUE par le radar (`ConflictRadarLoader` → `LeagueEnvelopeResolver`) :
-  un domicile hors de cette fenêtre crie `LEAGUE_WINDOW_VIOLATION`, dedans rien, sans copie rien. Repli FAIT de `les-conflits:130`.
+  un domicile de championnat hors de cette fenêtre crie `LEAGUE_WINDOW_VIOLATION`, dedans rien, sans copie rien ; une coupe n'est jamais jugée contre elle mais sur son seul coup d'envoi (08:00–21:00 bornes comprises, férié compris : `CUP_KICKOFF_OUT_OF_HOURS`) — bloquant (axe sens des contraintes, lot 7 PR 4b). Repli FAIT de `les-conflits:130`.
 - **« Envoyer les conflits aux coachs » (M10)** — `Unit/Service/ConflictCoachMailingTest` (qui reçoit quoi : personne +
   coachs principaux, groupe mutualisé, règle de mémoire `nextMemory`, compteurs ; mémoire par conflit : `digest` = ce que la
   tuile affiche — bouge sur une valeur affichée, stable sur un identifiant, un rôle MAIN → ASSISTANT ou une permutation des
