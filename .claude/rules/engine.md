@@ -8,15 +8,14 @@ paths:
 Ce fichier ne remplace pas `engine/AGENTS.md` : référence du domaine, à lire quand on touche le sujet.
 
 - **ruff** : line 120, py314, double quotes, LF. **`ruff format` fait convention et est GARDÉ**
-  (`ruff format --check` dans `make lint`/`make test` et le job CI Engine Tests, P4-64) —
+  (`ruff format --check` dans `make lint`/`make test` et le job CI Engine Tests) —
   `make format` est donc sans danger, il ne churne rien.
 - **mypy `strict`** + plugin `pydantic.mypy` (`ortools.*` ignoré).
-- **bandit** (`bandit -r app/`) — gardé en CI depuis le lot correctif de l'audit 0918 (ENG-46,
-  step dédié du job `engine-tests`), pas seulement en local via `make test`.
+- **bandit** (`bandit -r app/`) — step du job `engine-tests` et de `make lint`/`make test`.
 - **deptry** (`deptry .`, config `[tool.deptry]` de `pyproject.toml`) — garde d'hygiène des
   dépendances (déclarée-jamais-importée/manquante/transitive-seule), step du job `engine-tests`
-  ET déjà dans `make lint`/`make test` (même patron que les gardes équivalentes knip/composer-unused
-  côté frontend/backend, désormais dans `make -C frontend lint` / `make -C backend lint` aussi) —
+  ET dans `make lint`/`make test` (même patron que knip/composer-unused, dans
+  `make -C frontend lint` / `make -C backend lint`) —
   détail : `docs/testing/testing-strategy.md` §1.
 - **pytest** (`-ra`) + golden fixtures (`tests/golden/`, solves complets sur fixtures réelles) +
   invariants post-solve (`tests/invariants/`) + hypothesis + perf (`-m perf`, job « Engine Perf

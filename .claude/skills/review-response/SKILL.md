@@ -5,11 +5,10 @@ description: Protocole de réponse à une revue de code (findings d'un /code-rev
 
 # Répondre à une revue — protocole
 
-Établi 2026-07-31 sur #339→#342 (4 PR mesurées) — et la raison pour laquelle la revue systématique
-est sortie du cycle le 2026-08-05. Constat fondateur : « à chaque round 1 on introduit des erreurs
-qu'on corrige au round 2 ». Cause mesurée : le finding est traité comme **un cas** et non comme
-**l'exemple d'une règle**, et le correctif change ce qu'un écran dit sans qu'on regarde qui d'autre
-en dépend. Sur #342, la moitié des 10 défauts du round 2 étaient nés des correctifs du round 1.
+Pourquoi ce protocole : un round 2 hérite des erreurs du round 1 quand un finding est traité comme
+**un cas** et non comme **l'exemple d'une règle**, et quand le correctif change ce qu'un écran dit
+sans qu'on regarde qui d'autre en dépend — sur une PR mesurée, la moitié des défauts du round 2
+étaient nés des correctifs du round 1.
 
 1. **Corriger la règle, pas le cas.** Avant d'éditer, écrire la règle que le finding instancie,
    puis chercher TOUS ses sites (grep). Un correctif qui ne vaut qu'à la ligne citée en fabrique

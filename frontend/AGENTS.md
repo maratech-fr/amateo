@@ -31,8 +31,8 @@ host (`prefix: "/api"` uses the Vite proxy in dev, Nginx in prod).
 Full tree, entry points, key mechanisms: [`frontend-spec.md`](docs/frontend-spec.md) §10. Two
 facts absent from that spec, kept here: `app/routes.tsx` holds the `RouteObject[]` tree as a
 **non-component export**, moved out of `router.tsx` on purpose (FRT-29) ; `features/matches/api`
-is the **one barrel** in the codebase — `api/index.ts` re-exporting 8 per-domain modules
-(opponents/fixtures/conflicts/venues/teams/competitions/fbi/ffbb, FRT-33) — its public import
+is the **one barrel** in the codebase — `api/index.ts` re-exporting the per-domain modules
+(one file per domain, FRT-33) — its public import
 path (`./api`) is unchanged.
 
 ---
@@ -77,7 +77,7 @@ without each one at the pointer above before touching `routes.tsx`.
 
 ### Toute mutation VOILE l'écran — l'exemption se déclare, elle ne se devine pas
 
-Lot C (2026-08-21). `app/ActionVeil.tsx`, monté dans `Providers`, bloque l'écran pendant qu'une
+`app/ActionVeil.tsx`, monté dans `Providers`, bloque l'écran pendant qu'une
 action rend la main : `inert` natif (React 19) sur le contenu + overlay qui capte les clics. Le
 voile n'est **visible qu'après 250 ms** (sinon il clignote à chaque clic de 90 ms). ⚠ **Le MOMENT
 du blocage dépend du contexte** — 0 ms pour `enregistrement`/`long`, 250 ms pour `changement de
@@ -93,12 +93,12 @@ page` : voir la puce dédiée.
   planning ; déclencheur commun `shared/stores/navTransitionStore`) ; tout
   le reste est « enregistrement ». ⚠ Un **refetch d'arrière-plan ne voile jamais** (le prédicat est
   `undefined === q.state.data`, la même notion que `readState`) — **et le simple montage d'un écran
-  non plus** (correction 2026-08-21, GO fondateur). Pourquoi : le blocage à 0 ms sert à manger le
+  non plus** (GO fondateur 2026-08-21). Pourquoi : le blocage à 0 ms sert à manger le
   2ᵉ clic d'un geste **déjà parti** ; une arrivée n'a rien lancé, il n'y a aucune double-soumission
   à empêcher — et comme le voile est invisible sous 250 ms, geler un formulaire déjà peint mange
-  les frappes **sans le moindre retour visuel** (l'utilisateur croit son clavier mort). L'ancienne
-  règle voilait tout premier chargement : elle gelait le formulaire de l'étape 1 du wizard à
-  l'arrivée (`journey.spec.ts`, `veil-double-click.spec.ts`).
+  les frappes **sans le moindre retour visuel** (l'utilisateur croit son clavier mort). Voiler un premier
+  chargement gèlerait le formulaire de l'étape 1 du wizard à l'arrivée (`journey.spec.ts`,
+  `veil-double-click.spec.ts`).
 - **Le MOMENT du blocage n'est PAS le même selon le contexte** (asymétrie voulue, GO fondateur
   2026-08-21 — dérivé `blocking` dans `ActionVeil`) : `enregistrement` et `traitement long` bloquent
   **dès 0 ms** (ils protègent un geste RÉELLEMENT parti, dont le blocage immédiat mange le 2ᵉ clic) ;
@@ -129,8 +129,7 @@ page` : voir la puce dédiée.
   part **toute seule**, sans geste (le filigrane des nouveautés se pose en silence pour un nouvel
   inscrit, ~1,5 s après l'arrivée sur le wizard). Le blocage à 0 ms protège un geste parti d'un
   clic en mangeant le 2ᵉ clic ; ici AUCUN clic n'est parti, et le gel avalait les frappes du
-  gestionnaire en train de taper sa première équipe — flake e2e sur QUATRE PR (#684/#687/#689/#694)
-  avant que le trace Playwright la nomme (2026-08-22, NR : `WhatsNewModal.test`, voile monté en
+  gestionnaire en train de taper sa première équipe (NR : `WhatsNewModal.test`, voile monté en
   vrai). Le critère de la famille : si la mutation peut partir SANS interaction, elle s'exempte.
   ⚠ **`useRegenerateFromVersion` n'en fait PAS partie** et ne doit pas y entrer : `/regenerate-from`
   ne lance **aucun solve** (`RegenerateFromVersionController.php:102-104`, 200 synchrone), c'est un
@@ -163,8 +162,7 @@ page` : voir la puce dédiée.
 Le corps de texte descend à `text-xs` (0,75 rem = **12 px**) et pas en dessous — pas
 d'échelle arbitraire en `text-[10px]`. **Exception assumée : les GRILLES**
 (`WeekGrid`, `WeekendGrid`, `TypicalWeekendGrid`, `ReservationGrid`, `MonthCalendar`,
-`VenueAvailabilityGrid`, **`ClubViewTable`** — ajoutée le 2026-08-19, audit A11Y-16 : née
-avec P3-20, elle suivait déjà la convention sans figurer dans la liste), où la densité est la fonction : y agrandir le texte impose
+`VenueAvailabilityGrid`, **`ClubViewTable`**), où la densité est la fonction : y agrandir le texte impose
 des lignes plus hautes, donc du défilement dans un écran fait pour tenir en un coup
 d'œil. Décision fondateur du 2026-08-08, avec son pourquoi dans
 `specs/courantes/etat-des-lieux.md` §2.
