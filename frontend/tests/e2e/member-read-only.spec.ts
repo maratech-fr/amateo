@@ -44,7 +44,7 @@ const READ_ONLY_NOTICE = "Consultation : réservé aux gestionnaires";
  */
 const ALLOWED_WRITES = [/^\/api\/matches\/module-visit$/, /^\/api\/release-notes\/seen$/, /^\/api\/constraints\/validate$/];
 const OUTBOUND = [/^\/api\/ffbb\//, /^\/api\/geocode/, /^\/api\/venues\/geo-check/, /\/email-preview$/];
-const WRITE_BUTTON = /^(Générer|Lancer la génération|Enregistrer|Ajouter|Supprimer|Valider|Rouvrir|Importer|Approuver|Copier le lien|Appliquer|Tout appliquer|Relancer)/;
+const WRITE_BUTTON = /^(Générer|Lancer la génération|Enregistrer|Ajouter|Supprimer|Valider|Rouvrir|Retravailler|Revenir au planning en vigueur|Importer|Approuver|Copier le lien|Appliquer|Tout appliquer|Relancer)/;
 
 interface Watch {
   violations: string[];

@@ -202,6 +202,7 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/schedules/{id}/fill' => ['/api/schedules/{schedule}/fill', null, 403],
         'POST /api/schedules/{id}/validate' => ['/api/schedules/{schedule}/validate', null, 403],
         'POST /api/schedules/{id}/reopen' => ['/api/schedules/{schedule}/reopen', null, 403],
+        'POST /api/schedules/{id}/rework' => ['/api/schedules/{schedule}/rework', null, 403],
         'POST /api/schedules/{id}/place-slot' => ['/api/schedules/{schedule}/place-slot', '{}', 403],
         'POST /api/schedule_plans' => ['/api/schedule_plans', '{"calendarEntryId":"{unplanned_period}"}', 403],
         'PUT /api/schedule_plans/{id}' => ['/api/schedule_plans/{period_plan}', '@get', 403],
