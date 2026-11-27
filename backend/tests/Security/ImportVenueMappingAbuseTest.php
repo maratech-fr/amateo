@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
 use App\Entity\Fixture;
@@ -23,6 +22,7 @@ use App\Service\Fbi\FbiDeviationService;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Integration\Service\ImportVenueRequiredTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -54,8 +54,8 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 #[Group('integration')]
 final class ImportVenueMappingAbuseTest extends WebTestCase
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 

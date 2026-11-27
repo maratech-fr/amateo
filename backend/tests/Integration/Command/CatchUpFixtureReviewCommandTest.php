@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Command;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Command\CatchUpFixtureReviewCommand;
 use App\Entity\Club;
@@ -16,6 +15,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\FbiFixtureImporter;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;

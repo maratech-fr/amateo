@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service\Geo;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
@@ -21,6 +20,7 @@ use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;

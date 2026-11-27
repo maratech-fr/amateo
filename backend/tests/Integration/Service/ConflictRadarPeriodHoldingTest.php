@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
@@ -29,6 +28,7 @@ use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
 use App\Service\ConflictRadarLoader;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;

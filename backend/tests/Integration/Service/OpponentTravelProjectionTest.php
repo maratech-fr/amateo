@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubTravelCache;
 use App\Entity\Fixture;
@@ -19,6 +18,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentTravelProjection;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;

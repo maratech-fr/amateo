@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Deletion\CascadePlan;
 use App\Deletion\CascadeStep;
 use App\Deletion\ClearFieldStep;
@@ -55,6 +54,7 @@ use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ComposesPlanVenuesTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\SeasonPlanOf;
@@ -92,10 +92,10 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class DeletionImpactParityTest extends KernelTestCase
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
     use ComposesPlanTeamsTrait;
     use ComposesPlanVenuesTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
     use TenantGucTrait;

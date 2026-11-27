@@ -558,7 +558,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $friendly->setClubId(self::ER_CLUB);
         $friendly->setSeasonId(self::ER_SEASON);
         $friendly->setTeamId(self::ER_TEAM_U15);
-        $friendly->setCompetitionId(static::getContainer()->get(FriendlyCompetitions::class)->engageInDefault(self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U15)->getId());
+        $friendly->setCompetitionId(self::getContainer()->get(FriendlyCompetitions::class)->engageInDefault(self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U15)->getId());
         $friendly->setMatchDate(new DateTimeImmutable('2025-12-13'));
         $friendly->setHomeAway(FixtureHomeAway::HOME);
         $friendly->setOpponentLabel('Adversaire 51');

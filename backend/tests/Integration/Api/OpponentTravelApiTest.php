@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -26,6 +25,7 @@ use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;

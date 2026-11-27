@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\MessageHandler;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
@@ -31,6 +30,7 @@ use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
 use App\Service\TravelComputeLock;
 use App\Service\TravelProgressPublisher;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;

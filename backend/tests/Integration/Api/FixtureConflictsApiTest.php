@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
@@ -27,6 +26,7 @@ use App\Enum\OpponentLocationPrecision;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Clock\DevClockStore;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
@@ -27,6 +26,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -79,8 +79,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class ImportVenueRequiredTest extends WebTestCase
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 

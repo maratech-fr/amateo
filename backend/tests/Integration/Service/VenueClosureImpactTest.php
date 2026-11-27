@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
@@ -21,6 +20,7 @@ use App\Service\ClosurePinRemover;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueClosureImpact;
 use App\Tests\ClosurePinDecorTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -41,8 +41,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class VenueClosureImpactTest extends WebTestCase
 {
-    use CreatesCompetitionsTrait;
     use ClosurePinDecorTrait;
+    use CreatesCompetitionsTrait;
 
     private EntityManagerInterface $em;
 

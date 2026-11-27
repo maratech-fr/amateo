@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
@@ -17,6 +16,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -36,8 +36,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class VenueExternalLabelApiTest extends WebTestCase
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 

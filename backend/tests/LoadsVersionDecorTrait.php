@@ -43,8 +43,8 @@ use PHPUnit\Framework\Assert;
  */
 trait LoadsVersionDecorTrait
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 

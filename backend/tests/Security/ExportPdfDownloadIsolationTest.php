@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use App\Tests\CreatesCompetitionsTrait;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
@@ -22,6 +21,7 @@ use App\Service\ProductIdentity;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use ArrayObject;
 use DateTimeImmutable;
@@ -72,8 +72,8 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 #[Group('security')]
 final class ExportPdfDownloadIsolationTest extends WebTestCase
 {
-    use CreatesCompetitionsTrait;
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
