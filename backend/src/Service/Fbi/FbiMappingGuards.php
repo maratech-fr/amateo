@@ -8,6 +8,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Matches\CompetitionRegistry;
+use App\Matches\EngagementView;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
@@ -35,7 +36,7 @@ final class FbiMappingGuards
      * guard REFUSES is dropped (named error) instead of persisted — the dialog
      * has no remap gesture, a wrong write would stick. The target competition
      * is resolved WITHOUT writing: the suggestion's competitionId, else the
-     * exact (team, name) lookup persistMappings would use. A target without
+     * (team, normalized name) lookup persistMappings would use. A target without
      * pairing has no poule → never checked, mapping passes.
      *
      * @param list<array{division: string, fbiTeamLabel: string|null, teamId: string, competitionId: string|null}>                                                                                                                                                                                              $mappings
@@ -72,9 +73,10 @@ final class FbiMappingGuards
                     $target = $byId;
                 }
             }
-            $target ??= $this->exactNameCompetitionOf($mapping['teamId'], mb_substr(trim($mapping['division']), 0, 180));
+            $target ??= $this->competitionRegistry->findForTeam($mapping['teamId'], mb_substr(trim($mapping['division']), 0, 180));
+            $engagement = $target instanceof Competition ? $this->competitionRegistry->engagementOf($target, $mapping['teamId']) : null;
 
-            $guard = null !== $group && $target instanceof Competition ? $this->pouleGuard($target, $group['rows'], $group['name']) : null;
+            $guard = null !== $group && $engagement instanceof EngagementView ? $this->pouleGuard($engagement, $group['rows'], $group['name']) : null;
             if (null !== $guard && $guard['blocking']) {
                 $errors[] = $guard['message'];
                 $blockedKeys[$group['divisionKey'] . '|' . $group['labelKey']] = true;
@@ -184,9 +186,9 @@ final class FbiMappingGuards
      *
      * @return array{blocking: bool, message: string, unknown: list<string>}|null
      */
-    public function pouleGuard(Competition $competition, array $rows, string $divisionName): ?array
+    public function pouleGuard(EngagementView $engagement, array $rows, string $divisionName): ?array
     {
-        $pouleClubs = $competition->getFfbbPouleOpponents();
+        $pouleClubs = $engagement->ffbbPouleOpponents;
         if (null === $pouleClubs || [] === $pouleClubs) {
             return null;
         }
@@ -218,7 +220,7 @@ final class FbiMappingGuards
         }
         $total = \count($seen);
         $blocking = \count($unknown) * 2 > $total;
-        $pouleName = $competition->getFfbbPouleName() ?? '?';
+        $pouleName = $engagement->ffbbPouleName ?? '?';
         $message = $blocking
             ? \sprintf(
                 'Division « %s » ignorée : %d adversaire(s) sur %d hors de la poule « %s » (%s) — mauvais fichier, mauvaise équipe ou mauvaise phase ? Données de la ligue — un écart se corrige auprès d\'elle.',
@@ -260,6 +262,7 @@ final class FbiMappingGuards
     {
         /** @var list<Competition> $competitions */
         $competitions = $this->entityManager->getRepository(Competition::class)->findBy([]);
+        $engagements = $this->competitionRegistry->engagementsByCompetition();
         /** @var array<string, Competition|null> $byCanonical null = ambiguous */
         $byCanonical = [];
         /** @var list<array{competition: Competition, signature: array{level: string|null, division: int|null, gender: string|null, category: string|null, type: string}}> $bridgeCandidates */
@@ -277,7 +280,7 @@ final class FbiMappingGuards
             ];
         }
 
-        return function (string $divisionName) use ($byCanonical, $bridgeCandidates): ?Competition {
+        return function (string $divisionName) use ($byCanonical, $bridgeCandidates, $engagements): ?Competition {
             $byName = $byCanonical[$this->normalizeLabel($divisionName)] ?? null;
             if ($byName instanceof Competition) {
                 return $byName;
@@ -292,7 +295,9 @@ final class FbiMappingGuards
             foreach ($bridgeCandidates as $candidate) {
                 if ($this->divisionSignature->bridges($fileSignature, $candidate['signature'])) {
                     $matches[] = $candidate['competition'];
-                    $teamIds[$candidate['competition']->getTeamId()] = true;
+                    foreach ($engagements[$candidate['competition']->getId()] ?? [] as $engagement) {
+                        $teamIds[$engagement->teamId] = true;
+                    }
                 }
             }
             if (1 !== \count($teamIds)) {
@@ -302,21 +307,6 @@ final class FbiMappingGuards
 
             return $matches[0];
         };
-    }
-
-    /**
-     * La compétition de l'équipe portant EXACTEMENT ce nom (comparaison exacte, jamais
-     * normalisée) : la recherche de la garde et de {@see FbiFixtureImporter::persistMappings}.
-     */
-    public function exactNameCompetitionOf(string $teamId, string $name): ?Competition
-    {
-        foreach ($this->competitionRegistry->competitionsOf($teamId) as $competition) {
-            if ($competition->getName() === $name) {
-                return $competition;
-            }
-        }
-
-        return null;
     }
 
     /**

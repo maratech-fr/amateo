@@ -22,6 +22,7 @@ use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -44,6 +45,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class DeadlineOutlookTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -139,15 +141,9 @@ final class DeadlineOutlookTest extends WebTestCase
 
     private function createMaturedCompetition(string $clubId, string $seasonId, string $teamId): Competition
     {
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName('D2-' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($teamId, 'D2-' . uniqid('', true), CompetitionType::CHAMPIONSHIP);
         $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
-        $this->em->persist($competition);
-        $this->em->flush();
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition;
     }

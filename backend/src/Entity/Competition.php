@@ -5,30 +5,29 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Enum\CompetitionType;
+use App\Matches\CompetitionRegistry;
 use App\Repository\CompetitionRepository;
 use App\Structure\Family;
 use App\Structure\Level;
-use App\Structure\OnDelete;
-use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * A team's competition/phase (FFBB championship / cup / brassage). N per team —
- * a team may run several with distinct windows (spec gestion-matchs §9).
- * Season-scoped, tenant-owned. Friendly matches carry no competition (a Fixture
- * with a null competitionId).
+ * A competition/phase of the season (FFBB championship / cup / brassage). The teams that play it
+ * are its engagements ({@see Engagement}, read and written by {@see CompetitionRegistry} only) —
+ * one per competition today, except friendlies later (Q8). No uniqueness on the name: two
+ * competitions of the same name are legitimate (two club teams in one division); « no two
+ * competitions of the same name for one team » is held by the registry (normalized compare).
+ * Season-scoped, tenant-owned. Friendly matches carry no competition (a Fixture with a null
+ * competitionId).
  */
 #[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: CompetitionRepository::class)]
 #[ORM\Table(name: 'competition')]
 #[ORM\Index(name: 'idx_competition_club_season', columns: ['club_id', 'season_id'])]
-#[ORM\Index(name: 'idx_competition_team', columns: ['team_id'])]
-// P4-67 — deux « DF2 » pour la MÊME équipe rendaient la résolution d'import
-// arbitraire (candidates[0]). Deux équipes en DF2 restent légitimes : la clé
-// porte le teamId. (L'unicité de la réf FFBB est un index PARTIEL — WHERE NOT
-// NULL — posé en migration : Doctrine ne sait pas le déclarer en attribut.)
-#[ORM\UniqueConstraint(name: 'uniq_competition_team_name', columns: ['club_id', 'season_id', 'team_id', 'name'])]
+// Cible de la clé composée (competition_id, club_id) de l'engagement : un engagement ne désigne
+// jamais la compétition d'un autre club (une clé simple ignorerait la RLS).
+#[ORM\UniqueConstraint(name: 'uniq_competition_id_club', columns: ['id', 'club_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Competition implements TenantOwnedInterface
 {
@@ -52,24 +51,11 @@ class Competition implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    #[ORM\Column(type: 'guid')]
-    #[RefersTo(Team::class, OnDelete::DELETE)]
-    private string $teamId;
-
     #[ORM\Column(type: 'string', length: 180)]
     private string $name;
 
     #[ORM\Column(length: 20, enumType: CompetitionType::class)]
     private CompetitionType $competitionType;
-
-    /**
-     * The club-side team label as the FBI export writes it (e.g. « B CHARPENNES
-     * CROIX LUIZET - 2 ») — the disambiguator when TWO club teams play in the
-     * same division (cadrage P1-4, décision fondateur 2026-08-02 : le suffixe
-     * appareille la 2ᵉ équipe). Null when the division alone identifies the team.
-     */
-    #[ORM\Column(length: 180, nullable: true)]
-    private ?string $fbiTeamLabel = null;
 
     #[ORM\Column(type: 'date_immutable', nullable: true)]
     private ?DateTimeImmutable $startDate = null;
@@ -80,35 +66,15 @@ class Competition implements TenantOwnedInterface
     // ── FFBB pairing refs (P1-4 PR F, appariement §3) — written by the pairing
     // confirm endpoint (never by the CRUD), re-paired at each phase. Since P4-194
     // the FFBB-API reconciler ALSO sets ffbbCompetitionId (when it resolves-or-
-    // creates the CUP of an imported rencontre) — but never poule/opponents/
-    // matchdays: those stay the pairing confirm's alone. ──
+    // creates the CUP of an imported rencontre). The poule, its opponents and the
+    // expected matchdays live on the engagement. ──
 
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $ffbbCompetitionId = null;
 
-    #[ORM\Column(length: 64, nullable: true)]
-    private ?string $ffbbPouleId = null;
-
-    #[ORM\Column(length: 120, nullable: true)]
-    private ?string $ffbbPouleName = null;
-
     /** Canonical FFBB competition name (« Pré régionale masculine ») — the pre-fill key across phases. */
     #[ORM\Column(length: 180, nullable: true)]
     private ?string $ffbbCompetitionName = null;
-
-    /** 2×(N−1) for a poule of N clubs — frozen at pairing time (never re-fetched at read). */
-    #[ORM\Column(type: 'integer', nullable: true)]
-    private ?int $expectedMatchdays = null;
-
-    /**
-     * The poule's club names, copied at pairing time — the import poule guard's
-     * offline data (tenant-scoped snapshot born from this club's own on-demand
-     * consultation; NOT the forbidden global directory).
-     *
-     * @var list<string>|null
-     */
-    #[ORM\Column(type: 'json', nullable: true)]
-    private ?array $ffbbPouleOpponents = null;
 
     /**
      * The league/committee entry deadline for this competition (RMM-6) — the date
@@ -200,18 +166,6 @@ class Competition implements TenantOwnedInterface
         return $this;
     }
 
-    public function getTeamId(): string
-    {
-        return $this->teamId;
-    }
-
-    public function setTeamId(string $teamId): self
-    {
-        $this->teamId = $teamId;
-
-        return $this;
-    }
-
     public function getName(): string
     {
         return $this->name;
@@ -232,18 +186,6 @@ class Competition implements TenantOwnedInterface
     public function setCompetitionType(CompetitionType $competitionType): self
     {
         $this->competitionType = $competitionType;
-
-        return $this;
-    }
-
-    public function getFbiTeamLabel(): ?string
-    {
-        return $this->fbiTeamLabel;
-    }
-
-    public function setFbiTeamLabel(?string $fbiTeamLabel): self
-    {
-        $this->fbiTeamLabel = $fbiTeamLabel;
 
         return $this;
     }
@@ -284,30 +226,6 @@ class Competition implements TenantOwnedInterface
         return $this;
     }
 
-    public function getFfbbPouleId(): ?string
-    {
-        return $this->ffbbPouleId;
-    }
-
-    public function setFfbbPouleId(?string $ffbbPouleId): self
-    {
-        $this->ffbbPouleId = $ffbbPouleId;
-
-        return $this;
-    }
-
-    public function getFfbbPouleName(): ?string
-    {
-        return $this->ffbbPouleName;
-    }
-
-    public function setFfbbPouleName(?string $ffbbPouleName): self
-    {
-        $this->ffbbPouleName = $ffbbPouleName;
-
-        return $this;
-    }
-
     public function getFfbbCompetitionName(): ?string
     {
         return $this->ffbbCompetitionName;
@@ -316,32 +234,6 @@ class Competition implements TenantOwnedInterface
     public function setFfbbCompetitionName(?string $ffbbCompetitionName): self
     {
         $this->ffbbCompetitionName = $ffbbCompetitionName;
-
-        return $this;
-    }
-
-    public function getExpectedMatchdays(): ?int
-    {
-        return $this->expectedMatchdays;
-    }
-
-    public function setExpectedMatchdays(?int $expectedMatchdays): self
-    {
-        $this->expectedMatchdays = $expectedMatchdays;
-
-        return $this;
-    }
-
-    /** @return list<string>|null */
-    public function getFfbbPouleOpponents(): ?array
-    {
-        return $this->ffbbPouleOpponents;
-    }
-
-    /** @param list<string>|null $ffbbPouleOpponents */
-    public function setFfbbPouleOpponents(?array $ffbbPouleOpponents): self
-    {
-        $this->ffbbPouleOpponents = $ffbbPouleOpponents;
 
         return $this;
     }

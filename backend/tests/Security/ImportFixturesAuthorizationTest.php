@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -130,7 +130,7 @@ final class ImportFixturesAuthorizationTest extends WebTestCase
         $this->scopeGucToClub($clubB);
         self::assertCount(
             0,
-            $this->em->getRepository(Competition::class)->findBy(['teamId' => $teamB->getId()]),
+            self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($teamB->getId()),
             'a foreign mapping must never write into the other club',
         );
     }

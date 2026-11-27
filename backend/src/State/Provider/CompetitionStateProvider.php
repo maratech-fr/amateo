@@ -7,6 +7,7 @@ namespace App\State\Provider;
 use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\CompetitionResource;
 use App\Entity\Competition;
+use App\Entity\Engagement;
 use App\Matches\CompetitionRegistry;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,15 +34,21 @@ class CompetitionStateProvider extends AbstractStateProvider
         return Competition::class;
     }
 
-    /** Custom provider bypasses the Doctrine SearchFilter → apply by hand. */
+    /**
+     * Custom provider bypasses the Doctrine SearchFilter → apply by hand. `?teamId=` gives the
+     * competitions where the team is engaged (the team lives on the engagement).
+     */
     protected function applyRequestFilters(QueryBuilder $qb): bool
     {
         $request = $this->requestStack->getCurrentRequest();
-        foreach (['seasonId', 'teamId'] as $field) {
-            $value = $request?->query->get($field);
-            if (\is_string($value) && '' !== $value) {
-                $qb->andWhere(\sprintf('e.%s = :%s', $field, $field))->setParameter($field, $value);
-            }
+        $seasonId = $request?->query->get('seasonId');
+        if (\is_string($seasonId) && '' !== $seasonId) {
+            $qb->andWhere('e.seasonId = :seasonId')->setParameter('seasonId', $seasonId);
+        }
+        $teamId = $request?->query->get('teamId');
+        if (\is_string($teamId) && '' !== $teamId) {
+            $qb->andWhere(\sprintf('EXISTS (SELECT eng.id FROM %s eng WHERE eng.competitionId = e.id AND eng.teamId = :teamId)', Engagement::class))
+                ->setParameter('teamId', $teamId);
         }
 
         return false;

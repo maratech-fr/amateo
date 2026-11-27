@@ -29,6 +29,7 @@ use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -51,6 +52,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 #[Group('integration')]
 final class MatchesExportDataProviderTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -682,16 +684,7 @@ final class MatchesExportDataProviderTest extends KernelTestCase
 
     private function competition(string $name): Competition
     {
-        $competition = (new Competition)
-            ->setClubId($this->club->getId())
-            ->setSeasonId($this->season->getId())
-            ->setTeamId($this->team->getId())
-            ->setName($name)
-            ->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
-
-        return $competition;
+        return $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
     }
 
     private function venue(string $name, ?string $address): Venue

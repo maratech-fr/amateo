@@ -174,8 +174,8 @@ describe("ConfigurationPage (PR 2a — défaut tout replié, gabarit/créneaux p
 
   it("les en-têtes portent un résumé calculé des données servies", async () => {
     state.competitions = [
-      { id: "c1", teamId: "team-1", name: "PNM", competitionType: "championnat", effectiveEntryDeadline: "2026-10-01" },
-      { id: "c2", teamId: "team-1", name: "RM2", competitionType: "championnat", effectiveEntryDeadline: null },
+      { id: "c1", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "PNM", competitionType: "championnat", effectiveEntryDeadline: "2026-10-01" },
+      { id: "c2", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "RM2", competitionType: "championnat", effectiveEntryDeadline: null },
     ];
     state.matchWindows = [matchWindow("venue-1")];
     renderWithProviders(<Harness />);

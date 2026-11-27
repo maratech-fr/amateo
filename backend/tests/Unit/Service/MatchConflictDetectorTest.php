@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
+use App\Matches\EngagementView;
 use App\Service\AwayKickoffEstimator;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
@@ -1424,10 +1425,9 @@ final class MatchConflictDetectorTest extends TestCase
         $this->setId($cup, 'cup-1');
         $cup->setClubId('club');
         $cup->setSeasonId('season');
-        $cup->setTeamId(self::TEAM_1);
         $cup->setName('U18 MASCULIN COUPE DU RHONE');
         $cup->setCompetitionType(CompetitionType::CUP);
-        $cup->setExpectedMatchdays(null);
+        $cup = ['competition' => $cup, 'engagements' => [new EngagementView('cup-1', self::TEAM_1, null, null, null, null, null)]];
 
         $fx = $this->fixture('fx-cup', self::TEAM_1, '2026-10-03', '17:00');
         $fx->setCompetitionId('cup-1');
@@ -2627,22 +2627,21 @@ final class MatchConflictDetectorTest extends TestCase
         return $window;
     }
 
-    /** @param list<string>|null $opponents the poule's club names (for exempt counting) */
-    private function competition(string $id, ?int $expectedMatchdays, ?array $opponents = null): Competition
+    /**
+     * @param list<string>|null $opponents the poule's club names (for exempt counting)
+     *
+     * @return array{competition: Competition, engagements: list<EngagementView>} the competition and its single engagement (TEAM_1)
+     */
+    private function competition(string $id, ?int $expectedMatchdays, ?array $opponents = null): array
     {
         $competition = new Competition;
         $this->setId($competition, $id);
         $competition->setClubId('club');
         $competition->setSeasonId('season');
-        $competition->setTeamId(self::TEAM_1);
         $competition->setName('D2');
         $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $competition->setExpectedMatchdays($expectedMatchdays);
-        if (null !== $opponents) {
-            $competition->setFfbbPouleOpponents($opponents);
-        }
 
-        return $competition;
+        return ['competition' => $competition, 'engagements' => [new EngagementView($id, self::TEAM_1, null, null, null, $opponents, $expectedMatchdays)]];
     }
 
     private function habit(string $teamId, int $dayOfWeek, string $kickoff): TeamMatchHabit

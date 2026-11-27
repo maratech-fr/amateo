@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Entity\Club;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -15,10 +14,12 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Service\TeamTagService;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -54,6 +55,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FfbbLevelAlignmentTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -202,7 +204,7 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         $this->scopeGucToClub($clubB);
         $this->em->clear();
         self::assertNull($this->em->getRepository(Team::class)->find($teamB->getId())?->getLevel(), 'rien écrit sur l\'équipe étrangère');
-        self::assertCount(0, $this->em->getRepository(Competition::class)->findBy(['teamId' => $teamB->getId()]));
+        self::assertCount(0, self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($teamB->getId()));
     }
 
     protected function setUp(): void
@@ -248,13 +250,7 @@ final class FfbbLevelAlignmentTest extends WebTestCase
     private function engage(Team $team): void
     {
         $this->scopeGucToClub($team->getClubId());
-        $competition = new Competition;
-        $competition->setClubId($team->getClubId());
-        $competition->setSeasonId($team->getSeasonId());
-        $competition->setTeamId($team->getId());
-        $competition->setName('ENGAGE');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
+        $competition = $this->competitionFor($team->getId(), 'ENGAGE', CompetitionType::CHAMPIONSHIP);
 
         $fixture = new Fixture;
         $fixture->setClubId($team->getClubId());

@@ -6,7 +6,6 @@ namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -20,6 +19,7 @@ use App\Plans\PlanComposition;
 use App\Service\ConflictRadarLoader;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Integration\Api\LeagueMatchWindowsApiTest;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -47,6 +47,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class ConflictRadarLeagueWindowTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -184,14 +185,7 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
 
     private function homeCompetitionFixture(string $kickoff): Fixture
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->season->getId());
-        $competition->setTeamId($this->team->getId());
-        $competition->setName('Coupe du Rhône ' . uniqid('', true));
-        $competition->setCompetitionType(CompetitionType::CUP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($this->team->getId(), 'Coupe du Rhône ' . uniqid('', true), CompetitionType::CUP);
 
         $fixture = new Fixture;
         $fixture->setClubId($this->club->getId());

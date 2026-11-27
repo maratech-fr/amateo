@@ -6,7 +6,6 @@ namespace App\Tests\MessageHandler;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
@@ -30,6 +29,7 @@ use App\Service\PlacementRunFailureNotifier;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\PlacementLockProbeTrait;
 use App\Tests\SeasonPlanOf;
@@ -77,6 +77,7 @@ use Symfony\Component\Mime\RawMessage;
 final class RedeliveredPlacementTest extends KernelTestCase
 {
     use BuildsServiceWithDoublesTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use PlacementLockProbeTrait;
     use TenantGucTrait;
@@ -538,14 +539,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $window->setEndTime(new DateTimeImmutable('20:00'));
         $this->em->persist($window);
 
-        $competition = new Competition;
-        $competition->setClubId($club->getId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId($team->getId());
-        $competition->setName('D2-' . $uid);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($team->getId(), 'D2-' . $uid, CompetitionType::CHAMPIONSHIP);
 
         $fixture = new Fixture;
         $fixture->setClubId($club->getId());

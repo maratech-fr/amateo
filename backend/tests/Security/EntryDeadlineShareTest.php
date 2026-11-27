@@ -14,6 +14,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
@@ -352,7 +353,7 @@ final class EntryDeadlineShareTest extends WebTestCase
 
         // Une fenêtre J-7 ouverte : échéance dans 3 jours + un domicile encore à saisir.
         $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::UNPLACED);
 
         // Première visite : la référence est figée.
         $first = $this->stampVisit($user);
@@ -361,7 +362,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         // On recule la référence d'une heure (les fixtures « maintenant » comptent comme neuves),
         // puis on crée un match neuf.
         $this->ageReference($club->getId(), $season->getId());
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::UNPLACED);
 
         $visitBefore = $this->visitRow($club->getId(), $season->getId(), $user->getId());
 
@@ -397,10 +398,10 @@ final class EntryDeadlineShareTest extends WebTestCase
         $comp = $this->makeCompetition($season, 1, null);
         $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
 
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::PLACED);
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::SUBMITTED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::PLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::SUBMITTED);
 
         $outlook = $this->deadlineOutlook($user);
         self::assertCount(1, $outlook['windows'], 'une seule fenêtre (une échéance effective)');
@@ -417,7 +418,7 @@ final class EntryDeadlineShareTest extends WebTestCase
         [, $season, $user] = $this->createClub('ip');
         $comp = $this->makeCompetition($season, 1, null);
         $this->setClubDeadline($comp, new DateTimeImmutable('today')->modify('+3 days'));
-        $this->homeFixture($season, $comp->getTeamId(), $comp->getId(), FixtureStatus::UNPLACED);
+        $this->homeFixture($season, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($comp)[0]->teamId, $comp->getId(), FixtureStatus::UNPLACED);
 
         $outlook = $this->deadlineOutlook($user);
         self::assertCount(1, $outlook['windows'], 'un domicile UNPLACED suffit à émettre la fenêtre');
@@ -690,18 +691,16 @@ final class EntryDeadlineShareTest extends WebTestCase
     private function makeCompetition(Season $season, int $teamN, ?string $ffbbCompetitionId): Competition
     {
         $this->scopeGucToClub($season->getClubId());
-        $competition = new Competition;
-        $competition->setClubId($season->getClubId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId($this->teamUuid($season->getClubId(), $teamN));
-        $competition->setName('Championnat ' . $teamN);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        // Équipe forgée et saison parfois non unique (saison archivée) : la compétition naît dans la saison
+        // donnée, par la seule porte, puis l'équipe y est engagée.
+        $registry = self::getContainer()->get(CompetitionRegistry::class);
+        $competition = $registry->create($season->getClubId(), $season->getId(), 'Championnat ' . $teamN, CompetitionType::CHAMPIONSHIP);
         if (null !== $ffbbCompetitionId) {
             $competition->setFfbbCompetitionId($ffbbCompetitionId);
             $competition->setFfbbCompetitionName('Compétition ' . $teamN);
         }
-        $this->em->persist($competition);
-        $this->em->flush();
+        $registry->engage($competition, $this->teamUuid($season->getClubId(), $teamN));
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition;
     }

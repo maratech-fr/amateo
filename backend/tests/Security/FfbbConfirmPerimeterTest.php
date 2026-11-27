@@ -166,7 +166,8 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         if (null !== $ffbbCompetitionId) {
             $competition->setFfbbCompetitionId($ffbbCompetitionId);
         }
-        $this->em->flush();
+        // competitionFor écrit par le gestionnaire d'entités du conteneur courant (le client redémarre le noyau).
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition;
     }

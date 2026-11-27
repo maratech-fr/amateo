@@ -16,6 +16,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Integration\Service\FbiFixtureImporterTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -42,6 +43,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class FixtureExternalDivisionBackfillMigrationTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -104,16 +106,7 @@ final class FixtureExternalDivisionBackfillMigrationTest extends KernelTestCase
 
     private function competition(string $name): Competition
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->team->getSeasonId());
-        $competition->setTeamId($this->team->getId());
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
-
-        return $competition;
+        return $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
     }
 
     private function fixture(Competition $competition, ?string $externalRef, ?string $ffbbRencontreId): Fixture

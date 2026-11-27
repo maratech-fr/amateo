@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Api;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
@@ -569,14 +568,7 @@ final class FixtureApiTest extends WebTestCase
     {
         [$id, $body] = $this->placedOutOfAccess();
 
-        $coupe = new Competition;
-        $coupe->setClubId($this->club->getId());
-        $coupe->setSeasonId($this->season->getId());
-        $coupe->setTeamId(self::TEAM_ID);
-        $coupe->setName('Coupe');
-        $coupe->setCompetitionType(CompetitionType::CUP);
-        $this->em->persist($coupe);
-        $this->em->flush();
+        $coupe = $this->competitionFor(self::TEAM_ID, 'Coupe', CompetitionType::CUP);
 
         $this->putFixture($id, ['competitionId' => $coupe->getId()] + $body);
         self::assertResponseStatusCodeSame(422);
@@ -1068,14 +1060,7 @@ final class FixtureApiTest extends WebTestCase
 
     private function createCompetition(): string
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->season->getId());
-        $competition->setTeamId(self::TEAM_ID);
-        $competition->setName('Championnat');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor(self::TEAM_ID, 'Championnat', CompetitionType::CHAMPIONSHIP);
 
         return $competition->getId();
     }

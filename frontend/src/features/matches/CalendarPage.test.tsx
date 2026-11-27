@@ -594,8 +594,8 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     { id: "fx-home-w2", teamId: "team-1", seasonId: "s", competitionId: null, matchDate: "2026-10-10", homeAway: "HOME", opponentLabel: "Lointains", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, neutralGround: false, reviewState: "NEW" as const, reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
   ];
   const consultCompetitions = [
-    { id: "comp-coupe", teamId: "team-2", name: "Coupe AURA", competitionType: "CUP", ffbbCompetitionId: "ffbb-1", expectedMatchdays: null },
-    { id: "comp-champ", teamId: "team-1", name: "Nationale 3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "ffbb-2", expectedMatchdays: 10 },
+    { id: "comp-coupe", engagements: [{ teamId: "team-2", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "Coupe AURA", competitionType: "CUP", ffbbCompetitionId: "ffbb-1" },
+    { id: "comp-champ", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: 10 }], name: "Nationale 3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "ffbb-2" },
   ];
   const consultConflicts = {
     clubId: "c",
@@ -827,7 +827,7 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
       ...over,
     };
   }
-  const champComp = { id: "comp-champ", teamId: "team-1", name: "Nat3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "f", expectedMatchdays: 10 };
+  const champComp = { id: "comp-champ", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: 10 }], name: "Nat3", competitionType: "CHAMPIONSHIP", ffbbCompetitionId: "f" };
   const mix = [
     fx({ id: "fx-champ", teamId: "team-1", competitionId: "comp-champ", matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "ChampHome", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00" }),
     fx({ id: "fx-amical", teamId: "team-2", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "AmicalHome", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00" }),

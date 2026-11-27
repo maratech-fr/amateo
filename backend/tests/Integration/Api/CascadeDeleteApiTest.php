@@ -41,6 +41,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -64,6 +65,7 @@ use Symfony\Component\Uid\Uuid;
 final class CascadeDeleteApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -107,9 +109,7 @@ final class CascadeDeleteApiTest extends WebTestCase
         // UNPLACED — rend l'équipe indélébile (409). Ce test porte sur la cascade d'une
         // équipe ordinaire ; le cas « elle joue » est couvert par EngagedTeamGuardTest.
         // La Competition, elle, n'engage pas : c'est une inscription, pas une rencontre.
-        $competitionId = $this->persist((new Competition)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
-            ->setName('D2 Poule A')->setCompetitionType(CompetitionType::CHAMPIONSHIP));
+        $competitionId = $this->competitionFor($team->getId(), 'D2 Poule A', CompetitionType::CHAMPIONSHIP)->getId();
         $diagnosticId = $this->persist((new ScheduleDiagnostic)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setScheduleId($this->season->getId())
             ->setType('unplaced')->setSeverity(ScheduleDiagnosticSeverity::WARNING)->setTeamId($team->getId())

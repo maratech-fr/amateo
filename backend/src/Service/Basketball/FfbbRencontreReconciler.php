@@ -443,10 +443,13 @@ final class FfbbRencontreReconciler
 
         $teamByFfbbCompetitionId = [];
         $competitionByFfbbId = [];
+        $engagements = $this->competitionRegistry->engagementsByCompetition();
         foreach ($this->entityManager->getRepository(Competition::class)->findAll() as $competition) {
             $ffbbId = $competition->getFfbbCompetitionId();
             if (null !== $ffbbId) {
-                $teamByFfbbCompetitionId[$ffbbId][] = $competition->getTeamId();
+                foreach ($engagements[$competition->getId()] ?? [] as $engagement) {
+                    $teamByFfbbCompetitionId[$ffbbId][] = $engagement->teamId;
+                }
                 $competitionByFfbbId[$ffbbId][] = $competition;
             }
         }
@@ -466,8 +469,8 @@ final class FfbbRencontreReconciler
      * or no competitionFfbbId) carries NONE (null = friendly, Fixture contract).
      * Otherwise (R2), for the fixture's TEAM: (1) an existing/just-created
      * competition with this (ffbbId, teamId); (2) a competition of the team with the
-     * EXACT name whose refs were cleared by a re-pairing — re-adopted (else
-     * uniq_competition_team_name would explode), its ffbbCompetitionId re-posted;
+     * same normalized name whose refs were cleared by a re-pairing — re-adopted (the
+     * team never gets two competitions of one name), its ffbbCompetitionId re-posted;
      * (3) else a fresh CUP, name clamped to the 180-char column, ffbbCompetitionId
      * posed, expectedMatchdays null. Never poule/opponents/matchdays — the pairing
      * confirm owns those.
@@ -501,13 +504,12 @@ final class FfbbRencontreReconciler
             }
         }
 
-        // (2) — repli (teamId, name exact) : ré-adopte une compétition dont un
-        // réappariement a effacé les refs, sinon uniq_competition_team_name saute.
+        // (2) — repli (teamId, nom normalisé, la comparaison unique de la porte) :
+        // ré-adopte une compétition dont un réappariement a effacé les refs, plutôt
+        // qu'une seconde compétition de ce nom pour l'équipe.
         $name = mb_substr($competitionName, 0, 180);
-        foreach ($this->competitionRegistry->competitionsOf($teamId) as $competition) {
-            if ($competition->getName() !== $name) {
-                continue;
-            }
+        $competition = $this->competitionRegistry->findForTeam($teamId, $name);
+        if ($competition instanceof Competition) {
             // ⚠ Ne ré-adopter QUE si la compétition n'a pas déjà une AUTRE réf fédérale
             // (revue sécurité) : deux compétitions distinctes dont les libellés se
             // clampent au même nom écraseraient sinon la première réf, en silence et
@@ -524,14 +526,10 @@ final class FfbbRencontreReconciler
         }
 
         // (3) — création : coupe, name clampé (colonne 180), réf posée, journées null.
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CUP);
-        $this->competitionRegistry->engage($competition, $teamId);
+        // Compétition puis engagement, dans l'ordre des persist (le match suit) : un flush.
+        $competition = $this->competitionRegistry->create($clubId, $seasonId, $name, CompetitionType::CUP);
         $competition->setFfbbCompetitionId($competitionFfbbId);
-        $this->entityManager->persist($competition);
+        $this->competitionRegistry->engage($competition, $teamId);
 
         return $createdByKey[$key] = $competition;
     }

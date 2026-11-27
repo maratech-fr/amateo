@@ -7,7 +7,6 @@ namespace App\Tests\Security;
 use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -36,6 +35,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
@@ -100,6 +100,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 final class PlanEntitlementsTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use SubscribesClub;
     use TenantGucTrait;
 
@@ -1188,14 +1189,7 @@ final class PlanEntitlementsTest extends WebTestCase
             $this->seedTeams($clubId, $season->getId(), 1);
             $teamId = (string) $this->em->getConnection()->fetchOne('SELECT id FROM team WHERE club_id = :club AND season_id = :season', ['club' => $clubId, 'season' => $season->getId()]);
         }
-        $competition = (new Competition)
-            ->setClubId($clubId)
-            ->setSeasonId($season->getId())
-            ->setTeamId($teamId)
-            ->setName('Championnat')
-            ->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, 'Championnat', CompetitionType::CHAMPIONSHIP);
 
         $fixture = new Fixture;
         $fixture->setClubId($clubId);

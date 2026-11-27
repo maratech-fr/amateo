@@ -15,8 +15,8 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
-use App\Matches\CompetitionRegistry;
 use App\Matches\ConflictType;
+use App\Matches\EngagementView;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\DayHoldings;
 use App\Service\Conflicts\PersonConflicts;
@@ -186,7 +186,6 @@ final class MatchConflictDetector
         private readonly MatchFootprint $footprint,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
-        private readonly CompetitionRegistry $competitionRegistry = new CompetitionRegistry,
     ) {
         $this->venueConflicts = new VenueConflicts($this->effectiveScheduleResolver);
         $this->ruleWindowConflicts = new RuleWindowConflicts;
@@ -395,7 +394,7 @@ final class MatchConflictDetector
      * @param list<TeamMatchHabit>                                                                                   $habits                  scoped habitual windows (estimation source)
      * @param list<VenueMatchWindow>                                                                                 $matchWindows            scoped access windows (ACCESS_WINDOW_LOST)
      * @param array<string, list<LeagueWindowInterface>>                                                             $envelope                teamId → resolved league windows ([] = unmapped)
-     * @param list<Competition>                                                                                      $competitions            scoped competitions (COMPETITION_INCOMPLETE — severity 6 alerte / 7 info)
+     * @param list<array{competition: Competition, engagements: list<EngagementView>}>                               $competitions            scoped competitions and their engagements (COMPETITION_INCOMPLETE — severity 6 alerte / 7 info)
      * @param array<string, MatchDurationProfile>                                                                    $profilesByTeam          teamId → match duration profile (P2-54 RMM-9); a team absent falls back to MatchDurationProfile::fallback()
      * @param array<string, int>                                                                                     $roundTripByFixtureId
      *                                                                                                                                        fixtureId → round-trip car travel minutes (P2-54 RMM-9 PR-3, AWAY only); absent = 0
@@ -811,9 +810,9 @@ final class MatchConflictDetector
      *  - 0 < n < 2×adv, n ≠ adv ⇒ échéance de saisie dépassée : ALERTE (6, INCOHERENT) ;
      *    sinon (pas dépassée, ou inconnue) : INFO discrète (severity 7, PENDING, repliée).
      *
-     * @param list<Fixture>                    $fixtures
-     * @param list<Competition>                $competitions
-     * @param array<string, DateTimeImmutable> $deadlineByCompetition competitionId → échéance de saisie effective
+     * @param list<Fixture>                                                            $fixtures
+     * @param list<array{competition: Competition, engagements: list<EngagementView>}> $competitions
+     * @param array<string, DateTimeImmutable>                                         $deadlineByCompetition competitionId → échéance de saisie effective
      *
      * @return list<array<string, mixed>>
      */
@@ -829,8 +828,8 @@ final class MatchConflictDetector
 
         $today = $clubToday?->format('Y-m-d');
         $items = [];
-        foreach ($competitions as $competition) {
-            foreach ($this->competitionRegistry->engagementsOf($competition) as $engagement) {
+        foreach ($competitions as ['competition' => $competition, 'engagements' => $engagements]) {
+            foreach ($engagements as $engagement) {
                 $expected = $engagement->expectedMatchdays;
                 if (null === $expected) {
                     continue; // pas d'appariement (ou coupe) → aucune base de cohérence

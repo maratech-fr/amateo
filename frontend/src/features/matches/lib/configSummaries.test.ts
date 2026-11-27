@@ -17,7 +17,7 @@ const invRow = (over: Partial<VenueLabelInventoryRow> = {}): VenueLabelInventory
   ...over,
 });
 
-const competition = (over: Partial<Competition> = {}): Competition => ({ id: "c1", teamId: "t1", name: "PNM", competitionType: "championnat", ...over });
+const competition = (over: Partial<Competition> = {}): Competition => ({ id: "c1", engagements: [{ teamId: "t1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "PNM", competitionType: "championnat", ...over });
 
 const category = (over: Partial<SportCategoryDuration> = {}): SportCategoryDuration => ({
   id: "cat",

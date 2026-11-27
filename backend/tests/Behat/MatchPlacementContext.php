@@ -843,7 +843,7 @@ final class MatchPlacementContext extends BaseContext
     public function laCompetitionAmicalPnfEstUnChampionnat(): void
     {
         $type = $this->dbalScalar(
-            \sprintf('SELECT competition_type AS behatval FROM competition WHERE club_id=\'%s\' AND team_id=\'%s\' AND name=\'%s\'', $this->clubId, $this->teamId, self::AMICAL_PNF),
+            \sprintf('SELECT c.competition_type AS behatval FROM competition c JOIN engagement e ON e.competition_id = c.id WHERE c.club_id=\'%s\' AND e.team_id=\'%s\' AND c.name=\'%s\'', $this->clubId, $this->teamId, self::AMICAL_PNF),
             admin: true,
         );
         if ('CHAMPIONSHIP' !== $type) {

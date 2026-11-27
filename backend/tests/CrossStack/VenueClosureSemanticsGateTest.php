@@ -15,12 +15,14 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Enum\CalendarEntryKind;
+use App\Enum\CompetitionType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\PlanVenueClosures;
@@ -230,8 +232,15 @@ final class VenueClosureSemanticsGateTest extends KernelTestCase
         $fixture->setClubId($club->getId());
         $fixture->setSeasonId($season->getId());
         $fixture->setTeamId($team->getId());
-        // Non-amical (competitionId non null) → candidat TO_PLACE, pas un amical libre.
-        $fixture->setCompetitionId('88888888-8888-4888-8888-888888888888');
+        // Non-amical (competitionId non null) → candidat TO_PLACE, pas un amical libre. Une vraie
+        // compétition de l'équipe, son engagement compris : la clé du match vers l'engagement l'exige.
+        $registry = self::getContainer()->get(CompetitionRegistry::class);
+        $competition = $registry->findForTeam($team->getId(), 'Championnat');
+        if (null === $competition) {
+            $competition = $registry->create($club->getId(), $season->getId(), 'Championnat', CompetitionType::CHAMPIONSHIP);
+            $registry->engage($competition, $team->getId());
+        }
+        $fixture->setCompetitionId($competition->getId());
         $fixture->setMatchDate(new DateTimeImmutable($date));
         $fixture->setHomeAway(FixtureHomeAway::HOME);
         $fixture->setOpponentLabel('Adversaire');

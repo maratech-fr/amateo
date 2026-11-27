@@ -30975,10 +30975,6 @@
                         "type": "string",
                         "format": "date-time"
                     },
-                    "teamId": {
-                        "default": "",
-                        "type": "string"
-                    },
                     "seasonId": {
                         "default": "",
                         "type": "string"
@@ -31007,26 +31003,51 @@
                         ],
                         "format": "date"
                     },
-                    "fbiTeamLabel": {
-                        "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
-                        "type": [
-                            "string",
-                            "null"
-                        ]
+                    "engagements": {
+                        "description": "The teams engaged in this competition \u2014 one for a division (two club teams in one division make two\ncompetitions). Per engagement: the FBI club-team label (disambiguates two club teams in one division),\nthe paired poule and the expected matchdays, written by the pairing confirm endpoint, never by this CRUD.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "teamId",
+                                "fbiTeamLabel",
+                                "ffbbPouleId",
+                                "ffbbPouleName",
+                                "expectedMatchdays"
+                            ],
+                            "properties": {
+                                "teamId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                "fbiTeamLabel": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "ffbbPouleId": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "ffbbPouleName": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "expectedMatchdays": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        }
                     },
                     "ffbbCompetitionId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "ffbbPouleId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "ffbbPouleName": {
                         "type": [
                             "string",
                             "null"
@@ -31035,12 +31056,6 @@
                     "ffbbCompetitionName": {
                         "type": [
                             "string",
-                            "null"
-                        ]
-                    },
-                    "expectedMatchdays": {
-                        "type": [
-                            "integer",
                             "null"
                         ]
                     },
@@ -31144,10 +31159,6 @@
                         "type": "string",
                         "format": "date-time"
                     },
-                    "teamId": {
-                        "default": "",
-                        "type": "string"
-                    },
                     "seasonId": {
                         "default": "",
                         "type": "string"
@@ -31176,26 +31187,51 @@
                         ],
                         "format": "date"
                     },
-                    "fbiTeamLabel": {
-                        "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
-                        "type": [
-                            "string",
-                            "null"
-                        ]
+                    "engagements": {
+                        "description": "The teams engaged in this competition \u2014 one for a division (two club teams in one division make two\ncompetitions). Per engagement: the FBI club-team label (disambiguates two club teams in one division),\nthe paired poule and the expected matchdays, written by the pairing confirm endpoint, never by this CRUD.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "teamId",
+                                "fbiTeamLabel",
+                                "ffbbPouleId",
+                                "ffbbPouleName",
+                                "expectedMatchdays"
+                            ],
+                            "properties": {
+                                "teamId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                "fbiTeamLabel": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "ffbbPouleId": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "ffbbPouleName": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ]
+                                },
+                                "expectedMatchdays": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                }
+                            }
+                        }
                     },
                     "ffbbCompetitionId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "ffbbPouleId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
-                    "ffbbPouleName": {
                         "type": [
                             "string",
                             "null"
@@ -31204,12 +31240,6 @@
                     "ffbbCompetitionName": {
                         "type": [
                             "string",
-                            "null"
-                        ]
-                    },
-                    "expectedMatchdays": {
-                        "type": [
-                            "integer",
                             "null"
                         ]
                     },
@@ -31262,10 +31292,6 @@
                                 "type": "string",
                                 "format": "date-time"
                             },
-                            "teamId": {
-                                "default": "",
-                                "type": "string"
-                            },
                             "seasonId": {
                                 "default": "",
                                 "type": "string"
@@ -31294,26 +31320,51 @@
                                 ],
                                 "format": "date"
                             },
-                            "fbiTeamLabel": {
-                                "description": "FBI club-team label \u2014 disambiguates two club teams in one division.",
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
+                            "engagements": {
+                                "description": "The teams engaged in this competition \u2014 one for a division (two club teams in one division make two\ncompetitions). Per engagement: the FBI club-team label (disambiguates two club teams in one division),\nthe paired poule and the expected matchdays, written by the pairing confirm endpoint, never by this CRUD.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": [
+                                        "teamId",
+                                        "fbiTeamLabel",
+                                        "ffbbPouleId",
+                                        "ffbbPouleName",
+                                        "expectedMatchdays"
+                                    ],
+                                    "properties": {
+                                        "teamId": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "fbiTeamLabel": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ffbbPouleId": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "ffbbPouleName": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "expectedMatchdays": {
+                                            "type": [
+                                                "integer",
+                                                "null"
+                                            ]
+                                        }
+                                    }
+                                }
                             },
                             "ffbbCompetitionId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
-                            },
-                            "ffbbPouleId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
-                            },
-                            "ffbbPouleName": {
                                 "type": [
                                     "string",
                                     "null"
@@ -31322,12 +31373,6 @@
                             "ffbbCompetitionName": {
                                 "type": [
                                     "string",
-                                    "null"
-                                ]
-                            },
-                            "expectedMatchdays": {
-                                "type": [
-                                    "integer",
                                     "null"
                                 ]
                             },

@@ -1634,16 +1634,8 @@ final class MatchTenantIsolationTest extends WebTestCase
     private function createCompetition(Club $club, Season $season, string $name): Competition
     {
         $this->scopeGucToClub($club->getId());
-        $competition = new Competition;
-        $competition->setClubId($club->getId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId('11111111-1111-4111-8111-111111111111');
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
 
-        return $competition;
+        return $this->competitionFor('11111111-1111-4111-8111-111111111111', $name, CompetitionType::CHAMPIONSHIP);
     }
 
     /** Un engagement écrit en SQL brut, sous la RLS du club posé : seule la base peut alors refuser. */

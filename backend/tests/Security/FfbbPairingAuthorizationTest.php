@@ -15,9 +15,11 @@ use App\Entity\User;
 use App\Enum\CompetitionType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -48,6 +50,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class FfbbPairingAuthorizationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -112,7 +115,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $this->scopeGucToClub($clubB);
         self::assertCount(
             0,
-            $this->em->getRepository(Competition::class)->findBy(['teamId' => $teamB->getId()]),
+            self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($teamB->getId()),
             'a foreign pairing must never write into the other club',
         );
     }
@@ -135,14 +138,14 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
 
         $this->scopeGucToClub($clubA);
         $this->em->clear();
-        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $team->getId()]);
+        $competition = self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($team->getId())[0] ?? null;
         self::assertNotNull($competition);
         self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $competition->getFfbbCompetitionId());
-        self::assertSame(FfbbHttpClientStub::POULE_ID, $competition->getFfbbPouleId());
+        self::assertSame(FfbbHttpClientStub::POULE_ID, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->ffbbPouleId);
         self::assertSame('Pré test masculine', $competition->getFfbbCompetitionName());
         // Poule of 4 clubs → 2×(4−1) = 6, from the SERVER re-read, not the client.
-        self::assertSame(6, $competition->getExpectedMatchdays());
-        self::assertSame(FfbbHttpClientStub::POULE_CLUBS, $competition->getFfbbPouleOpponents());
+        self::assertSame(6, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->expectedMatchdays);
+        self::assertSame(FfbbHttpClientStub::POULE_CLUBS, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->ffbbPouleOpponents);
 
         // Périmètre engagé (§7.1): pairing creates a Competition, NEVER a
         // Fixture — the team carries no match and stays deletable.
@@ -168,7 +171,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $competition = $this->em->getRepository(Competition::class)->findOneBy(['ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID_CUP]);
         self::assertNotNull($competition);
         self::assertSame(CompetitionType::CUP, $competition->getCompetitionType(), 'a « coupe » name infers CUP');
-        self::assertNull($competition->getExpectedMatchdays(), 'a cup carries no 2×(N−1) completeness');
+        self::assertNull(self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->expectedMatchdays, 'a cup carries no 2×(N−1) completeness');
     }
 
     public function testConfirmAChampionshipKeepsTwoTimesNMinusOne(): void
@@ -186,7 +189,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $competition = $this->em->getRepository(Competition::class)->findOneBy(['ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID]);
         self::assertNotNull($competition);
         self::assertSame(CompetitionType::CHAMPIONSHIP, $competition->getCompetitionType());
-        self::assertSame(6, $competition->getExpectedMatchdays(), 'poule of 4 → 2×(4−1) = 6, untouched');
+        self::assertSame(6, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->expectedMatchdays, 'poule of 4 → 2×(4−1) = 6, untouched');
     }
 
     public function testConfirmRepostsCupOnAnExistingChampionshipWhoseNameInfersCup(): void
@@ -201,15 +204,9 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertInstanceOf(Season::class, $season);
 
         $this->scopeGucToClub($clubA);
-        $existing = new Competition;
-        $existing->setClubId($clubA);
-        $existing->setSeasonId($season->getId());
-        $existing->setTeamId($team->getId());
-        $existing->setName(FfbbHttpClientStub::CUP_ENGAGEMENT_NAME);
-        $existing->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $existing->setExpectedMatchdays(68);
-        $this->em->persist($existing);
-        $this->em->flush();
+        $existing = $this->competitionFor($team->getId(), FfbbHttpClientStub::CUP_ENGAGEMENT_NAME, CompetitionType::CHAMPIONSHIP);
+        self::getContainer()->get(CompetitionRegistry::class)->writePoule($existing, $team->getId(), null, null, null, 68);
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
         $existingId = $existing->getId();
 
         $this->confirm($tokenA, FfbbHttpClientStub::COMPETITION_ID_CUP, $team->getId());
@@ -220,9 +217,9 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $reloaded = $this->em->getRepository(Competition::class)->find($existingId);
         self::assertInstanceOf(Competition::class, $reloaded);
         self::assertSame(CompetitionType::CUP, $reloaded->getCompetitionType(), 'a name that infers CUP re-poses CUP on reuse');
-        self::assertNull($reloaded->getExpectedMatchdays(), 'the 2×(N−1) is cleared to null');
+        self::assertNull(self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($reloaded)[0]->expectedMatchdays, 'the 2×(N−1) is cleared to null');
         self::assertSame(FfbbHttpClientStub::COMPETITION_ID_CUP, $reloaded->getFfbbCompetitionId(), 'the SAME row is re-paired, not duplicated');
-        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $team->getId()]), 'no duplicate competition');
+        self::assertCount(1, self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($team->getId()), 'no duplicate competition');
     }
 
     public function testEngagementListSuggestsTheFbiMappedTeamBySignature(): void
@@ -335,7 +332,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $reloaded->getFfbbCompetitionId(), 'the refs land on the xlsx competition');
         self::assertSame('Pré test masculine', $reloaded->getFfbbCompetitionName(), 'canonical FFBB name written');
         self::assertSame('PNM', $reloaded->getName(), 'the FBI code (the resolver key) is kept');
-        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $team->getId()]), 'no twin competition created');
+        self::assertCount(1, self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($team->getId()), 'no twin competition created');
 
         // Périmètre engagé (§7.1): still no fixture → the team stays deletable.
         $this->client->request('DELETE', \sprintf('/api/teams/%s', $team->getId()), [], [], [
@@ -366,7 +363,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
         $this->scopeGucToClub($clubA);
         $this->em->clear();
         // Team A got a fresh competition (the id was ignored — wrong team).
-        $created = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamA->getId()]);
+        $created = self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($teamA->getId())[0] ?? null;
         self::assertInstanceOf(Competition::class, $created);
         self::assertSame(FfbbHttpClientStub::COMPETITION_ID, $created->getFfbbCompetitionId());
         self::assertSame('Pré test masculine', $created->getName(), 'a new competition is named by the canonical name');
@@ -502,17 +499,11 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
     private function createCompetition(string $clubId, string $seasonId, string $teamId, string $name, ?string $ffbbCompetitionId = null): Competition
     {
         $this->scopeGucToClub($clubId);
-        $competition = new Competition;
-        $competition->setClubId($clubId);
-        $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($teamId, $name, CompetitionType::CHAMPIONSHIP);
         if (null !== $ffbbCompetitionId) {
             $competition->setFfbbCompetitionId($ffbbCompetitionId);
+            self::getContainer()->get(EntityManagerInterface::class)->flush();
         }
-        $this->em->persist($competition);
-        $this->em->flush();
 
         return $competition;
     }

@@ -15,6 +15,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\FixtureStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesCompetitionsTrait;
@@ -196,7 +197,7 @@ final class ImportFixturesApiTest extends WebTestCase
 
         $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         $this->scopeGucToClub($this->responseData()['club']['id']);
-        $c1 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamId, 'name' => 'DFU13-3']);
+        $c1 = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($teamId, 'DFU13-3');
         self::assertNotNull($c1);
         $c1Id = $c1->getId();
 

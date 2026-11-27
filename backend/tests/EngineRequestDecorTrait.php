@@ -48,6 +48,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -304,8 +305,10 @@ trait EngineRequestDecorTrait
     {
         $em = $this->erEm();
         foreach ([[1, self::ER_TEAM_U13], [2, self::ER_TEAM_U15], [3, self::ER_TEAM_SM1]] as [$n, $teamId]) {
-            $em->persist((new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-                ->setTeamId($teamId)->setName('Championnat ' . $n)->setCompetitionType(CompetitionType::CHAMPIONSHIP));
+            $competition = (new Competition)->setId(self::erId('c0e9', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+                ->setName('Championnat ' . $n)->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+            $em->persist($competition);
+            static::getContainer()->get(CompetitionRegistry::class)->engage($competition, $teamId);
         }
         $em->flush();
 

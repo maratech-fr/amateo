@@ -26,6 +26,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -182,7 +183,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         ]);
 
         self::assertSame(1, $result['created']);
-        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId()]);
+        $competition = self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($this->team->getId())[0] ?? null;
         self::assertSame('RMU18 Brassage', $competition?->getName());
         self::assertSame(CompetitionType::BRASSAGE, $competition?->getCompetitionType());
 
@@ -476,8 +477,8 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
         self::assertSame(2, $result['created']);
         self::assertSame([], $result['unmappedDivisions']);
-        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'D2']);
-        self::assertSame('BC TESTVILLE 1B', $competition?->getFbiTeamLabel());
+        $competition = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($this->team->getId(), 'D2');
+        self::assertSame('BC TESTVILLE 1B', null === $competition ? null : self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competition)[0]->fbiTeamLabel);
     }
 
     public function testForeignTeamInMappingIsRejected(): void
@@ -787,7 +788,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
             null,
             [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
         );
-        $d2 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'D2']);
+        $d2 = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($this->team->getId(), 'D2');
         self::assertNotNull($d2);
         $d2Id = $d2->getId();
         $other = $this->rawCompetition('Ancien championnat');
@@ -1094,7 +1095,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // d'origine ni renommé ni absorbé. Aujourd'hui le mapping porteur du competitionId
         // RENOMME le championnat (FbiFixtureImporter l.1543-1553) → absorption.
         $this->importMapped([['DFU13-3', '1', 'BC TESTVILLE - 1', 'AS Un', '03/10/2026', '15:30', 'Gymnase X']]);
-        $c1 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'DFU13-3']);
+        $c1 = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($this->team->getId(), 'DFU13-3');
         self::assertNotNull($c1);
         $c1Id = $c1->getId();
 
@@ -1166,7 +1167,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
 
         self::assertSame(1, $result['created']);
-        $comp = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'DX']);
+        $comp = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($this->team->getId(), 'DX');
         self::assertNotNull($comp, 'l\'import crée le championnat du club courant, jamais sur un id forgé');
         self::assertSame($comp?->getId(), $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '7'])?->getCompetitionId());
     }
@@ -2662,7 +2663,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Competition::class)->findOneBy(['id' => $paired->getId()]);
         self::assertSame('RM2', $reloaded?->getName(), 'le mapping refusé n\'a pas renommé la compétition appariée');
-        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $this->team->getId()]), 'et n\'a rien créé');
+        self::assertCount(1, self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($this->team->getId()), 'et n\'a rien créé');
     }
 
     public function testAcceptedSuggestionReusesThePairedCompetition(): void
@@ -2679,11 +2680,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
         ]);
 
         self::assertSame(1, $result['created']);
-        $competitions = $this->em->getRepository(Competition::class)->findBy(['teamId' => $this->team->getId()]);
+        $competitions = self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($this->team->getId());
         self::assertCount(1, $competitions, 'pas de doublon non apparié');
         self::assertSame('PRE REGIONALE MASCULINE', $competitions[0]->getName(), 'le libellé FBI devient la clé du résolveur');
         self::assertSame('Pré régionale masculine', $competitions[0]->getFfbbCompetitionName(), 'le nom canonique reste');
-        self::assertSame(14, $competitions[0]->getExpectedMatchdays(), 'l\'appariement est conservé');
+        self::assertSame(14, self::getContainer()->get(CompetitionRegistry::class)->engagementsOf($competitions[0])[0]->expectedMatchdays, 'l\'appariement est conservé');
         self::assertSame($competitions[0]->getId(), $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'X1'])?->getCompetitionId());
     }
 
@@ -2699,7 +2700,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
             ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $this->team->getId()],
         ]);
 
-        self::assertCount(1, $this->em->getRepository(Competition::class)->findBy(['teamId' => $this->team->getId(), 'name' => 'D2']));
+        self::assertCount(1, array_filter(self::getContainer()->get(CompetitionRegistry::class)->competitionsOf($this->team->getId()), static fn (Competition $competition): bool => 'D2' === $competition->getName()));
     }
 
     public function testNoSuggestionForAMultiLabelDivision(): void
@@ -3114,20 +3115,11 @@ final class FbiFixtureImporterTest extends KernelTestCase
     /** A competition of $this->team paired to a FFBB poule (refs + frozen data). */
     private function pairedCompetition(string $name, array $pouleClubs, int $expectedMatchdays, ?string $canonicalName = null): Competition
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->team->getSeasonId());
-        $competition->setTeamId($this->team->getId());
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $competition = $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
         $competition->setFfbbCompetitionId('ffbb-' . md5($name));
-        $competition->setFfbbPouleId('poule-' . md5($name));
-        $competition->setFfbbPouleName('Poule T');
         $competition->setFfbbCompetitionName($canonicalName ?? $name);
-        $competition->setExpectedMatchdays($expectedMatchdays);
-        $competition->setFfbbPouleOpponents($pouleClubs);
-        $this->em->persist($competition);
-        $this->em->flush();
+        self::getContainer()->get(CompetitionRegistry::class)->writePoule($competition, $this->team->getId(), 'poule-' . md5($name), 'Poule T', $pouleClubs, $expectedMatchdays);
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition;
     }
@@ -3447,7 +3439,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
      */
     private function fixtureUnderDivision(string $externalRef, string $divisionName): ?Fixture
     {
-        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => $divisionName]);
+        $competition = self::getContainer()->get(CompetitionRegistry::class)->findForTeam($this->team->getId(), $divisionName);
         if (!$competition instanceof Competition) {
             return null;
         }
@@ -3458,16 +3450,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
     /** Une compétition brute de $this->team, sans appariement de poule. */
     private function rawCompetition(string $name): Competition
     {
-        $competition = new Competition;
-        $competition->setClubId($this->club->getId());
-        $competition->setSeasonId($this->team->getSeasonId());
-        $competition->setTeamId($this->team->getId());
-        $competition->setName($name);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $this->em->persist($competition);
-        $this->em->flush();
-
-        return $competition;
+        return $this->competitionFor($this->team->getId(), $name, CompetitionType::CHAMPIONSHIP);
     }
 
     /**

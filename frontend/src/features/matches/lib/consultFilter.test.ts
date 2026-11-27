@@ -29,7 +29,7 @@ function fixture(over: Partial<Fixture> = {}): Fixture {
 }
 
 function competition(id: string, competitionType: string): Competition {
-  return { id, teamId: "team-1", name: id, competitionType };
+  return { id, engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: id, competitionType };
 }
 
 const competitionsById = new Map<string, Competition>([

@@ -7,7 +7,6 @@ namespace App\Tests\Security;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -21,7 +20,9 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Matches\CompetitionRegistry;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -60,6 +61,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('security')]
 final class MatchVisitDeltaParityTest extends WebTestCase
 {
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -777,15 +779,9 @@ final class MatchVisitDeltaParityTest extends WebTestCase
     private function competition(Club $club, Season $season, string $teamId, int $expected): string
     {
         $this->scopeGucToClub($club->getId());
-        $competition = new Competition;
-        $competition->setClubId($club->getId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId($teamId);
-        $competition->setName('Championnat');
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $competition->setExpectedMatchdays($expected);
-        $this->em->persist($competition);
-        $this->em->flush();
+        $competition = $this->competitionFor($teamId, 'Championnat', CompetitionType::CHAMPIONSHIP);
+        self::getContainer()->get(CompetitionRegistry::class)->writePoule($competition, $teamId, null, null, null, $expected);
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         return $competition->getId();
     }

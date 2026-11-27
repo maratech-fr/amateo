@@ -23,7 +23,7 @@ const tiers: PriorityTier[] = [
   { id: 1, label: "S", name: "Fanion", color: null },
   { id: 3, label: "B", name: "Moyenne", color: null },
 ];
-const competitions: Competition[] = [{ id: "comp-1", teamId: "team-1", name: "Championnat U13", competitionType: "CHAMPIONSHIP" }];
+const competitions: Competition[] = [{ id: "comp-1", engagements: [{ teamId: "team-1", fbiTeamLabel: null, ffbbPouleId: null, ffbbPouleName: null, expectedMatchdays: null }], name: "Championnat U13", competitionType: "CHAMPIONSHIP" }];
 
 beforeEach(() => {
   mutate.mockClear();

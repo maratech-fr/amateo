@@ -6,7 +6,6 @@ namespace App\Tests\CrossStack;
 
 use App\Controller\PublicHolidaysController;
 use App\Entity\Club;
-use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -20,6 +19,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Matches\CompetitionRegistry;
 use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -503,13 +503,9 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         // La rencontre seedée est un match de CHAMPIONNAT (competitionId non nul) :
         // un amical ne va plus au solveur (P4-193), il sortirait du payload et
         // viderait ce test — c'est la compétition qui prouve le kind TO_PLACE.
-        $competition = new Competition;
-        $competition->setClubId($club->getId());
-        $competition->setSeasonId($season->getId());
-        $competition->setTeamId($team->getId());
-        $competition->setName('D2-' . $uid);
-        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
-        $em->persist($competition);
+        $registry = self::getContainer()->get(CompetitionRegistry::class);
+        $competition = $registry->create($club->getId(), $season->getId(), 'D2-' . $uid, CompetitionType::CHAMPIONSHIP);
+        $registry->engage($competition, $team->getId());
 
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $em->persist($venue);
