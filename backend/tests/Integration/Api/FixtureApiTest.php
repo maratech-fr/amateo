@@ -28,6 +28,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
+use App\Matches\FederalFollowUp;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
@@ -862,6 +863,42 @@ final class FixtureApiTest extends WebTestCase
         $this->putFixture((string) $created['id'], ['status' => $stage] + $away);
         self::assertResponseStatusCodeSame(200, 'témoin : le même geste sur un match suivi passe : ' . $this->client->getResponse()->getContent());
         self::assertSame($stage, $this->responseData()['status'] ?? null);
+    }
+
+    /**
+     * Lot 7, PR 6b : la porte elle-même n'écrit jamais « saisi » ni « validé » sur un match non suivi. Chaque appelant
+     * garde en amont (le refus 422 ci-dessus, `FriendlyAutoValidator`, `LeagueValidationOutlook`) : seul ce test atteint
+     * la porte. Sans elle, un écrivain qui oublierait sa garde poserait un suivi fantôme, servi dès que la compétition
+     * deviendrait FBI. Témoin : la même écriture sur un match suivi pose sa ligne.
+     */
+    public function testTheDoorWritesNoEnteredStateOnAnUntrackedMatch(): void
+    {
+        $placed = $this->createPlaced('2026-12-13');
+        $this->scopeGucToClub($this->club->getId());
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $fixture = $em->find(Fixture::class, $placed['id']);
+        self::assertInstanceOf(Fixture::class, $fixture);
+        self::assertFalse($followUp->isTracked($fixture), 'témoin : l\'amical posé à la main n\'est pas suivi');
+
+        $followUp->markSubmitted($fixture, new DateTimeImmutable);
+        $followUp->markValidated($fixture, new DateTimeImmutable);
+        $em->flush();
+
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture_federal_tracking WHERE fixture_id = ?', [$placed['id']]), 'aucune ligne de suivi écrite');
+        self::assertSame(FixtureStatus::PLACED, $followUp->stageOf($fixture), 'il reste « Placé »');
+
+        $championnat = $this->fbiCompetitionFor(self::TEAM_ID, 'Championnat FBI');
+        $tracked = $this->post(['teamId' => self::TEAM_ID, 'competitionId' => $championnat->getId(), 'matchDate' => '2026-12-12', 'homeAway' => 'AWAY', 'opponentLabel' => 'Adversaire', 'kickoffTime' => '15:00']);
+        self::assertResponseStatusCodeSame(201);
+        $this->scopeGucToClub($this->club->getId());
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $followUp = self::getContainer()->get(FederalFollowUp::class);
+        $trackedFixture = $em->find(Fixture::class, (string) $tracked['id']);
+        self::assertInstanceOf(Fixture::class, $trackedFixture);
+        $followUp->markValidated($trackedFixture, new DateTimeImmutable);
+        $em->flush();
+        self::assertSame(['VALIDATED'], $em->getConnection()->fetchFirstColumn('SELECT state FROM fixture_federal_tracking WHERE fixture_id = ?', [(string) $tracked['id']]), 'témoin : sur un match suivi, la porte écrit');
     }
 
     /**
