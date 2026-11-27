@@ -150,11 +150,10 @@ final readonly class InForce
             }
         }
         if (!$structure) {
-            $planId = Level::PLAN === $family->level ? $this->soclePlan->idOf($seasonId) : null;
             foreach ($copied as $id => $fields) {
                 if (!isset($seen[(string) $id])) {
                     /** @var T $reborn */
-                    $reborn = $this->reborn($metadata, (string) $id, $seasonId, $planId, [...$fields, ...$family->coldRows]);
+                    $reborn = $this->reborn($metadata, (string) $id, $seasonId, $family->level, [...$fields, ...$family->coldRows]);
                     $rows[] = $reborn;
                 }
             }
@@ -266,7 +265,7 @@ final readonly class InForce
      * @param ClassMetadata<object> $metadata
      * @param array<string, mixed>  $fields
      */
-    private function reborn(ClassMetadata $metadata, string $id, string $seasonId, ?string $planId, array $fields): object
+    private function reborn(ClassMetadata $metadata, string $id, string $seasonId, Level $level, array $fields): object
     {
         $class = $metadata->getName();
         $row = new $class;
@@ -274,8 +273,8 @@ final readonly class InForce
         if ($metadata->hasField('clubId')) {
             $identity['clubId'] = (string) $this->entityManager->getConnection()->fetchOne('SELECT club_id FROM season WHERE id = ?', [$seasonId]);
         }
-        if (null !== $planId) {
-            $identity['schedulePlanId'] = $planId;
+        if (Level::PLAN === $level) {
+            $identity['schedulePlanId'] = $this->soclePlan->idOf($seasonId);
         }
         foreach ($identity as $field => $value) {
             if ($metadata->hasField($field)) {
