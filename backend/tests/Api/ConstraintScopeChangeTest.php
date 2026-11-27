@@ -7,13 +7,17 @@ namespace App\Tests\Api;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\PeriodConstraintSelector;
+use App\Service\SchedulePlanProvisioner;
 use App\Tests\ComposesPlanConstraintsTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -27,11 +31,17 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * NR d'axe *constraint semantics* (lot 4, PR 4, ligne 32 du plan) : changer la portée d'une règle de saison change ce
- * que les plans de période existants appliquent, comme avant le lot où le défaut se recalculait à chaque lecture.
- * Élargir une règle d'équipe à tout le club la fait entrer dans un plan de vacances existant ; restreindre une règle de
- * club à une équipe l'en sort ; une coche posée par le gestionnaire contre le défaut n'est jamais touchée (§3.5 : seules
- * les lignes restées égales à l'ancien défaut suivent le nouveau).
+ * NR d'axes *constraint semantics* et *planning lifecycle* (lot 5, PR 5, ligne 30 du plan ; avant : lot 4, PR 4, ligne
+ * 32) : supprimer, élargir, restreindre ou dater une règle du planning de saison validé ne touche les lignes des plans
+ * de période qu'à la validation du planning de saison. Avant : la ligne de la période et la sélection qui part au
+ * moteur restent celles du planning en vigueur. À la validation : élargie, une règle d'équipe entre dans un plan de
+ * vacances existant ; restreinte, une règle de club en sort ; supprimée ou datée, sa ligne de période part ; une coche
+ * posée par le gestionnaire contre le défaut n'est jamais touchée (seules les lignes restées égales à l'ancien défaut
+ * suivent le nouveau).
+ *
+ * « Valider » est le geste réel (`POST /api/schedules/{id}/validate`) sur une version de travail née après la
+ * modification avec sa copie, chargée — l'état que lui aurait laissé « Régénérer ». Les deux plans de période sont
+ * commencés (fermeture de février, vacances d'avril 2026) : la validation ne les supprime pas.
  *
  * Deux preuves par cas : la ligne du plan (`plan_constraint.applies`, le contrat) et la sélection qui part au moteur
  * ({@see PeriodConstraintSelector}). Jumeau Behat de la sélection par nature et par coche :
@@ -68,49 +78,106 @@ final class ConstraintScopeChangeTest extends WebTestCase
     private array $entryOf = [];
 
     /**
-     * Élargir une règle d'équipe à tout le club : dans les vacances, où elle restait au défaut (décochée), elle entre ;
-     * dans la fermeture, elle reste appliquée.
+     * Élargir une règle d'équipe à tout le club : rien ne bouge dans les vacances tant que le planning de saison n'est
+     * pas validé ; à la validation, elle y entre (elle y restait au défaut, décochée) ; dans la fermeture, elle reste
+     * appliquée.
      */
-    public function testWideningATeamRuleBringsItIntoAnExistingHolidayPlan(): void
+    public function testWideningATeamRuleBringsItIntoAnExistingHolidayPlanAtValidation(): void
     {
         $ruleId = $this->postRule('TEAM');
+        $this->validateTheSocle();
         self::assertSame([true, false], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'témoin : la fermeture l\'applique, les vacances non (défaut d\'une règle d\'équipe)');
         self::assertFalse($this->sentToTheEngine($this->holiday, $ruleId), 'témoin : elle ne part pas avec la demande des vacances');
 
         $this->changeScope($ruleId, 'CLUB');
 
-        self::assertSame([true, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'élargie, la règle s\'applique dans les vacances, et toujours dans la fermeture');
+        self::assertSame([true, false], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'élargie sans valider : les lignes des périodes sont celles du planning en vigueur');
+        self::assertFalse($this->sentToTheEngine($this->holiday, $ruleId), 'élargie sans valider : elle ne part toujours pas avec la demande des vacances');
+
+        $this->validateTheSocle();
+
+        self::assertSame([true, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'validée, la règle élargie s\'applique dans les vacances, et toujours dans la fermeture');
         self::assertTrue($this->sentToTheEngine($this->holiday, $ruleId), 'elle part avec la demande des vacances');
     }
 
     /**
-     * Élargir ne touche pas une coche posée contre le défaut : décochée par le gestionnaire pour la fermeture, la règle
-     * y reste décochée ; cochée pour les vacances, elle y reste cochée.
+     * Élargir ne touche pas une coche posée contre le défaut, ni avant ni après la validation : décochée par le
+     * gestionnaire pour la fermeture, la règle y reste décochée ; cochée pour les vacances, elle y reste cochée.
      */
     public function testWideningLeavesARuleTheManagerSetAgainstTheDefault(): void
     {
         $ruleId = $this->postRule('TEAM');
+        $this->validateTheSocle();
         $this->publishRuleSetting($this->closure, $ruleId, false);
         $this->publishRuleSetting($this->holiday, $ruleId, true);
         self::assertSame([false, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'témoin : deux coches contre le défaut');
 
         $this->changeScope($ruleId, 'CLUB');
+        $this->validateTheSocle();
 
         self::assertSame([false, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'les coches du gestionnaire ne bougent pas');
         self::assertFalse($this->sentToTheEngine($this->closure, $ruleId), 'décochée pour la fermeture, elle n\'en part toujours pas');
     }
 
-    /** Restreindre une règle de club à une équipe : dans les vacances, où elle restait au défaut (cochée), elle sort. */
-    public function testNarrowingAClubRuleTakesItOutOfAnExistingHolidayPlan(): void
+    /** Restreindre une règle de club à une équipe : dans les vacances, où elle restait au défaut (cochée), elle sort à la validation, pas avant. */
+    public function testNarrowingAClubRuleTakesItOutOfAnExistingHolidayPlanAtValidation(): void
     {
         $ruleId = $this->postRule('CLUB');
+        $this->validateTheSocle();
         self::assertSame([true, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'témoin : une règle de club s\'applique aux deux périodes');
         self::assertTrue($this->sentToTheEngine($this->holiday, $ruleId), 'témoin : elle part avec la demande des vacances');
 
         $this->changeScope($ruleId, 'TEAM');
 
-        self::assertSame([true, false], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'restreinte, elle sort des vacances et reste dans la fermeture');
+        self::assertSame([true, true], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'restreinte sans valider : les lignes des périodes sont celles du planning en vigueur');
+        self::assertTrue($this->sentToTheEngine($this->holiday, $ruleId), 'restreinte sans valider : elle part toujours avec la demande des vacances');
+
+        $this->validateTheSocle();
+
+        self::assertSame([true, false], [$this->ruleLineRow($this->closure, $ruleId), $this->ruleLineRow($this->holiday, $ruleId)], 'validée, restreinte, elle sort des vacances et reste dans la fermeture');
         self::assertFalse($this->sentToTheEngine($this->holiday, $ruleId), 'elle ne part plus avec la demande des vacances');
+    }
+
+    /** Supprimer une règle du planning de saison validé : ses lignes de période restent jusqu'à la validation, puis partent. */
+    public function testDeletingARuleRemovesItsPeriodLinesAtValidation(): void
+    {
+        $ruleId = $this->postRule('CLUB');
+        $this->validateTheSocle();
+
+        $this->client->request('DELETE', '/api/constraints/' . $ruleId, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204, (string) $this->client->getResponse()->getContent());
+        $this->em->clear();
+
+        self::assertSame(2, $this->ruleLineCount($ruleId), 'supprimée sans valider : ses lignes de période sont celles du planning en vigueur');
+
+        $this->validateTheSocle();
+
+        self::assertSame(0, $this->ruleLineCount($ruleId), 'validée, la suppression emporte ses lignes de période');
+    }
+
+    /** Dater une règle du planning de saison validé (l'attacher à une période) : ses lignes de période restent jusqu'à la validation, puis partent. */
+    public function testDatingARuleRemovesItsPeriodLinesAtValidation(): void
+    {
+        $ruleId = $this->postRule('CLUB');
+        $this->validateTheSocle();
+
+        $this->client->request('PUT', '/api/constraints/' . $ruleId, [], [], $this->headers(), json_encode([
+            'name' => 'Pas le vendredi',
+            'scope' => 'CLUB',
+            'scopeTargetId' => null,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [5]],
+            'calendarEntryId' => $this->entryOf[$this->closure],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        $this->em->clear();
+
+        self::assertSame(2, $this->ruleLineCount($ruleId), 'datée sans valider : ses lignes de période sont celles du planning en vigueur');
+
+        $this->validateTheSocle();
+
+        self::assertSame(0, $this->ruleLineCount($ruleId), 'validée, la règle datée n\'a plus de ligne de période');
     }
 
     protected function setUp(): void
@@ -204,6 +271,37 @@ final class ConstraintScopeChangeTest extends WebTestCase
             'isActive' => $applies,
         ], \JSON_THROW_ON_ERROR));
         self::assertContains($this->client->getResponse()->getStatusCode(), [200, 201], 'la coche se publie : ' . $this->client->getResponse()->getContent());
+        $this->em->clear();
+    }
+
+    /** Le nombre de lignes de la règle dans les deux plans de période (le plan de saison n'est pas compté). */
+    private function ruleLineCount(string $ruleId): int
+    {
+        return (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM plan_constraint WHERE constraint_id = ? AND schedule_plan_id IN (?, ?)',
+            [$ruleId, $this->closure, $this->holiday],
+        );
+    }
+
+    /**
+     * Le planning de saison validé sur l'état du jour : une version de travail terminée, née maintenant avec la copie
+     * de son plan (ce que lui aurait laissé « Régénérer »), chargée, puis validée par le geste réel.
+     */
+    private function validateTheSocle(): void
+    {
+        $this->scopeGucToClub($this->clubId);
+        $planId = $this->seasonPlanIdOf($this->season);
+        $version = (new Schedule)->setClubId($this->clubId)->setSeasonId($this->season->getId())->setName('V')->setStatus(ScheduleStatus::COMPLETED)->setSchedulePlanId($planId);
+        $this->em->persist($version);
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $provisioner->linkSchedule($version);
+        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($planId));
+        $provisioner->pointLockSource($planId, $version->getId());
+
+        $this->client->request('POST', '/api/schedules/' . $version->getId() . '/validate', [], [], $this->headers(), json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
         $this->em->clear();
     }
 

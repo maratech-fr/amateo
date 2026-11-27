@@ -156,6 +156,40 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         self::assertSame($before, $this->fingerprint());
     }
 
+    /**
+     * Lot 5, PR 5, ligne 32 du plan : « Retravailler » ne rend pas la version en vigueur modifiable. Après le geste, la
+     * copie de travail est la chargée et passe la garde ; la version en vigueur, elle, est toujours refusée par chacun
+     * des neuf guichets (son propre code), et rien n'est écrit sur ses séances.
+     */
+    #[DataProvider('guichets')]
+    public function testAfterReworkTheVersionInForceIsStillRefusedAndTheWorkCopyIsEditable(string $guichet): void
+    {
+        $inForce = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('V')->setStatus(ScheduleStatus::COMPLETED);
+        $this->choosePlanVersion($inForce);
+        $this->seedSlots($inForce);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($inForce, $states->capture($inForce->getSchedulePlanId()));
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($inForce->getSchedulePlanId(), $inForce->getId());
+
+        $this->post('/api/schedules/' . $inForce->getId() . '/rework', []);
+        self::assertSame(201, $this->client->getResponse()->getStatusCode(), 'retravailler : ' . $this->client->getResponse()->getContent());
+        $workId = $this->decode()['id'] ?? null;
+        self::assertIsString($workId);
+        $this->em->clear();
+        $work = $this->em->getRepository(Schedule::class)->find($workId);
+        self::assertInstanceOf(Schedule::class, $work);
+
+        [$s1, $s2] = $this->slotsOf($inForce);
+        $inForceSlots = $this->em->getConnection()->fetchAllAssociative('SELECT id, team_id, venue_id, day_of_week, start_time, lock_level FROM schedule_slot_template WHERE schedule_id = ? ORDER BY id', [$inForce->getId()]);
+        $this->call($guichet, $inForce, $s1, $s2);
+        $this->assertRefused('chosen_version', $guichet);
+        self::assertSame($inForceSlots, $this->em->getConnection()->fetchAllAssociative('SELECT id, team_id, venue_id, day_of_week, start_time, lock_level FROM schedule_slot_template WHERE schedule_id = ? ORDER BY id', [$inForce->getId()]), 'rien n\'est écrit sur les séances en vigueur');
+
+        [$w1, $w2] = $this->slotsOf($work);
+        $this->call($guichet, $work, $w1, $w2);
+        $this->assertGuardLetThrough($guichet);
+    }
+
     /** Période : même règle, la source des verrous est seule modifiable. */
     #[DataProvider('guichets')]
     public function testAPeriodVersionOtherThanTheSourceIsRefused(string $guichet): void
