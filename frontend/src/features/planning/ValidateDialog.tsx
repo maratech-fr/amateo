@@ -57,10 +57,14 @@ function ChangesList({ announcement }: { announcement: ChangesAnnouncement }) {
           </ul>
         </>
       )}
-      {/* Le coach qui tiendra les séances d'une équipe dont le coach principal change (servi par le serveur). Une équipe
-          sans coach principal ne reçoit aucune phrase : son texte reste à décider. */}
+      {/* Le coach qui tiendra les séances d'une équipe dont le coach principal change (servi par le serveur), ou
+          l'équipe qui n'en a plus. */}
       {announcement.coachChanges.map((change) =>
-        null === change.coachName ? null : (
+        null === change.coachId ? (
+          <p key={change.teamId} className="mt-2">
+            {PLANNING_TEXTS.noMainCoachAnyMore(change.teamName)}
+          </p>
+        ) : null === change.coachName ? null : (
           <p key={change.teamId} className="mt-2">
             {PLANNING_TEXTS.coachTakesOver(change.teamName, change.coachName)}
           </p>
