@@ -107,13 +107,17 @@ final readonly class ValidationImpact
      * L'annonce de « Valider ces modifications » (et le corps de son refus `changes_to_confirm`) : la forme de
      * `validate-impact`, plus le contrôle d'incohérences avec le planning en vigueur ({@see InForceCoherence}).
      *
+     * `$withCheck` : le contrôle appelle le moteur (jusqu'à six demandes) ; il n'est fait que pour un gestionnaire, seul
+     * à pouvoir valider. Sans lui, `checkPerformed` est faux et les listes du contrôle sont vides.
+     *
      * @return array<string, mixed>
      */
-    public function pendingBody(string $planId, string $clubId, string $seasonId): array
+    public function pendingBody(string $planId, string $clubId, string $seasonId, bool $withCheck = true): array
     {
         // Seul le plan de saison a des modifications qui attendent (la porte ne couvre que le socle).
         $isSeason = SchedulePlanType::SEASON->value === $this->entityManager->getConnection()->fetchOne('SELECT type FROM schedule_plan WHERE id = ?', [$planId]);
-        $check = $isSeason ? $this->inForceCoherence->check($planId) : ['incoherences' => [], 'missingSessions' => [], 'inconclusive' => false];
+        $performed = $isSeason && $withCheck;
+        $check = $performed ? $this->inForceCoherence->check($planId) : ['incoherences' => [], 'missingSessions' => [], 'inconclusive' => false];
 
         return [
             ...$this->orphanedFixtureFinder->impact($clubId, $seasonId),
@@ -121,6 +125,7 @@ final readonly class ValidationImpact
             'incoherences' => $check['incoherences'],
             'missingSessions' => $check['missingSessions'],
             'checkInconclusive' => $check['inconclusive'],
+            'checkPerformed' => $performed,
         ];
     }
 

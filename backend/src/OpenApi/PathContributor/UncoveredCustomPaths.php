@@ -199,6 +199,7 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                                 ],
                             ]],
                             'checkInconclusive' => ['type' => 'boolean', 'description' => 'The check could not conclude (too many touched sessions, engine refusal, error or timeout)'],
+                            'checkPerformed' => ['type' => 'boolean', 'description' => 'The coherence check ran (managers only: it calls the engine); false for a member or a period plan, the check lists are then empty'],
                         ],
                     ]),
                     '401' => $unauthorized,

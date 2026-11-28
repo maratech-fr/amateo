@@ -84,6 +84,11 @@ final class ApplyPendingChangesController extends AbstractController implements 
 
         $outcome = $this->entityManager->wrapInTransaction(function () use ($id, $seasonId, $clubId, $token): string|JsonResponse {
             $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
+            // Relu sous le verrou de la saison : une génération lancée entre le premier contrôle et le verrou réécrirait
+            // l'étoile et ferait naître une version sur l'état d'avant le geste.
+            if ($this->capabilityResolver->inFlightInSeason($clubId, $seasonId)) {
+                return $this->json(['code' => 'generation_in_progress', 'error' => 'Une génération est en cours — attendez sa fin avant de valider ces modifications.'], Response::HTTP_CONFLICT);
+            }
             $inForceId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
             if (null === $inForceId) {
                 return $this->json(['error' => 'Aucun planning de saison n\'est en vigueur : validez d\'abord une version.'], Response::HTTP_CONFLICT);

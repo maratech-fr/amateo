@@ -124,6 +124,8 @@ export const PLANNING_TEXTS = {
   retry: "Réessayer",
   cancel: "Annuler",
   validateNothingChanges: "Rien ne change par rapport au planning en vigueur.",
+  // La phrase de lecture seule du dialogue de validation : le planning de saison se retravaille (lot 5), une période se rouvre.
+  validateReadOnlyNote: (isSeason: boolean): string => `Le planning passera en lecture seule (« Validé »). Vous pourrez le ${isSeason ? "retravailler" : "rouvrir"} pour le modifier.`,
   validateChangesHeader: "Ce qui change par rapport au planning en vigueur :",
   validateChangeLine: (changed: string, n: number): string => {
     const one = 1 === n;

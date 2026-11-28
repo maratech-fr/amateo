@@ -52,30 +52,32 @@ function ChangesList({ announcement }: { announcement: ChangesAnnouncement }) {
           <p>{PLANNING_TEXTS.validateChangesHeader}</p>
           <ul className="mt-1 list-disc pl-5">
             {lines.map((line) => (
-              <li key={line.family}>{PLANNING_TEXTS.validateChangeLine(line.family, line.count)}</li>
+              <li key={line.family}>
+                {PLANNING_TEXTS.validateChangeLine(line.family, line.count)}
+                {/* Sous la ligne du coach principal : le coach qui tiendra les séances de chaque équipe (servi par le
+                    serveur), ou l'équipe qui n'en a plus. Le nom du coach ne se coupe pas. */}
+                {"TeamCoach" === line.family && announcement.coachChanges.length > 0 ? (
+                  <ul className="mt-1 list-[circle] pl-5">
+                    {announcement.coachChanges.map((change) =>
+                      null === change.coachId ? (
+                        <li key={change.teamId}>{PLANNING_TEXTS.noMainCoachAnyMore(change.teamName)}</li>
+                      ) : null === change.coachName ? null : (
+                        <li key={change.teamId}>{PLANNING_TEXTS.coachTakesOver(change.teamName, change.coachName.replaceAll(" ", " "))}</li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+              </li>
             ))}
           </ul>
         </>
-      )}
-      {/* Le coach qui tiendra les séances d'une équipe dont le coach principal change (servi par le serveur), ou
-          l'équipe qui n'en a plus. */}
-      {announcement.coachChanges.map((change) =>
-        null === change.coachId ? (
-          <p key={change.teamId} className="mt-2">
-            {PLANNING_TEXTS.noMainCoachAnyMore(change.teamName)}
-          </p>
-        ) : null === change.coachName ? null : (
-          <p key={change.teamId} className="mt-2">
-            {PLANNING_TEXTS.coachTakesOver(change.teamName, change.coachName)}
-          </p>
-        ),
       )}
       {announcement.destroyedTitles.length > 0 ? (
         <NoticeBanner tone="destructive" className="mt-3" message={PLANNING_TEXTS.validateDeletesPeriodPlans([...announcement.destroyedTitles])} />
       ) : lines.length > 0 ? (
         <p className="mt-2">{PLANNING_TEXTS.validateNoPeriodPlanDeleted}</p>
       ) : null}
-      {announcement.keptWishes > 0 ? <p className="mt-2 text-muted-foreground">{PLANNING_TEXTS.validateKeptWishes(announcement.keptWishes)}</p> : null}
+      {announcement.keptWishes > 0 && lines.some((line) => line.destroys) ? <p className="mt-2">{PLANNING_TEXTS.validateKeptWishes(announcement.keptWishes)}</p> : null}
     </div>
   );
 }
@@ -87,7 +89,7 @@ function ChangesList({ announcement }: { announcement: ChangesAnnouncement }) {
  * elle dit aussi ce qui change par rapport au planning en vigueur (`announcement`) ; quand des
  * plannings de période seront supprimés, le bouton devient « Valider et supprimer ».
  */
-export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy, orphan, announcement = null, onConfirm, onCancel }: { hasAlerts: boolean; missingSessions: readonly { teamId: string; teamName: string; count: number }[]; siblingCount: number; busy: boolean; orphan: OrphanImpact; announcement?: ChangesAnnouncement | null; onConfirm: () => void; onCancel: () => void }) {
+export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy, orphan, announcement = null, isSeason = false, onConfirm, onCancel }: { hasAlerts: boolean; missingSessions: readonly { teamId: string; teamName: string; count: number }[]; siblingCount: number; busy: boolean; orphan: OrphanImpact; announcement?: ChangesAnnouncement | null; isSeason?: boolean; onConfirm: () => void; onCancel: () => void }) {
   // On ne laisse pas confirmer tant que l'impact n'est pas connu (en vol / échec) : confirmer à
   // l'aveugle est exactement ce que la route d'impact existe pour éviter.
   const confirmDisabled = busy || orphan.loading || orphan.failed;
@@ -124,7 +126,7 @@ export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy,
       <p className="mt-2 text-sm text-muted-foreground">
         {hasAlerts
           ? "Ce planning présente des alertes du système (créneaux non placés, contraintes non satisfaites…). En le validant, vous assumez ces contre-indications sous votre responsabilité. Le planning passera en lecture seule."
-          : "Le planning passera en lecture seule (« Validé »). Vous pourrez le rouvrir pour le modifier."}
+          : PLANNING_TEXTS.validateReadOnlyNote(isSeason)}
       </p>
       {missingSessions.length > 0 ? (
         <ul className="mt-2 list-disc pl-5 text-sm text-foreground">
@@ -226,7 +228,8 @@ export function ApplyPendingChangesDialog({ impact, loading, failed, busy, onRet
         <>
           <ChangesList announcement={{ changes: impact.changes, destroyedTitles: impact.destroyedPeriodPlans.map((plan) => plan.title), keptWishes: impact.keptWishes, coachChanges: impact.coachChanges ?? [] }} />
           <div aria-live="polite" className="mt-3 text-sm text-foreground">
-            {impact.checkInconclusive ? (
+            {/* Le contrôle n'est fait que pour un gestionnaire (seul à ouvrir ce dialogue) : non fait, il ne dit rien. */}
+            {false === impact.checkPerformed ? null : impact.checkInconclusive ? (
               <NoticeBanner tone="warning" message={PLANNING_TEXTS.checkInconclusive} />
             ) : 0 === impact.incoherences.length ? (
               <p>{PLANNING_TEXTS.noIncoherence}</p>

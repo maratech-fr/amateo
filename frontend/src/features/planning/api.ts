@@ -1236,6 +1236,8 @@ export interface PendingImpact extends ValidateImpact {
   incoherences: PendingIncoherence[];
   missingSessions: { teamId: string; teamName: string; count: number }[];
   checkInconclusive: boolean;
+  /** Le contrôle a été fait (gestionnaire seulement : il appelle le moteur) ; faux, ses listes sont vides. */
+  checkPerformed: boolean;
 }
 
 export const getPendingImpact = (planId: string): Promise<PendingImpact> => api.get(`schedule_plans/${planId}/pending-impact`).json<PendingImpact>();

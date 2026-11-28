@@ -8,6 +8,7 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Plans\ValidationImpact;
+use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -24,7 +25,8 @@ use Throwable;
  * contrôle non concluant ({@see ValidationImpact::pendingBody}). Rien à dire sans version en vigueur.
  *
  * Lecture ouverte au Membre, sans écriture (patron {@see SchedulePlanPendingChangesController}) : un plan inconnu,
- * d'un autre club ou un identifiant malformé répondent le même 404.
+ * d'un autre club ou un identifiant malformé répondent le même 404. Le contrôle d'incohérences appelle le moteur : il
+ * n'est fait que pour un gestionnaire ; un Membre lit l'annonce avec `checkPerformed` faux, sans appel au moteur.
  */
 #[AsController]
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
@@ -36,6 +38,7 @@ final class SchedulePlanPendingImpactController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ValidationImpact $validationImpact,
+        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     #[Route('/api/schedule_plans/{id}/pending-impact', name: 'api_schedule_plan_pending_impact', methods: ['GET'])]
@@ -52,6 +55,6 @@ final class SchedulePlanPendingImpactController extends AbstractController
             return $this->json(['error' => 'Plan introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        return $this->json($this->validationImpact->pendingBody($id, $context['clubId'], $context['seasonId']));
+        return $this->json($this->validationImpact->pendingBody($id, $context['clubId'], $context['seasonId'], $this->managementAccessGuard->isManager()));
     }
 }

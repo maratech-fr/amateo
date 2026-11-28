@@ -428,7 +428,11 @@ export function WishesTab({
                           </StatusPill>
                         ) : null}
                         {/* Lot 5 — la doléance répondait au planning de saison d'avant sa dernière modification validée. */}
-                        {true === w.answeredBeforeSocleChange ? <p className="mt-1 text-xs text-muted-foreground">{TEXTS.answeredBeforeSocleChange}</p> : null}
+                        {true === w.answeredBeforeSocleChange ? (
+                          <StatusPill variant="warning" className="mt-1">
+                            {TEXTS.answeredBeforeSocleChange}
+                          </StatusPill>
+                        ) : null}
                       </div>
                       <ManagerOnly>
                       <div className="flex shrink-0 items-center gap-1">

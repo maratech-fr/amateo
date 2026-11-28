@@ -1586,6 +1586,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           busy={validateMutation.isPending}
           orphan={orphanImpact}
           announcement={announcement}
+          isSeason={isSeasonPlanType(selectedSchedule?.planType)}
           onCancel={() => setValidateOpen(false)}
           onConfirm={() => validate()}
         />
