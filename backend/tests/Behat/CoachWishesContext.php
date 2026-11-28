@@ -54,6 +54,12 @@ final class CoachWishesContext extends BaseContext
 
     private int $transferConverted = 0;
 
+    /** `cold_changed_at` du planning de saison à l'entrée du scénario (`-` = nul), pointée par le scénario puis remise. */
+    private string $coldChangedAtEntry = '';
+
+    /** L'entrée de calendrier dont la saison a reçu la date pointée (vide : rien à remettre). */
+    private string $coldChangedPlanSeasonOfEntry = '';
+
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {
@@ -194,6 +200,47 @@ final class CoachWishesContext extends BaseContext
         throw new RuntimeException('le vœu soumis est introuvable côté gestionnaire');
     }
 
+    #[Then('le vœu soumis ne porte aucune mention de modification du planning de saison')]
+    public function leVoeuNePorteAucuneMention(): void
+    {
+        if (false !== ($this->submittedWish()['answeredBeforeSocleChange'] ?? null)) {
+            throw new RuntimeException('un vœu donné après la dernière validation du planning de saison ne porte pas la mention (answeredBeforeSocleChange faux attendu)');
+        }
+    }
+
+    /**
+     * Le froid du planning de saison change et se valide après la réponse de l'entraîneur. Le geste réel (« Valider ces
+     * modifications », ou valider une version au froid changé) est joué par `valider-des-modifications-sans-regenerer`
+     * et `le-socle-commande-les-plans` : ici, sur le club de démonstration partagé, on POINTE sa trace, la date de la
+     * dernière validation qui a changé du froid, sans détruire ses plannings de période. Le nettoyage la remet.
+     */
+    #[When('une modification du froid du planning de saison est validée après la réponse')]
+    public function uneModificationDuFroidEstValideeApresLaReponse(): void
+    {
+        $this->coldChangedAtEntry = $this->dbalScalar(
+            'SELECT COALESCE(p.cold_changed_at::text, \'-\') AS behatval FROM schedule_plan p JOIN coach_wish w ON w.season_id = p.season_id'
+            . \sprintf(' WHERE w.calendar_entry_id = \'%s\' AND w.team_id = \'%s\' AND p.type = \'SEASON\' LIMIT 1', $this->entryId, $this->teamId),
+            admin: true,
+        );
+        if ('' === $this->coldChangedAtEntry) {
+            throw new RuntimeException('le planning de saison du vœu est introuvable (la colonne cold_changed_at existe-t-elle ?)');
+        }
+        $this->dbalExec(
+            'UPDATE schedule_plan p SET cold_changed_at = now() + interval \'1 second\' FROM coach_wish w'
+            . \sprintf(' WHERE w.season_id = p.season_id AND w.calendar_entry_id = \'%s\' AND w.team_id = \'%s\' AND p.type = \'SEASON\'', $this->entryId, $this->teamId),
+            admin: true,
+        );
+        $this->coldChangedPlanSeasonOfEntry = $this->entryId;
+    }
+
+    #[Then('le vœu soumis porte la mention « réponse donnée avant la modification du planning de saison »')]
+    public function leVoeuPorteLaMention(): void
+    {
+        if (true !== ($this->submittedWish()['answeredBeforeSocleChange'] ?? null)) {
+            throw new RuntimeException('un vœu donné avant la dernière validation du froid porte la mention (answeredBeforeSocleChange vrai attendu)');
+        }
+    }
+
     #[Then('l\'absence déclarée pour l\'entraîneur remonte côté gestionnaire')]
     public function lAbsenceDeclareeRemonteCoteGestionnaire(): void
     {
@@ -268,6 +315,15 @@ final class CoachWishesContext extends BaseContext
     {
         if ('' === $this->token) {
             return;
+        }
+
+        // La date de la dernière validation qui a changé du froid, pointée par le scénario : remise avant que l'entrée parte.
+        if ('' !== $this->coldChangedPlanSeasonOfEntry && '' !== $this->coldChangedAtEntry) {
+            $this->dbalExec(
+                \sprintf('UPDATE schedule_plan p SET cold_changed_at = %s FROM calendar_entry e', '-' === $this->coldChangedAtEntry ? 'NULL' : \sprintf('\'%s\'', $this->coldChangedAtEntry))
+                . \sprintf(' WHERE e.season_id = p.season_id AND e.id = \'%s\' AND p.type = \'SEASON\'', $this->coldChangedPlanSeasonOfEntry),
+                admin: true,
+            );
         }
 
         // La campagne (et ses tokens) partent avec la période mère : supprimer l'entrée
@@ -468,5 +524,22 @@ final class CoachWishesContext extends BaseContext
         $members = $json['member'] ?? $json;
 
         return array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
+    }
+
+    /**
+     * Le vœu de l'équipe de l'entraîneur, tel que le gestionnaire le lit (`GET /api/coach_wishes`).
+     *
+     * @return array<mixed>
+     */
+    private function submittedWish(): array
+    {
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->entryId), $this->token);
+        foreach ($this->members($wishes['json']) as $wish) {
+            if (($wish['teamId'] ?? null) === $this->teamId) {
+                return $wish;
+            }
+        }
+
+        throw new RuntimeException('le vœu soumis est introuvable côté gestionnaire');
     }
 }

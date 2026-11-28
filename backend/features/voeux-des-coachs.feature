@@ -17,6 +17,9 @@ Fonctionnalité: Les entraîneurs expriment leurs vœux par un lien public, sans
     Et le vœu soumis remonte côté gestionnaire
     Et le jour souhaité par l'entraîneur remonte côté gestionnaire
     Et l'absence déclarée pour l'entraîneur remonte côté gestionnaire
+    Et le vœu soumis ne porte aucune mention de modification du planning de saison
+    Quand une modification du froid du planning de saison est validée après la réponse
+    Alors le vœu soumis porte la mention « réponse donnée avant la modification du planning de saison »
 
   Scénario: Un entraîneur déclare une mutualisation sans compte, elle remonte côté gestionnaire
     Étant donné le club de démonstration et son gestionnaire connecté

@@ -14,8 +14,11 @@ use RuntimeException;
 /**
  * Le planning de saison commande les plannings de période (ADR-0002), sur la stack qui tourne.
  *
- * Prouve la souveraineté du socle : le valider efface les plannings de période ENTIÈREMENT à venir
- * (critère `findWithPlanNotStarted` : date de début > aujourd'hui) et épargne ceux déjà commencés ;
+ * Prouve la souveraineté du socle : valider annonce ce qui change (`GET /api/schedules/{id}/validate-impact`, lot 5,
+ * PR 6) et se confirme sur le jeton de la liste vue ; seul un changement du froid efface les plannings de période
+ * ENTIÈREMENT à venir (critère `findWithPlanNotStarted` : date de début > aujourd'hui), jamais ceux déjà commencés ni la
+ * collecte ; un nom, un verrou, une séance déplacée n'effacent rien (décor : petit club jetable pour l'annonce, qui
+ * paie une génération ; club de démonstration pour les gestes sans génération, remis en place en fin de scénario) ;
  * le retravailler (lot 5, PR 5) ne détruit rien, garde ce qui attend la validation, et l'état « en
  * attente » (`GET /api/schedule_plans/{id}/pending-changes`) le dit ; revenir au planning en vigueur
  * (« Charger » la version en vigueur) abandonne les modifications ; des vacances nées pendant des
@@ -93,6 +96,33 @@ final class SoclePlansContext extends BaseContext
     private string $replacingMainLinkId = '';
 
     private string $replacingCoachId = '';
+
+    /**
+     * La famille de la ligne « séances déplacées » de l'annonce (`changes`), pour information seulement : elle porte
+     * toujours `destroys: false`. Nom choisi par le test (contrat de la PR 6) ; un renommage côté code est mécanique.
+     */
+    private const string MOVED_SESSIONS = 'ScheduleSlotTemplate';
+
+    /** La version générée après des modifications froides (scénario de l'annonce). */
+    private string $candidateId = '';
+
+    /** @var array<mixed> la dernière annonce lue (`GET /api/schedules/{id}/validate-impact`) */
+    private array $impact = [];
+
+    /** L'équipe renommée par le scénario et son nom d'avant (remis en fin). */
+    private string $renamedTeamId = '';
+
+    private string $renamedTeamName = '';
+
+    /** Le groupe mutualisé renommé et son libellé d'avant (remis en fin). */
+    private string $renamedGroupId = '';
+
+    private string $renamedGroupLabel = '';
+
+    /** La séance déplacée ou verrouillée, et sa place d'avant : `gymnase|jour|heure|verrou|origine` (remise en fin). */
+    private string $touchedSessionId = '';
+
+    private string $touchedSessionBefore = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -232,28 +262,128 @@ final class SoclePlansContext extends BaseContext
         );
     }
 
-    #[When('je valide le planning de saison')]
-    public function jeValideLePlanningDeSaison(): void
+    #[Given('un petit club dont le planning de saison est en vigueur')]
+    public function unPetitClubDontLeSocleEstEnVigueur(): void
     {
-        // Valider ne détruit que lorsqu'il DÉPLACE la base — c.-à-d. lorsqu'il choisit une version
-        // qui n'est pas celle déjà pointée. On dépointe donc en silence (sans le geste « Rouvrir »,
-        // qui détruirait déjà), puis on re-valide la même version : la garde voit un pointeur NULL,
-        // qu'elle n'exempte pas, et efface les plannings de période à venir.
-        $this->pointSocleTo('');
-        // Seule la version chargée se valide. Le dépointage silencieux ci-dessus laisse des sœurs qu'un
-        // vrai parcours n'a pas (valider les supprime) : on la désigne, en SQL pour la même raison.
-        $this->dbalExec(
-            \sprintf('UPDATE schedule_plan SET lock_source_schedule_id=\'%s\' WHERE season_id=\'%s\' AND type=\'SEASON\'', $this->chosenAtEntry, $this->seasonId),
+        $this->buildSmallClub();
+        $this->chosenAtEntry = $this->generateAndValidateSmallClubSocle();
+        $this->token = $this->smallClubToken;
+        $this->clubId = $this->smallClubId;
+        $this->seasonId = $this->dbalScalar(
+            \sprintf('SELECT season_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' LIMIT 1', $this->clubId),
             admin: true,
         );
+        if (!$this->smallClubSocleIsChosen($this->chosenAtEntry)) {
+            throw new RuntimeException('témoin : le planning de saison du petit club devrait être en vigueur');
+        }
+    }
 
-        $validated = $this->apiPost(
-            \sprintf('schedules/%s/validate', $this->chosenAtEntry),
-            ['confirmDeleteOverlays' => true],
-            $this->token,
+    #[Given('une règle et deux créneaux ajoutés au planning de saison, puis une version générée')]
+    public function uneRegleEtDeuxCreneauxPuisUneVersionGeneree(): void
+    {
+        $rule = $this->apiPost('constraints', [
+            'name' => 'U11 · plutôt après 18:00', 'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'PREFERRED',
+            'config' => ['targetTags' => ['U11'], 'minStartTime' => '18:00'], 'isActive' => true,
+        ], $this->token);
+        if (!\in_array($rule['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('ajouter une règle au planning de saison a répondu %d — corps : %s', $rule['status'], json_encode($rule['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        foreach (['18:00', '19:30'] as $start) {
+            // Le vendredi : hors de la grille du petit club (lundi → jeudi).
+            $slot = $this->apiPost('venue_training_slots', ['venueId' => $this->smallClubVenueIds['Gymnase Centre'], 'dayOfWeek' => 5, 'startTime' => $start, 'durationMinutes' => 90, 'capacity' => 1], $this->token);
+            if (201 !== $slot['status']) {
+                throw new RuntimeException(\sprintf('ajouter un créneau à la grille du planning de saison a répondu %d (201 attendu)', $slot['status']));
+            }
+        }
+        $this->candidateId = $this->generateSmallClubSeason();
+        // La version terminée devient la version chargée (l'étoile suit chaque génération terminée) : témoin.
+        $loaded = $this->dbalScalar(\sprintf('SELECT lock_source_schedule_id AS behatval FROM schedule_plan WHERE id=\'%s\'', $this->soclePlanId()), admin: true);
+        if ($loaded !== $this->candidateId) {
+            throw new RuntimeException(\sprintf('témoin : la version générée (%s) devrait être la version chargée, lu %s', $this->candidateId, $loaded));
+        }
+    }
+
+    #[When('je demande ce que change la validation')]
+    public function jeDemandeCeQueChangeLaValidation(): void
+    {
+        $this->impact = $this->validateImpactOf($this->candidateId);
+    }
+
+    #[Then('j\'apprends que 1 règle et 2 créneaux changent')]
+    public function jApprendsQueUneRegleEtDeuxCreneauxChangent(): void
+    {
+        $cold = [];
+        foreach ($this->impactLines() as $line) {
+            if (true === $line['destroys']) {
+                $cold[$line['family']] = $line['count'];
+            } elseif (self::MOVED_SESSIONS !== $line['family']) {
+                throw new RuntimeException(\sprintf('seules les séances déplacées s\'annoncent sans supprimer ; ligne inattendue : %s', json_encode($line, \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+        // La règle, avec sa ligne dans le plan de saison quand elle en reçoit une ; la grille, ses deux créneaux.
+        unset($cold['PlanConstraint']);
+        ksort($cold);
+        if (['Constraint' => 1, 'VenueTrainingSlot' => 2] !== $cold) {
+            throw new RuntimeException(\sprintf('la liste devrait annoncer 1 règle et 2 créneaux qui changent ; lu : %s', json_encode($this->impact['changes'] ?? null, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('l\'annonce nomme les plannings de période à venir qui seront supprimés, et garde la doléance reçue')]
+    public function lAnnonceNommeLesPlanningsSupprimesEtGardeLaDoleance(): void
+    {
+        $destroyed = array_column(\is_array($this->impact['destroyedPeriodPlans'] ?? null) ? $this->impact['destroyedPeriodPlans'] : [], 'entryId');
+        sort($destroyed);
+        $expected = [$this->futureEntryId, $this->collecteEntryId];
+        sort($expected);
+        if ($expected !== $destroyed) {
+            throw new RuntimeException(\sprintf('l\'annonce devrait nommer les deux plannings de période à venir, jamais celui déjà commencé ; lu : %s', json_encode($this->impact['destroyedPeriodPlans'] ?? null, \JSON_UNESCAPED_UNICODE)));
+        }
+        if (1 !== ($this->impact['keptWishes'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'annonce devrait dire la doléance reçue conservée (keptWishes = 1) ; lu : %s', json_encode($this->impact['keptWishes'] ?? null)));
+        }
+    }
+
+    #[When('je valide en confirmant ce que la liste annonce')]
+    public function jeValideEnConfirmant(): void
+    {
+        $this->confirmValidationOf($this->candidateId);
+    }
+
+    #[When('/^je (?P<geste>renomme une équipe|renomme un groupe mutualisé|verrouille une séance sans la déplacer|déplace une séance à la main|déplace une séance à la main et la verrouille) puis je valide la copie de travail$/u')]
+    public function jeFaisUnGestePuisJeValideLaCopie(string $geste): void
+    {
+        match ($geste) {
+            'renomme une équipe' => $this->renameATeam(),
+            'renomme un groupe mutualisé' => $this->renameAGroup(),
+            'verrouille une séance sans la déplacer' => $this->lockASession($this->aFreeSessionOfTheWorkCopy()),
+            'déplace une séance à la main' => $this->moveASession(),
+            'déplace une séance à la main et la verrouille' => $this->lockASession($this->moveASession()),
+        };
+        $this->impact = $this->validateImpactOf($this->workCopyId);
+        $this->confirmValidationOf($this->workCopyId);
+    }
+
+    #[Then('/^la liste annonce (?P<liste>rien|1 séance déplacée)$/u')]
+    public function laListeAnnonce(string $liste): void
+    {
+        $expected = 'rien' === $liste ? [] : [['family' => self::MOVED_SESSIONS, 'count' => 1, 'destroys' => false]];
+        if ($expected !== $this->impactLines()) {
+            throw new RuntimeException(\sprintf('la liste devrait annoncer « %s » ; lu : %s', $liste, json_encode($this->impact['changes'] ?? null, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('les plannings de période à venir sont gardés')]
+    public function lesPlanningsDePeriodeAVenirSontGardes(): void
+    {
+        if ([] !== ($this->impact['destroyedPeriodPlans'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'annonce ne devrait supprimer aucun planning de période ; lu : %s', json_encode($this->impact['destroyedPeriodPlans'] ?? null, \JSON_UNESCAPED_UNICODE)));
+        }
+        $plans = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_plan WHERE calendar_entry_id=\'%s\' OR id=\'%s\'', $this->futureEntryId, $this->startedPlanId),
+            admin: true,
         );
-        if (200 !== $validated['status']) {
-            throw new RuntimeException(\sprintf('la validation du planning de saison a répondu %d (200 attendu)', $validated['status']));
+        if ('2' !== $plans) {
+            throw new RuntimeException(\sprintf('aucun froid n\'a changé : les deux plannings de période (à venir, commencé) devraient subsister, %s trouvé(s)', $plans));
         }
     }
 
@@ -499,26 +629,6 @@ final class SoclePlansContext extends BaseContext
         }
     }
 
-    #[Then('la collecte et ses doléances des vacances à venir ont disparu')]
-    public function laCollecteADisparu(): void
-    {
-        $campaign = $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) AS behatval FROM coach_wish_campaign WHERE calendar_entry_id=\'%s\'', $this->collecteEntryId),
-            admin: true,
-        );
-        if ('0' !== $campaign) {
-            throw new RuntimeException('la collecte des vacances à venir aurait dû disparaître avec la bascule du socle');
-        }
-
-        $wishes = $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) AS behatval FROM coach_wish WHERE calendar_entry_id=\'%s\'', $this->collecteEntryId),
-            admin: true,
-        );
-        if ('0' !== $wishes) {
-            throw new RuntimeException('les doléances des vacances à venir auraient dû disparaître avec la collecte');
-        }
-    }
-
     #[Given('des vacances à venir, adaptées sur la grille du planning de saison')]
     public function desVacancesAVenirAdaptees(): void
     {
@@ -628,6 +738,29 @@ final class SoclePlansContext extends BaseContext
             if ('' !== $target) {
                 $this->pointSocleTo($target);
             }
+        }
+
+        // La séance déplacée ou verrouillée d'une copie de travail validée (désormais en vigueur) : remise à sa place.
+        if ('' !== $this->touchedSessionId && '' !== $this->touchedSessionBefore) {
+            [$venueId, $day, $start, $lock, $origin] = explode('|', $this->touchedSessionBefore);
+            $this->dbalExec(
+                \sprintf(
+                    'UPDATE schedule_slot_template SET venue_id=\'%s\', day_of_week=%d, start_time=\'%s\', lock_level=\'%s\', lock_origin=%s WHERE id=\'%s\'',
+                    $venueId,
+                    (int) $day,
+                    $start,
+                    $lock,
+                    '' === $origin ? 'NULL' : \sprintf('\'%s\'', $origin),
+                    $this->touchedSessionId,
+                ),
+                admin: true,
+            );
+        }
+        if ('' !== $this->renamedTeamId) {
+            $this->putTeamName($this->renamedTeamId, $this->renamedTeamName);
+        }
+        if ('' !== $this->renamedGroupId) {
+            $this->putGroupLabel($this->renamedGroupId, $this->renamedGroupLabel);
         }
 
         if ('' !== $this->addedSocleSlotId) {
@@ -793,6 +926,166 @@ final class SoclePlansContext extends BaseContext
         }
 
         return $id;
+    }
+
+    /**
+     * L'annonce de la validation d'une version, telle que le dialogue la lit.
+     *
+     * @return array<mixed>
+     */
+    private function validateImpactOf(string $versionId): array
+    {
+        $impact = $this->apiGet(\sprintf('schedules/%s/validate-impact', $versionId), $this->token);
+        if (200 !== $impact['status'] || !\is_string($impact['json']['changesToken'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'annonce de la validation a répondu %d, sans jeton de liste ? corps : %s', $impact['status'], json_encode($impact['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+
+        return $impact['json'];
+    }
+
+    /** Le geste « Valider » du dialogue, confirmé sur le jeton de la liste annoncée. */
+    private function confirmValidationOf(string $versionId): void
+    {
+        $validated = $this->apiPost(\sprintf('schedules/%s/validate', $versionId), ['confirmChanges' => $this->impact['changesToken'] ?? null], $this->token);
+        if (200 !== $validated['status']) {
+            throw new RuntimeException(\sprintf('valider en confirmant la liste annoncée a répondu %d (200 attendu) — corps : %s', $validated['status'], json_encode($validated['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /** @return list<array{family: mixed, count: mixed, destroys: mixed}> les lignes de l'annonce, triées par famille */
+    private function impactLines(): array
+    {
+        $lines = [];
+        foreach (\is_array($this->impact['changes'] ?? null) ? $this->impact['changes'] : [] as $line) {
+            if (\is_array($line)) {
+                $lines[] = ['family' => $line['family'] ?? null, 'count' => $line['count'] ?? null, 'destroys' => $line['destroys'] ?? null];
+            }
+        }
+        usort($lines, static fn (array $a, array $b): int => strcmp((string) $a['family'], (string) $b['family']));
+
+        return $lines;
+    }
+
+    private function renameATeam(): void
+    {
+        $this->renamedTeamId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND season_id=\'%s\' ORDER BY id LIMIT 1', $this->clubId, $this->seasonId),
+            admin: true,
+        );
+        $team = $this->apiGet(\sprintf('teams/%s', $this->renamedTeamId), $this->token)['json'];
+        $this->renamedTeamName = \is_string($team['name'] ?? null) ? $team['name'] : '';
+        if ('' === $this->renamedTeamName) {
+            throw new RuntimeException('aucune équipe à renommer — la base est-elle seedée ?');
+        }
+        $this->putTeamName($this->renamedTeamId, $this->renamedTeamName . ' (renommée)');
+    }
+
+    private function putTeamName(string $teamId, string $name): void
+    {
+        $current = $this->apiGet(\sprintf('teams/%s', $teamId), $this->token)['json'];
+        $written = $this->apiPut(\sprintf('teams/%s', $teamId), [
+            'name' => $name,
+            'sportCategoryId' => $current['sportCategoryId'] ?? null,
+            'priorityTierId' => $current['priorityTierId'] ?? null,
+            'sessionsPerWeek' => $current['sessionsPerWeek'] ?? null,
+            'level' => $current['level'] ?? null,
+            'gender' => $current['gender'] ?? null,
+            'maxSessionsPerDay' => $current['maxSessionsPerDay'] ?? null,
+        ], $this->token);
+        if (200 !== $written['status']) {
+            throw new RuntimeException(\sprintf('renommer l\'équipe a répondu %d — corps : %s', $written['status'], json_encode($written['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    private function renameAGroup(): void
+    {
+        $this->renamedGroupId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM shared_training_block WHERE club_id=\'%s\' AND schedule_plan_id=\'%s\' ORDER BY id LIMIT 1', $this->clubId, $this->soclePlanId()),
+            admin: true,
+        );
+        if ('' === $this->renamedGroupId) {
+            throw new RuntimeException('aucun groupe mutualisé au planning de saison — la base est-elle seedée ?');
+        }
+        $group = $this->apiGet(\sprintf('shared_training_blocks/%s', $this->renamedGroupId), $this->token)['json'];
+        $this->renamedGroupLabel = \is_string($group['label'] ?? null) ? $group['label'] : '';
+        $this->putGroupLabel($this->renamedGroupId, ('' === $this->renamedGroupLabel ? 'Groupe' : $this->renamedGroupLabel) . ' (renommé)');
+    }
+
+    private function putGroupLabel(string $groupId, string $label): void
+    {
+        $current = $this->apiGet(\sprintf('shared_training_blocks/%s', $groupId), $this->token);
+        $written = $this->apiPut(\sprintf('shared_training_blocks/%s', $groupId), [...$current['json'], 'label' => '' === $label ? null : $label], $this->token);
+        if (200 !== $written['status']) {
+            throw new RuntimeException(\sprintf('renommer le groupe mutualisé a répondu %d — corps : %s', $written['status'], json_encode($written['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /** Une séance de la copie de travail, libre (ni verrouillée, ni d'un groupe) ; sa place d'avant est retenue. */
+    private function aFreeSessionOfTheWorkCopy(): string
+    {
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') || \'|\' || lock_level || \'|\' || COALESCE(lock_origin, \'\') AS behatval'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'NONE\' AND shared_training_block_id IS NULL ORDER BY id LIMIT 1',
+                $this->workCopyId,
+            ),
+            admin: true,
+        );
+        $parts = explode('|', $row);
+        if (6 !== \count($parts)) {
+            throw new RuntimeException('aucune séance libre dans la copie de travail — la base est-elle seedée ?');
+        }
+        $this->touchedSessionId = array_shift($parts);
+        $this->touchedSessionBefore = implode('|', $parts);
+
+        return $this->touchedSessionId;
+    }
+
+    private function lockASession(string $sessionId): void
+    {
+        $locked = $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $sessionId), ['lockLevel' => 'HARD'], $this->token);
+        if (200 !== $locked['status']) {
+            throw new RuntimeException(\sprintf('verrouiller la séance a répondu %d — corps : %s', $locked['status'], json_encode($locked['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /**
+     * Le vrai geste « déplacer » sur la copie de travail : une séance libre vers une case vide de la grille, le même jour.
+     * Le verdict du moteur peut refuser une case (règle de l'équipe) : on essaie au plus huit couples séance → case.
+     */
+    private function moveASession(): string
+    {
+        $rows = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(pair, \';\') AS behatval FROM (SELECT s.id || \'|\' || s.venue_id || \'|\' || s.day_of_week || \'|\' || to_char(s.start_time, \'HH24:MI\') || \'|\' || s.lock_level || \'|\' || COALESCE(s.lock_origin, \'\')'
+                . ' || \'>\' || g.venue_id || \'|\' || to_char(g.start_time, \'HH24:MI\') AS pair'
+                . ' FROM schedule_slot_template s JOIN venue_training_slot g ON g.schedule_plan_id = \'%2$s\' AND g.day_of_week = s.day_of_week AND g.start_time <> s.start_time'
+                . ' WHERE s.schedule_id = \'%1$s\' AND s.lock_level = \'NONE\' AND s.shared_training_block_id IS NULL'
+                . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template o WHERE o.schedule_id = \'%1$s\' AND o.venue_id = g.venue_id AND o.day_of_week = g.day_of_week'
+                . ' AND o.start_time < g.start_time + make_interval(mins => g.duration_minutes) AND g.start_time < o.start_time + make_interval(mins => o.duration_minutes))'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.schedule_plan_id = \'%2$s\' AND r.venue_id = g.venue_id AND r.day_of_week = g.day_of_week AND r.start_time = g.start_time)'
+                . ' ORDER BY s.id, g.start_time, g.venue_id LIMIT 8) pairs',
+                $this->workCopyId,
+                $this->soclePlanId(),
+            ),
+            admin: true,
+        );
+        $tried = [];
+        foreach ('' === $rows ? [] : explode(';', $rows) as $pair) {
+            [$session, $target] = explode('>', $pair);
+            $parts = explode('|', $session);
+            [$venueId, $start] = explode('|', $target);
+            $moved = $this->apiPost(\sprintf('schedule-slots/%s/move', $parts[0]), ['venueId' => $venueId, 'dayOfWeek' => (int) $parts[2], 'startTime' => $start], $this->token);
+            if (200 === $moved['status']) {
+                $this->touchedSessionId = array_shift($parts);
+                $this->touchedSessionBefore = implode('|', $parts);
+
+                return $this->touchedSessionId;
+            }
+            $tried[] = \sprintf('%d %s', $moved['status'], json_encode($moved['json']['code'] ?? $moved['json']['error'] ?? null, \JSON_UNESCAPED_UNICODE));
+        }
+
+        throw new RuntimeException(\sprintf('décor : aucun déplacement accepté sur la copie de travail (%d essais : %s)', \count($tried), implode(' ; ', $tried)));
     }
 
     private function uuid(): string
