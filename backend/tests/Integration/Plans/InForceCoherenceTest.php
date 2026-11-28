@@ -26,6 +26,7 @@ use App\Plans\PlanComposition;
 use App\Service\EngineClient;
 use App\Service\RequestIdContext;
 use App\Tests\EngineRequestDecorTrait;
+use App\Tests\Integration\EngineRequestReferenceTest;
 use Closure;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -43,7 +44,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * Angle : les nombreux cas du contrôle (table « quelles séances sont touchées » du §3.6, découpage, issues du moteur).
  * Le parcours de bout en bout, sur la stack, est la feature `valider-des-modifications-sans-regenerer.feature` (trois
  * exemples d'annonce, moteur réel) ; la demande d'un contrôle est figée à l'octet par la référence 22 de
- * {@see \App\Tests\Integration\EngineRequestReferenceTest}.
+ * {@see EngineRequestReferenceTest}.
  *
  * Décor : `EngineRequestDecorTrait` (U13 F et U15 M tenues par l'entraîneur A, SM1 par B, A joue en SM1 ; passerelle
  * U13-U15 ; gymnases Nord sécable et Sud) ; une version en vigueur, pointée, chargée, avec sa copie ; puis une
@@ -87,6 +88,14 @@ final class InForceCoherenceTest extends KernelTestCase
         yield 'passerelle retirée (U13-U15)' => ['passerelle retirée', [1, 2, 5]];
         yield 'rang d\'une équipe (U13)' => ['rang', [1]];
         yield '« divisible » d\'un gymnase (Nord)' => ['divisible', [1, 2, 3]];
+    }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function engineFailures(): iterable
+    {
+        yield 'refus 422 du moteur' => ['{"detail":[{"type":"too_long","loc":["body","candidates"]}]}', 422];
+        yield 'délai atteint (indéterminé)' => ['{"valid":false,"indeterminate":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":2000}}', 200];
+        yield 'moteur en erreur' => ['{"detail":"internal"}', 500];
     }
 
     /** Chaque ligne de la table « quelles séances sont touchées » soumet exactement ses séances, aucune autre. */
@@ -167,14 +176,6 @@ final class InForceCoherenceTest extends KernelTestCase
         self::assertCount(1, $this->engineRequests, 'témoin : le moteur a été appelé');
         self::assertTrue($result['inconclusive'], 'refus ou délai du moteur : non concluant');
         self::assertSame([], $result['incoherences'], 'un refus n\'est pas une incohérence');
-    }
-
-    /** @return iterable<string, array{string, int}> */
-    public static function engineFailures(): iterable
-    {
-        yield 'refus 422 du moteur' => ['{"detail":[{"type":"too_long","loc":["body","candidates"]}]}', 422];
-        yield 'délai atteint (indéterminé)' => ['{"valid":false,"indeterminate":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":2000}}', 200];
-        yield 'moteur en erreur' => ['{"detail":"internal"}', 500];
     }
 
     /** Une règle cassée est nommée avec sa séance ; le contrôle conclut, il ne bloque pas. */

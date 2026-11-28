@@ -139,7 +139,7 @@ final class PendingChangesApplyContext extends BaseContext
     {
         $impact = $this->apiGet(\sprintf('schedule_plans/%s/pending-impact', $this->planId), $this->smallClubToken);
         if (200 !== $impact['status'] || !\is_string($impact['json']['changesToken'] ?? null)) {
-            throw new RuntimeException(\sprintf('l\'annonce de « Valider ces modifications » a répondu %d, sans jeton de liste ? corps : %s', $impact['status'], json_encode($impact['json'], \JSON_UNESCAPED_UNICODE)));
+            throw new RuntimeException(\sprintf('l\'annonce de « Valider ces modifications » a répondu %d, sans jeton de liste ? corps : %s', $impact['status'], mb_substr((string) json_encode($impact['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES), 0, 400)));
         }
         $this->impact = $impact['json'];
     }
@@ -269,7 +269,7 @@ final class PendingChangesApplyContext extends BaseContext
     {
         $applied = $this->apiPost(\sprintf('schedule_plans/%s/apply-pending-changes', $this->planId), ['confirmChanges' => $this->impact['changesToken'] ?? null], $this->smallClubToken);
         if (200 !== $applied['status'] || ($applied['json']['id'] ?? null) !== $this->inForceId) {
-            throw new RuntimeException(\sprintf('valider ces modifications, confirmé sur la liste annoncée, a répondu %d (200 et la version en vigueur attendus) — corps : %s', $applied['status'], json_encode($applied['json'], \JSON_UNESCAPED_UNICODE)));
+            throw new RuntimeException(\sprintf('valider ces modifications, confirmé sur la liste annoncée, a répondu %d (200 et la version en vigueur attendus) — corps : %s', $applied['status'], mb_substr((string) json_encode($applied['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES), 0, 400)));
         }
     }
 

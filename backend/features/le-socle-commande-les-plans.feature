@@ -23,8 +23,9 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Et la collecte et ses doléances des vacances à venir subsistent
 
   Plan du scénario: Ni un nom, ni un verrou, ni une séance déplacée ne suppriment les plannings de période à venir
-    Une séance déplacée figure dans la liste, pour information ; un verrou et un nom n'y figurent pas.
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Une séance déplacée figure dans la liste, pour information ; un verrou et un nom n'y figurent pas. Déplacer
+    demande une case libre : la grille du club de démonstration est pleine, ces gestes se jouent sur le petit club.
+    Étant donné <club>
     Et un planning de période à venir et un planning de période déjà commencé
     Et je retravaille le planning de saison
     Quand je <geste> puis je valide la copie de travail
@@ -32,12 +33,12 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Et les plannings de période à venir sont gardés
 
     Exemples:
-      | geste                                         | liste             |
-      | renomme une équipe                            | rien              |
-      | renomme un groupe mutualisé                   | rien              |
-      | verrouille une séance sans la déplacer        | rien              |
-      | déplace une séance à la main                  | 1 séance déplacée |
-      | déplace une séance à la main et la verrouille | 1 séance déplacée |
+      | club                                                                     | geste                                         | liste             |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | renomme une équipe                            | rien              |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | renomme un groupe mutualisé                   | rien              |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | verrouille une séance sans la déplacer        | rien              |
+      | un petit club dont le planning de saison est en vigueur                  | déplace une séance à la main                  | 1 séance déplacée |
+      | un petit club dont le planning de saison est en vigueur                  | déplace une séance à la main et la verrouille | 1 séance déplacée |
 
   Scénario: Retravailler le planning de saison ne détruit rien
     Une copie de travail naît de la version en vigueur, chargée ; tant qu'elle n'est pas validée, rien d'autre ne change.

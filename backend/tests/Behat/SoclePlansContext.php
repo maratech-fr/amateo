@@ -38,6 +38,12 @@ final class SoclePlansContext extends BaseContext
 
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
+    /**
+     * La famille de la ligne « séances déplacées » de l'annonce (`changes`), pour information seulement : elle porte
+     * toujours `destroys: false`. Nom choisi par le test (contrat de la PR 6) ; un renommage côté code est mécanique.
+     */
+    private const string MOVED_SESSIONS = 'ScheduleSlotTemplate';
+
     private string $token = '';
 
     private string $clubId = '';
@@ -96,12 +102,6 @@ final class SoclePlansContext extends BaseContext
     private string $replacingMainLinkId = '';
 
     private string $replacingCoachId = '';
-
-    /**
-     * La famille de la ligne « séances déplacées » de l'annonce (`changes`), pour information seulement : elle porte
-     * toujours `destroys: false`. Nom choisi par le test (contrat de la PR 6) ; un renommage côté code est mécanique.
-     */
-    private const string MOVED_SESSIONS = 'ScheduleSlotTemplate';
 
     /** La version générée après des modifications froides (scénario de l'annonce). */
     private string $candidateId = '';
