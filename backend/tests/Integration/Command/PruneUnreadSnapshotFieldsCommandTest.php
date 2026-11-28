@@ -24,6 +24,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\PendingChanges;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
@@ -200,6 +201,36 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $this->runCommand()->assertCommandIsSuccessful();
 
         self::assertSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'règle de trajet non par défaut, structure inchangée : la version réalignée n\'est pas périmée');
+    }
+
+    /**
+     * Lot 5, PR 6, ligne 46 du plan : « Valider ces modifications » recalcule l'entrée figée et l'empreinte de la version
+     * en vigueur sur l'état qu'elle adopte. Le réalignement, qui recalcule l'empreinte depuis l'entrée figée, ne la périme
+     * donc pas après le geste : il ne ramène jamais l'empreinte d'avant le changement de coach principal.
+     */
+    public function testTheRealignmentAfterApplyingPendingChangesLeavesTheVersionInForceUpToDate(): void
+    {
+        $f = $this->seedClub();
+        $f['scheduleId'] = $this->version($f, $this->freshPayload($f), $this->currentHash($f));
+        $this->scopeGucToClub($f['clubId']);
+        $inForce = $this->reload($f);
+        self::assertTrue(self::getContainer()->get(SchedulePlanProvisioner::class)->choose($inForce), 'témoin : la version se pointe');
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($inForce, $states->capture($f['planId']));
+        $this->em->flush();
+        // Le coach principal de l'équipe confié à un autre, sans valider : du froid attend.
+        $successor = $this->newCoach($f['clubId'], $f['seasonId'], 'Lina', 'Relève');
+        $this->em->persist($successor);
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE team_coach SET coach_id = ? WHERE club_id = ? AND role = \'MAIN\'', [$successor->getId(), $f['clubId']]);
+        self::assertNotSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'témoin : le coach principal changé fait bouger l\'empreinte du plan');
+
+        self::getContainer()->get(PendingChanges::class)->apply($f['planId']);
+        self::assertSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'après le geste, la version en vigueur est à jour');
+
+        $this->runCommand()->assertCommandIsSuccessful();
+
+        self::assertSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'le réalignement après le geste ne périme rien');
     }
 
     /** Une structure vraiment changée depuis la génération reste périmée : on ne recopie jamais l'empreinte courante. */

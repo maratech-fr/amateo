@@ -1531,6 +1531,19 @@ jobs:
           # gate, le refus « rouvrez le planning » reviendrait alors que « Rouvrir » n'existe plus pour la saison :
           # le réglage deviendrait impossible à changer, en passant le Lot Gate.
           FILES="$FILES tests/Api/TeamSessionsUnderValidatedSocleTest.php"
+          # NR d'axes CONSTRAINT SEMANTICS et PLANNING LIFECYCLE (lot conception 5, PR 6) — avant « Valider ces
+          # modifications », le contrôle d'incohérences soumet au verdict du moteur les seules séances touchées, à leur
+          # place, par demandes de 50 au plus, six au plus ; au-delà, ou sur un refus ou un délai du moteur, il dit
+          # « non concluant » sans lever ; une règle cassée est nommée avec sa séance. Sans ce gate, une contrainte
+          # violée par le froid modifié serait tue, ou une demande hors bornes du moteur casserait le geste, en passant
+          # le Lot Gate.
+          FILES="$FILES tests/Integration/Plans/InForceCoherenceTest.php"
+          # NR d'axe TENANT ISOLATION + test d'abus (lot conception 5, PR 6) — « Valider ces modifications », seul
+          # guichet qui écrit la version en vigueur : le plan d'un autre club répond le même 404 qu'un plan inconnu, au
+          # geste comme à l'annonce ; sans le jeton de la liste vue, sur un plan de période, sans rien en attente, sans
+          # version en vigueur ou pendant une génération : 409, rien écrit. Sans ce gate, un identifiant forgé
+          # écrirait la version en vigueur d'un autre club en passant le Lot Gate.
+          FILES="$FILES tests/Api/ApplyPendingChangesGuardsTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

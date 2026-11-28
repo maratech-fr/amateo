@@ -10,6 +10,7 @@ use App\Entity\ClubUser;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
@@ -17,8 +18,10 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanStates;
 use App\Service\ScheduleCapabilityResolver;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -40,7 +43,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *
  *  - canDelete:false        ⇒ DELETE → 409 ; canDelete:true ⇒ DELETE passe (overlay compris) ;
  *  - canValidate            ⇒ cohérent avec ValidateScheduleController (COMPLETED, aucune sœur en vol) ;
- *  - overlaysDroppedOnValidate>0 ⇒ validate SANS flag → 409 `overlays_exist`, count IDENTIQUE ;
+ *  - plannings de période supprimés : une seule source, l'annonce `validate-impact` (la capacité ne les compte plus,
+ *    lot 5 PR 6) ; validate SANS jeton → 409 `changes_to_confirm` nommant les MÊMES plannings, puis supprimés ;
  *  - versionsDeletedOnValidate   == nombre de sœurs réellement supprimées après validation ;
  *  - canLoad                == accepte/refuse de LoadVersionController (« Charger », tout plan, lot conception 5 PR 3).
  *
@@ -58,6 +62,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ScheduleCapabilityParityTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -179,20 +184,40 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         ]), 'après validation : seule la version choisie subsiste (2 sœurs supprimées)');
     }
 
-    /** overlaysDroppedOnValidate>0 ⇒ validate SANS flag → 409 `overlays_exist`, count IDENTIQUE. */
-    public function testOverlaysDroppedOnValidateMatchesConflictCount(): void
+    /**
+     * Lot 5, PR 6, ligne 45 du plan : le compte des plannings de période supprimés n'a qu'une source, l'annonce
+     * `validate-impact`. La capacité ne le porte plus ; le refus sans confirmation nomme les mêmes plannings ; la
+     * validation confirmée supprime exactement ceux-là.
+     */
+    public function testTheDestroyedPeriodPlansHaveOneSourceTheAnnouncement(): void
     {
+        $inForce = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        self::assertTrue(self::getContainer()->get(SchedulePlanProvisioner::class)->choose($inForce), 'témoin : la version 1 se pointe');
+        $this->storeCopy($inForce);
+        $this->addSeasonGridSlot(); // du froid change : un créneau de grille
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
-        $this->seedFuturePeriodWithPlan(); // une période à venir portant un plan → invalidée par le socle
+        $this->storeCopy($version);
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($version->getSchedulePlanId(), $version->getId()); // la chargée
+        $this->seedFuturePeriodWithPlan(); // une période à venir portant un plan → supprimée par ce froid
 
-        $dropped = $this->capabilitiesOf($version->getId())['overlaysDroppedOnValidate'];
-        self::assertSame(1, $dropped);
+        self::assertArrayNotHasKey('overlaysDroppedOnValidate', $this->capabilitiesOf($version->getId()), 'la capacité ne compte plus les plannings supprimés');
+
+        $this->request('GET', '/api/schedules/' . $version->getId() . '/validate-impact');
+        self::assertResponseIsSuccessful();
+        $impact = $this->decodedResponse();
+        $announced = array_column(\is_array($impact['destroyedPeriodPlans'] ?? null) ? $impact['destroyedPeriodPlans'] : [], 'entryId');
+        self::assertCount(1, $announced, 'l\'annonce nomme la période à venir');
 
         $this->request('POST', '/api/schedules/' . $version->getId() . '/validate');
         self::assertResponseStatusCodeSame(409);
-        $body = $this->decodedResponse();
-        self::assertSame('overlays_exist', $body['code'] ?? null);
-        self::assertSame($dropped, $body['count'] ?? null, 'le count du 409 == overlaysDroppedOnValidate');
+        $refused = $this->decodedResponse();
+        self::assertSame('changes_to_confirm', $refused['code'] ?? null);
+        self::assertSame($announced, array_column(\is_array($refused['destroyedPeriodPlans'] ?? null) ? $refused['destroyedPeriodPlans'] : [], 'entryId'), 'le refus nomme les mêmes plannings que l\'annonce');
+
+        $this->request('POST', '/api/schedules/' . $version->getId() . '/validate', ['confirmChanges' => $impact['changesToken'] ?? null]);
+        self::assertResponseStatusCodeSame(200);
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE calendar_entry_id IN (?)', [$announced[0]]), 'la validation confirmée supprime les plannings annoncés');
     }
 
     // ---- canLoad ⇄ LoadVersionController ------------------------------------------------
@@ -368,11 +393,26 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         return $data;
     }
 
-    private function request(string $method, string $uri): void
+    /** @param array<string, mixed>|null $body */
+    private function request(string $method, string $uri, ?array $body = null): void
     {
         $this->client->request($method, $uri, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
             'HTTP_ACCEPT' => 'application/json',
-        ]);
+            'CONTENT_TYPE' => 'application/json',
+        ], null === $body ? null : json_encode($body, \JSON_THROW_ON_ERROR));
+    }
+
+    /** Un créneau de la grille du plan de saison, sur un gymnase du club : du froid qui change. */
+    private function addSeasonGridSlot(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase de la parité');
+        $this->em->flush();
+        $planId = $this->em->getConnection()->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'', [$this->season->getId()]);
+        self::assertIsString($planId);
+        $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId($planId)
+            ->setVenueId($venue->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setCapacity(1));
+        $this->em->flush();
     }
 }

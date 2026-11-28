@@ -526,6 +526,18 @@ lignes des périodes, ou si une ligne restée au défaut ne suit plus la portée
 `Api/TeamSessionsUnderValidatedSocleTest` (axe *planning lifecycle*, lot conception 5 PR 5 — sous un planning de
 saison validé, le plafond de séances par jour et le nombre de séances d'une équipe se modifient sur la ligne de
 travail du socle, le planning reste en vigueur. Chute attendue si le refus « rouvrez le planning » revient) ·
+`Integration/Plans/InForceCoherenceTest` (axes *constraint semantics* et *planning lifecycle*, lot conception 5 PR 6
+— avant « Valider ces modifications », le contrôle d'incohérences soumet au verdict du moteur les seules séances
+touchées par le froid modifié, à leur place actuelle, une ligne de la table « quelles séances sont touchées » après
+l'autre ; il découpe par demandes de 50 séances au plus, six au plus ; au-delà de 300 séances, ou sur un refus, une
+erreur ou un délai du moteur, il répond « non concluant » sans lever ; une règle cassée est nommée avec sa séance.
+Chute attendue si une séance touchée n'est pas soumise, si une séance non touchée l'est, ou si une demande dépasse
+50 séances) ·
+`Api/ApplyPendingChangesGuardsTest` (axe *tenant isolation* et test d'abus, lot conception 5 PR 6 — « Valider ces
+modifications », seul guichet qui écrit la version en vigueur : le plan d'un autre club répond le même 404, octet
+pour octet, qu'un plan inconnu, au geste comme à l'annonce ; sans le jeton de la liste vue, sur un plan de période,
+sans rien en attente, sans version en vigueur ou pendant une génération : 409, rien écrit. Chute attendue si la
+route cherche le plan hors du club, ou si un refus écrit la copie ou les séances en vigueur) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes

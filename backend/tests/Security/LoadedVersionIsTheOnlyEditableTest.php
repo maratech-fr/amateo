@@ -11,14 +11,18 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
+use App\Service\EngineClient;
+use App\Service\RequestIdContext;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -31,6 +35,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 
 /**
  * NR BLOQUANT — « seule la version CHARGÉE se modifie et se valide » (axes planning lifecycle +
@@ -188,6 +194,72 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         [$w1, $w2] = $this->slotsOf($work);
         $this->call($guichet, $work, $w1, $w2);
         $this->assertGuardLetThrough($guichet);
+    }
+
+    /**
+     * Lot 5, PR 6, ligne 46 du plan (exception E6) : « Valider ces modifications » est le seul guichet qui écrit la
+     * version en vigueur, et seulement le coach de ses séances (celles que tenait l'ancien coach principal passent au
+     * nouveau), son entrée figée et son empreinte (sa copie du froid adopte l'état de travail). Avant et après le geste,
+     * tout le reste de la version et de ses séances est identique ; aucune version ne naît ; les neuf guichets la
+     * refusent toujours.
+     */
+    public function testApplyingPendingChangesWritesOnlyTheSessionCoachTheFrozenInputAndTheFingerprintOfTheVersionInForce(): void
+    {
+        self::getContainer()->set(EngineClient::class, new EngineClient(new MockHttpClient(static fn (): MockResponse => new MockResponse(
+            '{"valid":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}',
+            ['http_code' => 200],
+        )), new RequestIdContext));
+        $former = $this->newCoach($this->club->getId(), $this->season->getId(), 'Alix', 'Ancien');
+        $successor = $this->newCoach($this->club->getId(), $this->season->getId(), 'Bao', 'Nouveau');
+        $this->em->persist($former);
+        $this->em->persist($successor);
+        $this->em->flush();
+        $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($this->teamA)->setCoachId($former->getId())->setRole(TeamCoachRole::MAIN));
+        $this->em->flush();
+        $inForce = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('V')->setStatus(ScheduleStatus::COMPLETED);
+        $this->choosePlanVersion($inForce);
+        $this->seedSlots($inForce);
+        $this->em->getConnection()->executeStatement('UPDATE schedule_slot_template SET coach_id = ? WHERE schedule_id = ? AND team_id = ?', [$former->getId(), $inForce->getId(), $this->teamA]);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($inForce, $states->capture($inForce->getSchedulePlanId()));
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($inForce->getSchedulePlanId(), $inForce->getId());
+        // Du froid attend : le coach principal de l'équipe A confié à un autre, sans valider.
+        $this->em->getConnection()->executeStatement('UPDATE team_coach SET coach_id = ? WHERE team_id = ? AND role = \'MAIN\'', [$successor->getId(), $this->teamA]);
+        $this->em->clear();
+
+        $versionColumns = 'SELECT * FROM schedule WHERE id = ?';
+        $slotColumns = 'SELECT * FROM schedule_slot_template WHERE schedule_id = ? ORDER BY id';
+        $versionBefore = $this->em->getConnection()->fetchAssociative($versionColumns, [$inForce->getId()]);
+        $slotsBefore = $this->em->getConnection()->fetchAllAssociative($slotColumns, [$inForce->getId()]);
+        $versions = $this->versionCount();
+
+        $this->client->request('GET', '/api/schedule_plans/' . $inForce->getSchedulePlanId() . '/pending-impact', [], [], $this->headers());
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'l\'annonce : ' . $this->client->getResponse()->getContent());
+        $this->post('/api/schedule_plans/' . $inForce->getSchedulePlanId() . '/apply-pending-changes', ['confirmChanges' => $this->decode()['changesToken'] ?? null]);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'valider ces modifications : ' . $this->client->getResponse()->getContent());
+
+        $versionAfter = $this->em->getConnection()->fetchAssociative($versionColumns, [$inForce->getId()]);
+        $slotsAfter = $this->em->getConnection()->fetchAllAssociative($slotColumns, [$inForce->getId()]);
+        self::assertIsArray($versionBefore);
+        self::assertIsArray($versionAfter);
+        $written = array_flip(['snapshot_data', 'snapshot_hash', 'payload_graft', 'updated_at', 'version']);
+        self::assertSame(array_diff_key($versionBefore, $written), array_diff_key($versionAfter, $written), 'la version en vigueur : seules son entrée figée et son empreinte sont écrites');
+        self::assertNull($versionAfter['payload_graft'], 'l\'entrée figée est recalculée en entier : aucune greffe');
+        $sessionWritten = array_flip(['coach_id', 'updated_at', 'version']);
+        self::assertSame(
+            array_map(static fn (array $slot): array => array_diff_key($slot, $sessionWritten), $slotsBefore),
+            array_map(static fn (array $slot): array => array_diff_key($slot, $sessionWritten), $slotsAfter),
+            'aucune séance ne change de place, de jour, d\'heure, de gymnase ni de verrou ; aucune n\'est ajoutée ni retirée',
+        );
+        $coachOf = static fn (array $slots, string $team): array => array_values(array_map(static fn (array $slot): mixed => $slot['coach_id'], array_filter($slots, static fn (array $slot): bool => $slot['team_id'] === $team)));
+        self::assertSame([$former->getId()], $coachOf($slotsBefore, $this->teamA), 'témoin : la séance de A nommait l\'ancien coach principal');
+        self::assertSame([$successor->getId()], $coachOf($slotsAfter, $this->teamA), 'la séance de A est tenue par le nouveau coach principal');
+        self::assertSame($coachOf($slotsBefore, $this->teamB), $coachOf($slotsAfter, $this->teamB), 'la séance de B, dont le coach principal n\'a pas changé, garde le sien');
+        self::assertSame($versions, $this->versionCount(), 'aucune version ne naît');
+
+        [$s1, $s2] = $this->slotsOf($inForce);
+        $this->call('lock', $inForce, $s1, $s2);
+        $this->assertRefused('chosen_version', 'après le geste, la version en vigueur reste fermée aux guichets');
     }
 
     /** Période : même règle, la source des verrous est seule modifiable. */
