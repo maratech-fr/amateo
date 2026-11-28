@@ -115,17 +115,19 @@ L'accueil **est** le cockpit (bandeau socle, calendrier d'exceptions, radar de r
 ### 1.3 Cycle de vie du planning (ADR-0002)
 
 Le **plan SEASON et sa version pointée SONT le calendrier de la saison**. « Validé » se dérive du pointeur — il n'y a
-plus de statut. Valider = pointer + **supprimer** les sœurs ; rouvrir = dépointer ; aucun pointage automatique
-du socle (seul un planning de PÉRIODE se pointe seul, 7 jours après le début de sa période, sœurs gardées).
+plus de statut. Valider = pointer + **supprimer** les sœurs ; rouvrir (plan de PÉRIODE seulement) = dépointer ;
+le socle ne se rouvre pas (409), il se **retravaille** (`POST /api/schedules/{id}/rework`) ; aucun pointage
+automatique du socle (seul un planning de PÉRIODE se pointe seul, 7 jours après le début de sa période, sœurs gardées).
 
-- **Une seule porte** vers le planning de saison : tant que le plan en pointe une version, `POST /api/schedules`
-  répond **409** — « la seule manière de modifier le planning de saison est Rouvrir » est vrai *par construction*.
-- **Défense en profondeur** : `SocleGuard::assertSeasonPlanNotChosen` sur `generate`/`regenerate`/`regenerate-from`.
-- **Confirmation forte** : rouvrir en présence de plannings de période exige de taper la phrase de confirmation.
-- **Rouvrir ne détruit ni le passé ni les périodes en cours** (`findWithPlanNotStarted`, pivot = date de début).
-- **Même bascule emporte aussi la collecte de doléances des vacances à venir** (campagne, doléances,
-  mutualisations — jamais une vacance déjà commencée, même pivot) : `FutureHolidayCollectePurger`
-  (P2-63 PR 7).
+- **Retravailler ne détruit rien** : la version de travail naît de la version en vigueur, qui reste lue par les matchs,
+  le radar et les plans de période jusqu'à la validation.
+- **Seul le froid supprime** : valider une version du socle dont la copie du froid diffère de celle en vigueur supprime
+  les plans de période PAS COMMENCÉS (`findWithPlanNotStarted`, pivot = date de début), après confirmation
+  (409 `changes_to_confirm`, jeton de la liste vue) ; une séance déplacée ou un verrou ne supprime rien.
+- **« Valider ces modifications »** : un changement fait hors du planning se valide sans régénérer
+  (`POST /api/schedule_plans/{id}/apply-pending-changes`), avec un contrôle d'incohérences par le verdict du moteur.
+- **La collecte de doléances des vacances à venir survit** à la validation du socle ; une doléance reçue avant un
+  changement de froid porte une mention.
 - **Versions de travail** (savepoints) : « Charger » (`POST /api/schedules/{id}/load`, copie du froid de la version), versions d'overlay, purge cron.
 - **Les verrous HARD d'une période survivent à « Régénérer »** : une nouvelle version repart
   toujours des données EN COURS du plan (sa version SOURCE), jamais de la version regardée ;

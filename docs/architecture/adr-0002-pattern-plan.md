@@ -96,6 +96,13 @@ Schedule (= Version)                    ← existant, recentré
    atterrit sur la chargée, sauf génération en cours ou échec dans la session. Gardé par
    `Integration/LoadedVersionLocksOnlyTest` et `Security/LoadedVersionIsTheOnlyEditableTest`.
 
+   **Amendement (« Valider ces modifications », lot 5, 2026-11-28) :** exception NOMMÉE à cette règle,
+   bornée au rail `POST /api/schedule_plans/{id}/apply-pending-changes` (`App\Plans\PendingChanges::apply`) :
+   il écrit la version EN VIGUEUR du socle, et seulement sa copie du froid, le coach de ses séances,
+   son entrée figée et son empreinte. Aucune séance ne change de place, aucune version ne naît ; les
+   guichets de retouche restent refusés sur la version en vigueur. Gardé par
+   `Api/ApplyPendingChangesGuardsTest`.
+
    **Amendement (prolonger une fermeture à travers des vacances, fondateur 2026-10-27) :**
    exception NOMMÉE, bornée au rail NEUF `POST /api/schedule_plans/{id}/window-preview` +
    `POST …/window` (ancré au PLAN d'une FERMETURE, `App\Service\ClosureWindowPlanner`/
@@ -298,13 +305,15 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     `OverlayManager::deletePeriodPlanForEntry`. L'**entrée de calendrier survit** : la
     période retombe « à traiter » au radar, à refaire. Une période **déjà commencée** (passée
     ou en cours) n'est **jamais** détruite — annoncée aux coachs et à moitié jouée, elle finit
-    sur l'ancien socle. S'applique aux deux portes (`ValidateScheduleController` choisissant
-    une autre version, `ReopenScheduleController` dépointant le socle) via le même 409
-    `overlays_exist` + `confirmDeleteOverlays: true` — « le premier plan secondaire fige le
-    socle » reste vrai. **Amendement (Q8bis, P2-63 PR 7, 2026-10-10)** : la même bascule emporte
-    aussi la collecte de doléances des vacances **entièrement à venir** (campagne, doléances,
-    mutualisations), même pivot — le 409 gagne `coachWishCount`, `App\Service\FutureHolidayCollectePurger`
-    exécute la purge dans la même transaction destructive.
+    sur l'ancien socle. S'applique à la validation d'une version du socle (`ValidateScheduleController`) et à
+    « Valider ces modifications » (`ApplyPendingChangesController`), via un 409
+    `changes_to_confirm` et le jeton de la liste vue (`confirmChanges`) — « le premier plan
+    secondaire fige le socle » reste vrai. **Amendement (lot 5, 2026-11-28)** : seul le **froid**
+    supprime — une version dont la copie diffère de celle en vigueur sur un champ froid ; une séance
+    déplacée ou un verrou ne supprime jamais rien. Un plan de saison ne se rouvre plus (409, il se
+    retravaille), et la collecte de doléances des vacances à venir n'est plus purgée : une doléance
+    reçue avant un changement de froid (`schedule_plan.cold_changed_at`) porte une mention, elle ne
+    disparaît pas.
 15. **Module matchs & radars de conflits** : ils **lisent le plan SEASON** (sa version
     choisie). Le comportement en espace de travail (pointeur null) sera **confirmé au
     cadrage du module matchs**. Consommateurs recensés : `MatchConflictDetector`,
@@ -320,8 +329,8 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     valider = pointer) ; le champ `Season.exportPdfUrl` (orphelin) — **l'export « du
     plan » = l'export de sa version choisie** (le fichier porte le **nom du Plan**,
     inv. 11 ; le lien d'export vit sur la version, comme aujourd'hui) ;
-    `PurgeOverlaysCommand` → devient une purge de **plans** échus ; l'erreur 409
-    `overlays_exist` renvoie des **plans**, plus des schedules.
+    `PurgeOverlaysCommand` → devient une purge de **plans** échus ; la confirmation de
+    suppression (409 `changes_to_confirm`) nomme des **plans**, plus des schedules.
 19. **RGPD** : la table `plan` entre dans l'export club (`RgpdExportService`) et dans les
     purges (`SeasonDataPurger`, cascades) comme toute donnée club.
 20. **Validation pré-solve** (`ValidateConstraintsController`) : filtre par **plan**

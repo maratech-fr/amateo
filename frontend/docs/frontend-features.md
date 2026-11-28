@@ -137,6 +137,14 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   (bouton « Réessayer », jamais un impact inconnu présenté comme vide). La validation elle-même
   dépointe alors ces matchs (`UNPLACED` + raison persistante `venue_lost`, heure conservée) —
   détail métier : `specs/courantes/module-matchs-perimetre-engage.md` §11 « Le périmètre engagé ».
+  **Ce qui change (lot 5)** : la même annonce dit, famille par famille, ce que la validation change par
+  rapport au planning en vigueur (« Rien ne change » sinon), le coach qui tiendra les séances d'une équipe
+  dont le coach principal change, les plannings de période supprimés (le bouton devient « Valider et
+  supprimer ») et les doléances conservées ; le serveur décide, l'écran affiche. Un 409
+  `changes_to_confirm` (`ChangesToConfirmError`) est un état d'UI : un toast demande de relire la liste. **« Valider ces
+  modifications »** (`ApplyPendingChangesDialog`, bandeau du planning de saison, seulement quand du froid
+  attend) lit `GET /api/schedule_plans/{id}/pending-impact` et y ajoute les incohérences avec le planning
+  en vigueur, qui avertissent sans bloquer.
 - « Rouvrir » (`POST /api/schedules/{id}/reopen`, bouton `/planning` autonome uniquement,
   `!embedded`) **dépointe** le plan (inv. 2) : la version survit et redevient éditable. Toute
   navigation qui suit **déclare son mode** (fix terrain 2026-08-19 défaut 3, `PlanningPage.tsx`

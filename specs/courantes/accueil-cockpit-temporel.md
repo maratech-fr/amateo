@@ -122,10 +122,11 @@ C'est cohérent avec la vraie vie du club : la semaine type se **stabilise** en 
 (quelques itérations), puis tient toute l'année ; ce sont les **exceptions** (vacances,
 fermetures, événements) qui bougent ensuite — plus la base.
 
-**Ça réutilise le cycle de vie existant** (`planning-lifecycle-validated.md`) : **« Rouvrir » =
-`reopen`**. La seule chose à ajouter : la réouverture **liste et supprime les plans de période
-non commencés** — **silencieuse s'il n'y en a pas**, avec confirmation sévère sinon (409
-`overlays_exist` puis rejeu avec `confirmDeleteOverlays: true`). La destruction va **de bout en
+**Ça réutilise le cycle de vie existant** (`planning-lifecycle-validated.md`) : le socle en vigueur
+se **retravaille** (`rework`, version de travail ; « Rouvrir » n'existe plus pour le socle). La seule
+chose qui supprime les **plans de période non commencés** est un changement de **froid** à la
+validation : **silencieuse si rien n'est supprimé**, avec confirmation sinon (409 `changes_to_confirm`
+puis rejeu avec `confirmChanges`, le jeton de la liste vue). La destruction va **de bout en
 bout** : versions, plan, et tous les réglages ancrés au plan (grille copiée, réservations, modes
 gymnase, overrides d'équipes et de contraintes) — **l'entrée de calendrier survit** et retombe
 « à traiter » au radar. Le work-loop « générer → ajuster → régénérer » vit surtout **avant** que
@@ -419,11 +420,9 @@ porte une case « garder les créneaux habituels » (`CoachWish.keepSeasonSlots`
 non coché) — le coach souhaite conserver ses créneaux du planning de SAISON pour cette semaine de
 vacances, sans que la page ne lui montre jamais ces horaires. Un souhait de plus, zéro effet
 solveur ici ; coché, il se voit dans la todo-list (pastille `StatusPill`) et le récap de la page
-publique. **Valider ou rouvrir le socle emporte aussi la collecte des vacances À VENIR** (campagne,
-doléances, mutualisations — jamais une vacance déjà commencée, même pivot que la destruction des
-plannings de période) : la confirmation annonce le nombre de doléances déjà reçues qui partiront
-avec, et qu'il faudra relancer la collecte (`FutureHolidayCollectePurger`, détail
-[`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §6).
+publique. **La collecte des vacances à venir survit à la validation du socle** : une doléance modifiée avant la
+dernière validation qui a changé du froid porte la mention « Réponse donnée avant la modification du
+planning de saison » (détail [`planning-lifecycle-validated.md`](planning-lifecycle-validated.md) §6).
 
 **Chargement** : tant que les plans, les versions, les campagnes, les impacts de fermeture ou la
 zone scolaire sont en vol, le radar affiche un **squelette** (région live pour les lecteurs

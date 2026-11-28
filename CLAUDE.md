@@ -120,8 +120,9 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   SOURCE du plan, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` ; « Charger » les pose).
 - **Le socle commande les plans de période** (ADR-0002) : (1) **aucune génération de période sans
   socle EN VIGUEUR** (`SocleGuard`) — « et si le socle n'a pas de version ? » est un cas
-  IMPOSSIBLE, jamais un repli à écrire ; (2) **valider/rouvrir le socle DÉTRUIT les plans de
-  période FUTURS** (l'entrée de calendrier survit) — ⚠ critère = la **DATE** (`startDate >
+  IMPOSSIBLE, jamais un repli à écrire ; (2) **valider un socle dont le FROID change DÉTRUIT les plans de
+  période FUTURS** (l'entrée de calendrier survit ; une séance déplacée ou un verrou n'y change rien ;
+  le socle ne se rouvre plus, il se retravaille) — ⚠ critère = la **DATE** (`startDate >
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
   copiée ne peut périmer en silence que pour une période **déjà commencée**. La collecte de
   doléances des vacances à venir, elle, reste (lot 5).
