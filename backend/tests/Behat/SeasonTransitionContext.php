@@ -141,6 +141,40 @@ final class SeasonTransitionContext extends BaseContext
         $this->drivingMinutes = (int) $minutes;
     }
 
+    /** L'encart « Trajet entre gymnases » de l'étape Contraintes, dans la saison en cours : cran, battement, temps par défaut. */
+    #[Given('/^le trajet entre gymnases réglé sur « Obligatoire », battement (?P<tolerance>\d+) minutes, temps par défaut (?P<default>\d+) minutes$/u')]
+    public function leTrajetEntreGymnasesRegle(string $tolerance, string $default): void
+    {
+        $set = $this->apiPut('venue_travel_rule_settings/travelTime', [
+            'intensity' => 'MANDATORY',
+            'toleranceMinutes' => (int) $tolerance,
+            'defaultMinutes' => (int) $default,
+        ], $this->smallClubToken, ['X-Season-Id' => $this->currentSeasonId]);
+        if (200 !== $set['status']) {
+            throw new RuntimeException(\sprintf('régler le trajet a répondu %d (200 attendu) : %s', $set['status'], json_encode($set['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /** Lot 9, PR 1 (le filet) : aujourd'hui la saison suivante reprend le cran du trajet, ce que son encart lit. */
+    #[Then('la saison suivante garde le trajet « Obligatoire »')]
+    public function laSaisonSuivanteGardeLeTrajet(): void
+    {
+        $rule = $this->travelRuleOfSeason($this->nextSeasonId);
+        if ('MANDATORY' !== ($rule['intensity'] ?? null) || false !== ($rule['isDefault'] ?? null)) {
+            throw new RuntimeException(\sprintf('la saison suivante lit le trajet %s, « Obligatoire » réglé attendu', json_encode($rule, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /** Lot 9, PR 1 (le filet) : aujourd'hui battement et temps par défaut ne suivent pas la saison (la PR 3 du lot les fait suivre). */
+    #[Then('/^son battement est de (?P<tolerance>\d+) minutes, son temps par défaut de (?P<default>\d+) minutes$/u')]
+    public function sonBattementEtSonTempsParDefaut(string $tolerance, string $default): void
+    {
+        $rule = $this->travelRuleOfSeason($this->nextSeasonId);
+        if ([(int) $tolerance, (int) $default] !== [$rule['toleranceMinutes'] ?? null, $rule['defaultMinutes'] ?? null]) {
+            throw new RuntimeException(\sprintf('la saison suivante lit le trajet %s, battement %s et temps par défaut %s attendus', json_encode($rule, \JSON_UNESCAPED_UNICODE), $tolerance, $default));
+        }
+    }
+
     #[When('je prépare la saison suivante')]
     public function jePrepareLaSaisonSuivante(): void
     {
@@ -567,6 +601,17 @@ final class SeasonTransitionContext extends BaseContext
         }
 
         throw new RuntimeException(\sprintf('%d trajet(s) %s – %s rangé(s) %s dans la saison %s, un seul attendu (HTTP %d) : %s', \count($matches), $a, $b, json_encode($ids), $seasonId, $listed['status'], json_encode($members, \JSON_UNESCAPED_UNICODE)));
+    }
+
+    /** @return array<string, mixed> le réglage du trajet d'une saison, tel que l'encart de cette saison le lit */
+    private function travelRuleOfSeason(string $seasonId): array
+    {
+        $read = $this->apiGet('venue_travel_rule_settings/travelTime', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
+        if (200 !== $read['status']) {
+            throw new RuntimeException(\sprintf('lire le réglage du trajet de la saison %s a répondu %d (200 attendu)', $seasonId, $read['status']));
+        }
+
+        return $read['json'];
     }
 
     /** @return array<string, int> libellé → nombre de lignes de la saison */

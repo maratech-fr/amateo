@@ -15,6 +15,7 @@ use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
 use App\Tests\EngineRequestMatchesNetDecorTrait;
 use App\Tests\EngineRequestPlanSettingsDecorTrait;
+use App\Tests\EngineRequestRulesNetDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
 use App\Tests\EngineRequestSocleNetDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
@@ -51,7 +52,11 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *      témoins de décor en base : un témoin absent fait échouer le test ;
  *  20 et 21. le filet du lot 5 (`EngineRequestSocleNetDecorTrait`) : le socle de la saison suivante née par
  *      le vrai geste depuis un socle complet en vigueur, et le placement quand une équipe créée après la
- *      validation porte un match. Témoins de décor lus en base, comme 16 à 19.
+ *      validation porte un match. Témoins de décor lus en base, comme 16 à 19 ;
+ *  23 à 25. le filet du lot 9 (`EngineRequestRulesNetDecorTrait`) : le socle au trajet obligatoire réglé, à la
+ *      passerelle obligatoire et à la contrainte permanente éteinte ; le même club dans un plan de vacances où la
+ *      règle éteinte est cochée ; le placement aux règles de match à bornes ouvertes. Témoins lus en base. Le numéro
+ *      22 est réservé (lot 5, PR 6).
  *
  * Jumeau de conversion : {@see Lot4MigrationChainTest} compare aux MÊMES fichiers les demandes composées
  * sur ce décor écrit en SQL dans le schéma d'avant le lot 4, une fois toutes les migrations jouées.
@@ -60,9 +65,9 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * d'une branche de lot ne joue que la suite bloquante. Le groupe `phase1` est requis : le step lance
  * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
- * Aux cas de génération (1 à 4, 7 à 13, 20), la demande se recoupe avec ce qui est écrit en base : l'empreinte
+ * Aux cas de génération (1 à 4, 7 à 13, 20, 23, 24), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `fingerprint(snapshotData, règle de trajet de la copie)`, les clés de la greffe `payloadGraft` sont
- * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 à 13 et 20,
+ * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 à 13, 20, 23 et 24,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
  * un autre chemin : les épingles du comblement (tout le placé de la version source, en HARD) sont
@@ -95,6 +100,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
     use EngineRequestGroupRulesDecorTrait;
     use EngineRequestMatchesNetDecorTrait;
     use EngineRequestPlanSettingsDecorTrait;
+    use EngineRequestRulesNetDecorTrait;
     use EngineRequestRunnerTrait;
     use EngineRequestSocleNetDecorTrait;
     use EngineRequestTravelDecorTrait;
@@ -453,6 +459,63 @@ final class EngineRequestReferenceTest extends KernelTestCase
     }
 
     /**
+     * Le socle d'un club au trajet obligatoire réglé (battement 10, temps par défaut 15), à la passerelle obligatoire et
+     * à la contrainte permanente éteinte : la règle éteinte part au moteur, `isActive` faux.
+     */
+    public function testSocleWithARegulatedTravelRuleAMandatoryLinkAndARuleSwitchedOff(): void
+    {
+        $this->seedEngineRequestRulesNet();
+        $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::DRAFT);
+        $this->assertRulesNetWitnesses(null);
+
+        $run = $this->runGeneration(self::ER_SOCLE_V1);
+
+        $this->assertRulesNetRequest($run['body']);
+        $this->assertReference('socle-23-trajet-passerelle-regle-eteinte', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /**
+     * Le même club, dans le plan de vacances réglé de la référence 12, où la règle éteinte dans la saison est cochée :
+     * elle part au moteur, `isActive` faux, comme au socle.
+     */
+    public function testHolidayPlanWhereTheRuleSwitchedOffIsChecked(): void
+    {
+        $this->seedSocleInForce();
+        $planId = $this->seedEngineRequestHolidaySettings();
+        $this->seedEngineRequestRulesNet();
+        $this->checkTheOffRuleIn($planId);
+        $this->erVersion(self::ER_HOLIDAY_V1, self::ER_HOLIDAY_WEEK, ScheduleStatus::DRAFT, []);
+        $this->assertRulesNetWitnesses($planId);
+
+        $run = $this->runGeneration(self::ER_HOLIDAY_V1);
+
+        $this->assertRulesNetRequest($run['body']);
+        $this->assertReference('periode-24-vacances-regle-eteinte-cochee', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Le placement des matchs quand les règles de match ont des bornes ouvertes (sans début, sans fin, ni l'un ni l'autre). */
+    public function testPlacementWithOpenBoundMatchRules(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedEngineRequestOpenBoundMatchRules();
+        $this->assertOpenBoundMatchRulesWitnesses();
+
+        $body = $this->runPlacement(null);
+
+        self::assertContains(['ruleType' => 'HARD', 'daysOfWeek' => [7], 'kickoffMin' => '10:00', 'kickoffMax' => null], \is_array($body['clubRules'] ?? null) ? $body['clubRules'] : [], 'témoin 25 : la règle de club sans heure de fin part, bornes nulles comprises');
+        self::assertContains(['coachId' => self::ER_COACH_B, 'daysOfWeek' => [7], 'kickoffMin' => null, 'kickoffMax' => null], \is_array($body['coachUnavailabilities'] ?? null) ? $body['coachUnavailabilities'] : [], 'témoin 25 : l\'indisponibilité de toute la journée part');
+        $forbidden = array_column(\is_array($body['teams'] ?? null) ? $body['teams'] : [], 'forbiddenVenueIds', 'id');
+        self::assertSame([self::ER_VENUE_NORD], $forbidden[self::ER_TEAM_SM1] ?? null, 'témoin 25 : SM1 est interdite du Nord');
+        self::assertSame([], $forbidden[self::ER_TEAM_U13] ?? null, 'témoin 25 : une interdiction « souhaitée » n\'interdit rien');
+        $this->assertReference('placement-25-regles-de-match-bornes-ouvertes', $body);
+    }
+
+    /**
      * Falsification de la purge du cache : une valeur DIFFÉRENTE amorcée sous la clé exacte du
      * payload de socle est (a) servie par le constructeur si l'on ne purge pas — le piège est réel —
      * et (b) n'atteint jamais le moteur sur le chemin du test, qui purge avant de composer.
@@ -542,6 +605,25 @@ final class EngineRequestReferenceTest extends KernelTestCase
 
             return $value;
         });
+    }
+
+    /**
+     * Témoins des références 23 et 24 dans la demande : le trajet réglé, la passerelle obligatoire, la règle éteinte.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function assertRulesNetRequest(array $body): void
+    {
+        $rules = \is_array($body['implicitRules'] ?? null) ? $body['implicitRules'] : [];
+        self::assertSame(['intensity' => 'MANDATORY', 'defaultMinutes' => 15, 'toleranceMinutes' => 10], $rules['travelTime'] ?? null, 'le trajet part obligatoire, temps par défaut 15, battement 10');
+        $links = array_column(\is_array($body['teamLinks'] ?? null) ? $body['teamLinks'] : [], 'intensity', 'id');
+        self::assertSame('MANDATORY', $links[self::ER_LINK_MANDATORY] ?? null, 'la passerelle part obligatoire');
+        $off = array_values(array_filter(
+            \is_array($body['constraints'] ?? null) ? $body['constraints'] : [],
+            static fn (mixed $row): bool => \is_array($row) && self::ER_RULE_OFF === ($row['id'] ?? null),
+        ));
+        self::assertCount(1, $off, 'la règle éteinte part au moteur');
+        self::assertFalse($off[0]['isActive'] ?? null, 'la règle éteinte part avec isActive faux');
     }
 
     /**

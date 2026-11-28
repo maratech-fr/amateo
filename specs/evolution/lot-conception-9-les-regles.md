@@ -164,6 +164,13 @@ Hors lot : le plancher de séances d'une équipe (`Team.php:76`) et les méthode
 - Mesure des plafonds.
 - Tests : lignes 1 à 5. `/security-review` : non.
 
+**Livrée le 2026-11-28 (PR 1), sur `lot/conception`, non déployée.** Écarts au plan, tels que livrés :
+- (a) Références 23, 24 et 25 dans `EngineRequestReferenceTest`, décor `tests/EngineRequestRulesNetDecorTrait.php` ; les références 1 à 21 restent identiques à l'octet.
+- (b) Chaîne de conversion : les cas 23 et 24 sont dans `Lot4MigrationChainTest`, leurs lignes en plus de la section de base dans `tests/Fixtures/lot-9/complements.sql` (« -- @reference <nom> @base <section> »). La référence 25 n'est pas jouée par la chaîne : le plan ne le demande pas.
+- (c) Deux scénarios de l'actuel : `plan-de-periode-en-overlay.feature` (le trajet réglé depuis une période règle la saison) ; `preparer-la-saison-suivante-reprend-la-structure.feature` et `SeasonTransitionServiceTest` (le cran est gardé, battement et temps par défaut repartent à 20 minutes).
+- (d) À reprendre plus tard : en PR 3 l'étape « depuis les vacances » passera le `schedulePlanId`, et l'étape des 20 minutes passera à 10 et 15 ; les identifiants de la référence 24 sont écrits à deux endroits (le trait et `complements.sql`) ; en PR 5 la référence 24 perd la ligne de la règle éteinte.
+- (e) Plafonds mesurés : aucun franchi.
+
 ### PR 2 · « Un seul vocabulaire d'intensité »
 - Migration : garde (valeur hors liste), `MANDATORY` vers `HARD` dans `team_link` et `venue_travel_rule_setting`, copies converties, cinq CHECK.
 - Code : `RuleIntensity`, remplacement mécanique, `engineValue()` aux trois sites, entrées d'API.

@@ -26,7 +26,9 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * Promesse : les données d'un club écrites avant le lot 4, une fois toutes les migrations du lot jouées,
- * donnent au moteur les mêmes quinze demandes qu'avant (axe *chaîne de génération*, plan du lot 4 §4 PR 1).
+ * donnent au moteur les mêmes quinze demandes qu'avant (axe *chaîne de génération*, plan du lot 4 §4 PR 1). Le lot 9
+ * (PR 1) y ajoute les demandes 23 et 24 : la section de base de `decor-avant.sql` qu'elles nomment, complétée des lignes
+ * de `tests/Fixtures/lot-9/complements.sql` (« -- @reference <nom> @base <section> »), écrites dans le même schéma.
  *
  * Pour chaque référence de {@see EngineRequestReferenceTest} : une base neuve, copiée d'un modèle chargé
  * depuis le schéma figé d'avant le lot (`tests/Fixtures/lot-4/schema-avant.sql`, table des versions de
@@ -120,6 +122,8 @@ final class Lot4MigrationChainTest extends KernelTestCase
 
     private const string SCHEMA_FILE = __DIR__ . '/../../Fixtures/lot-4/schema-avant.sql';
 
+    private const string COMPLEMENTS_FILE = __DIR__ . '/../../Fixtures/lot-9/complements.sql';
+
     private const array DATABASE_VARIABLES = ['DATABASE_URL', 'DATABASE_ADMIN_URL'];
 
     private static ?string $testDatabase = null;
@@ -149,6 +153,8 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $cases[] = ['periode-13-fermeture-reglages', 'generation', ['schedule' => self::ER_CLOSURE_V1]];
         $cases[] = ['validation-14-deplacement-socle', 'validation', ['slot' => self::erId('5107', 2), 'target' => [1, '19:30', $nord]]];
         $cases[] = ['validation-15-deplacement-periode', 'validation', ['slot' => self::erId('5107', 12), 'target' => [1, '18:00', $nord]]];
+        $cases[] = ['socle-23-trajet-passerelle-regle-eteinte', 'generation', ['schedule' => self::ER_SOCLE_V1]];
+        $cases[] = ['periode-24-vacances-regle-eteinte-cochee', 'generation', ['schedule' => self::ER_HOLIDAY_V1]];
 
         foreach ($cases as $case) {
             yield $case[0] => $case;
@@ -728,6 +734,10 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $reference = $this->providedData()[0] ?? null;
         self::assertIsString($reference);
         $sections = self::readDecorSections();
+        foreach ($this->readComplementSections() as $name => [$base, $complement]) {
+            self::assertArrayHasKey($base, $sections, \sprintf('complements.sql : la référence %s nomme la section de base %s, absente de decor-avant.sql', $name, $base));
+            $sections[$name] = $sections[$base] . "\n" . $complement;
+        }
         self::assertArrayHasKey($reference, $sections, \sprintf('decor-avant.sql n\'a pas de section pour la référence %s', $reference));
 
         $server = self::maintenanceConnection();
@@ -762,6 +772,34 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::caseName()));
         $server->close();
         parent::tearDown();
+    }
+
+    /**
+     * Les compléments du lot 9 : par référence, la section de base qu'elle complète et le SQL ajouté.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    private function readComplementSections(): array
+    {
+        $sections = [];
+        $current = null;
+        foreach (explode("\n", (string) file_get_contents(self::COMPLEMENTS_FILE)) as $line) {
+            if (str_starts_with($line, '-- @reference ')) {
+                $header = explode(' @base ', substr($line, \strlen('-- @reference ')));
+                self::assertCount(2, $header, \sprintf('complements.sql : « %s » ne nomme pas sa section de base (« @base <section> »)', $line));
+                $current = $header[0];
+                $sections[$current] = [$header[1], ''];
+
+                continue;
+            }
+            if (null === $current || '' === $line) {
+                continue;
+            }
+            $sections[$current][1] .= ('' === $sections[$current][1] ? '' : "\n") . $line;
+        }
+        self::assertNotSame([], $sections, 'complements.sql porte au moins une section');
+
+        return $sections;
     }
 
     /** @param array<string, mixed> $input */

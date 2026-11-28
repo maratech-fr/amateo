@@ -23,6 +23,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -35,6 +36,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
@@ -395,6 +397,28 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         ]);
         self::assertInstanceOf(ImplicitRuleSetting::class, $copied, 'le réglage de la règle suit la saison suivante');
         self::assertSame(ImplicitRuleIntensity::OFF, $copied->getIntensity());
+    }
+
+    /**
+     * Le cran de la règle de trajet suit la saison suivante ; son battement et son temps par défaut, non : ils repartent à
+     * 20 minutes (comportement d'avant le lot 9, que sa PR 3 change ; jumeau : `preparer-la-saison-suivante-reprend-la-structure.feature`).
+     */
+    public function testTheTravelRuleKeepsItsIntensityAndRestartsItsMinutesAtTwenty(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $this->em->persist((new VenueTravelRuleSetting)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setIntensity(VenueTravelRuleIntensity::MANDATORY)->setToleranceMinutes(10)->setDefaultMinutes(15));
+        $this->em->flush();
+
+        $target = $this->service->transition($season, $this->inPreparationWindow());
+
+        $copied = $this->em->getRepository(VenueTravelRuleSetting::class)->findOneBy(['seasonId' => $target->getId()]);
+        self::assertInstanceOf(VenueTravelRuleSetting::class, $copied, 'la règle de trajet suit la saison suivante');
+        self::assertSame(
+            [VenueTravelRuleIntensity::MANDATORY, 20, 20],
+            [$copied->getIntensity(), $copied->getToleranceMinutes(), $copied->getDefaultMinutes()],
+            'le cran est repris, battement et temps par défaut repartent à 20 minutes',
+        );
     }
 
     public function testCoachIsVehicledSurvivesTheTransition(): void
