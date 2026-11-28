@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./fixtures";
 
+import { PLANNING_TEXTS } from "../../src/features/planning/texts";
 import { registerAndVerify, uniqueAra } from "./support";
 import { buildTeamsXlsx } from "./support-xlsx";
 
@@ -264,28 +265,28 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
     `Planning livré SANS événement Mercure : le repli polling a masqué un hub muet (D2). État du flux : ${streamState}, événements SSE : ${eventsReceived}.`,
   ).toBeGreaterThanOrEqual(1);
 
-  // --- Valider dans le wizard embarqué (Valider = la SORTIE, symétrie Valider ↔ Rouvrir).
+  // --- Valider dans le wizard embarqué (Valider = la SORTIE, symétrie Valider ↔ Retravailler).
   await page.getByRole("button", { name: "Valider" }).click();
   const dialog = page.getByRole("dialog", { name: "Valider le planning" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Valider", exact: true }).click();
 
   // --- Le succès ATTERRIT sur /planning (version en vigueur). L'URL est l'assertion falsifiable ;
-  //     « Rouvrir visible » seul serait un FAUX VERT (présent dans les deux écrans).
+  //     un bouton visible seul serait un FAUX VERT.
   await expect(page).toHaveURL(/\/planning/, { timeout: 15_000 });
   await expect(page.getByText("SM1").first()).toBeVisible();
   await expect(page.getByText("Terminé").first()).toBeVisible();
   // Le sélecteur de version est ABSENT sur /planning (geste de travail, embarqué seulement) — c'est
   // ce qui prouve qu'on a QUITTÉ l'atelier, pas juste qu'un bouton a changé.
   await expect(page.getByRole("combobox", { name: /version du planning/i })).toHaveCount(0);
-  const reopen = page.getByRole("button", { name: "Rouvrir" });
-  await expect(reopen).toBeVisible();
+  const rework = page.getByRole("button", { name: PLANNING_TEXTS.rework, exact: true });
+  await expect(rework).toBeVisible();
 
   // --- Contrôle de COHÉRENCE du planning EN VIGUEUR, lu via l'API de la version pointée (c'est ce
   //     que le navigateur rend) : chaque équipe placée, aucune collision de gymnase, aucun coach à
   //     deux endroits. Invariants dont le MOTEUR est la source (doublon VOULU, point sensible
   //     « pipeline de génération » — voir engine/tests invariants + `MatchConflictDetectorTest`). On
-  //     le lit AVANT « Rouvrir », qui dépointe le plan (`planning/queries.ts` : Rouvrir → chosenScheduleId null).
+  //     le lit AVANT « Retravailler », qui charge une copie de travail (la version lue ici reste en vigueur).
   const me = (await getJson(page, "/api/me")) as { seasonPlan?: { chosenScheduleId?: string | null } };
   const scheduleId = me.seasonPlan?.chosenScheduleId ?? null;
   expect(scheduleId, "le plan de saison validé doit pointer une version").toBeTruthy();
@@ -331,10 +332,19 @@ test("parcours complet : 10 équipes FBI → 2 gymnases → génération → pla
     }
   }
 
-  // --- Rouvrir boucle le cycle : retour à l'étape génération du wizard, planning éditable à nouveau.
-  await reopen.click();
+  // --- « Retravailler » boucle le cycle : après confirmation, une copie de travail naît de la version en
+  //     vigueur et le wizard s'ouvre, étape Génération, SUR cette copie (le sélecteur de version porte l'id
+  //     servi par POST /rework, distinct de la version en vigueur) ; « Valider » y est de nouveau offert.
+  await rework.click();
+  const reworkResponse = page.waitForResponse((r) => "POST" === r.request().method() && /\/api\/schedules\/[^/]+\/rework$/.test(new URL(r.url()).pathname));
+  await page.getByRole("dialog").getByRole("button", { name: PLANNING_TEXTS.rework, exact: true }).click();
+  const reworked = await reworkResponse;
+  expect(reworked.ok(), `POST rework (HTTP ${reworked.status()})`).toBeTruthy();
+  const workVersionId = ((await reworked.json()) as { id: string }).id;
+  expect(workVersionId, "la copie de travail est une version NEUVE, pas la version en vigueur").not.toBe(scheduleId);
   await expect(page).toHaveURL(/\/wizard/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: /Étape 6\/6/ })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: PLANNING_TEXTS.versionSelectLabel })).toHaveValue(workVersionId, { timeout: 15_000 });
   await expect(page.getByText("SM1").first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Valider" })).toBeVisible({ timeout: 15_000 });
 
