@@ -68,7 +68,7 @@ All services share the Docker network `amateo_network`.
   | Controller | Route | Action |
   |-----------|-------|--------|
   | `GenerateScheduleController` | `POST /api/schedules/{id}/generate` | dispatch `GenerateScheduleMessage` |
-  | `ValidateScheduleController` / `ReopenScheduleController` | `POST /api/schedules/{id}/{validate,reopen}` | planning lifecycle (ADR-0002): validate = the plan **points** at the version + its siblings are **deleted**; reopen = the plan **un-points** it |
+  | `ValidateScheduleController` / `ReopenScheduleController` | `POST /api/schedules/{id}/{validate,reopen}` | planning lifecycle (ADR-0002): validate = the plan **points** at the version + its siblings are **deleted**; reopen = the plan **un-points** it (period plans only: a season plan answers 409, it is reworked via `ReworkScheduleController`, `POST /api/schedules/{id}/rework`) |
   | `ExportPdfController` | `POST /api/schedules/{id}/export-pdf` | dispatch `ExportPdfMessage` |
   | `ImportController` | `POST /api/clubs/{id}/import-teams` | XLSX import via `FfbbExcelImporter` |
   | `ManualEditController` | `POST /api/schedule-slots/{id}/manual-edit/{constraint,lock,one-time}` | manual slot edits |
