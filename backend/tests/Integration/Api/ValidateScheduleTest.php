@@ -23,6 +23,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -205,13 +206,13 @@ final class ValidateScheduleTest extends WebTestCase
         self::assertSame(ScheduleStatus::COMPLETED, $this->em->getRepository(Schedule::class)->find($v1->getId())?->getStatus(), 'nothing committed when a sibling is mid-solve');
     }
 
-    public function testValidatingAnotherVersionWithOverlaysRequiresConfirmation(): void
+    public function testValidatingAVersionWhoseColdChangedWithOverlaysRequiresConfirmation(): void
     {
-        // The plan points at V1, with a period overlay built on it; choosing V2
-        // MOVES the pointer → the overlay would silently compose over a different
-        // base plan (inv. 14). Same destructive idiom as reopen: 409 overlays_exist,
-        // then confirmDeleteOverlays deletes the overlay.
-        [$user, , $season] = $this->seed('VAL9');
+        // The plan points at V1, with a period overlay built on it; V2 was born after
+        // a cold change (lot 5, PR 6 : only the cold destroys) → choosing it would leave
+        // the overlay composed over a different base plan (inv. 14). 409
+        // changes_to_confirm, then the token of the announced list deletes the overlay.
+        [$user, $club, $season] = $this->seed('VAL9');
         $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
         $this->choosePlanVersion($v1);
         $entry = (new CalendarEntry)
@@ -222,21 +223,22 @@ final class ValidateScheduleTest extends WebTestCase
         $this->em->flush();
         $overlay = $this->createSchedule($season, ScheduleStatus::COMPLETED, $entry->getId());
         $this->choosePlanVersion($overlay); // lot D-b : un plan secondaire RÉEL = plan validé
-        $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $v2 = $this->candidateWithAColdChange($club, $season);
 
         // Two sequential authenticated calls → Bearer on each (stateless firewall).
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
         $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $jwt, 'CONTENT_TYPE' => 'application/json'];
-        // Without the confirm flag → 409 escalation, nothing mutated.
+        // Without the token of the announced list → 409 escalation, nothing mutated.
         $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth);
         self::assertResponseStatusCodeSame(409);
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('overlays_exist', $body['code'] ?? null);
+        self::assertSame('changes_to_confirm', $body['code'] ?? null);
         $this->em->clear();
         self::assertSame(ScheduleStatus::COMPLETED, $this->em->getRepository(Schedule::class)->find($v2->getId())?->getStatus(), 'nothing committed on the 409 path');
+        self::assertSame($v1->getId(), $this->chosenPlanVersion($season), 'the pointer has not moved on the 409 path');
 
-        // With the confirm flag → overlay deleted, baseline moved, V2 validated.
-        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth, json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        // With the token of the announced list → overlay deleted, baseline moved, V2 validated.
+        $this->validateConfirmed($v2, $auth);
         self::assertResponseIsSuccessful();
         $this->em->clear();
         self::assertNull($this->em->getRepository(Schedule::class)->find($overlay->getId()), 'the stale overlay is deleted after explicit confirmation');
@@ -269,15 +271,16 @@ final class ValidateScheduleTest extends WebTestCase
         $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $jwt, 'CONTENT_TYPE' => 'application/json'];
         $this->client->request('POST', "/api/schedules/{$v1->getId()}/validate", [], [], $auth);
 
+        // Lot 5, PR 6 : sans version en vigueur et avec des plans de période, la suppression reste annoncée (§3.6).
         self::assertResponseStatusCodeSame(409);
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('overlays_exist', $body['code'] ?? null);
+        self::assertSame('changes_to_confirm', $body['code'] ?? null);
         $this->em->clear();
         self::assertNull($this->chosenPlanVersion($season), 'rien n\'est commité sur le 409');
         self::assertNotNull($this->em->getRepository(Schedule::class)->find($overlay->getId()), 'le plan secondaire survit tant que rien n\'est confirmé');
     }
 
-    public function testChoosingAnotherSeasonVersionDestroysTheWholePlanOfAPeriodToCome(): void
+    public function testChoosingASeasonVersionWhoseColdChangedDestroysTheWholePlanOfAPeriodToCome(): void
     {
         // « Le planning de saison est notre base, donc on supprime TOUS les plannings
         // overlay ou holidays qui sont à venir. Il faudra les recommencer. Je supprime
@@ -315,7 +318,7 @@ final class ValidateScheduleTest extends WebTestCase
         $this->em->clear();
         self::assertCount(1, $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]), 'la période est née avec sa copie de la grille de saison');
 
-        $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $v2 = $this->candidateWithAColdChange($club, $season);
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
         $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $jwt, 'CONTENT_TYPE' => 'application/json'];
 
@@ -324,10 +327,10 @@ final class ValidateScheduleTest extends WebTestCase
         $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth);
         self::assertResponseStatusCodeSame(409);
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('overlays_exist', $body['code'] ?? null);
-        self::assertSame(['Toussaint'], array_column($body['overlays'] ?? [], 'title'));
+        self::assertSame('changes_to_confirm', $body['code'] ?? null);
+        self::assertSame(['Toussaint'], array_column($body['destroyedPeriodPlans'] ?? [], 'title'));
 
-        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth, json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        $this->validateConfirmed($v2, $auth);
         self::assertResponseIsSuccessful();
 
         $this->em->clear();
@@ -342,13 +345,12 @@ final class ValidateScheduleTest extends WebTestCase
         self::assertNotNull($this->em->getRepository(CalendarEntry::class)->find($entry->getId()), 'la période reste au calendrier, à refaire');
     }
 
-    public function testChoosingAnotherSeasonVersionPurgesTheFutureHolidayCollecteAndKillsItsTokens(): void
+    public function testChoosingASeasonVersionWhoseColdChangedKeepsTheFutureHolidayCollecteAndItsTokens(): void
     {
-        // §7.1 planning lifecycle — Q8bis (P2-63) : déplacer le socle emporte AUSSI la collecte
-        // de doléances et les doléances des vacances ENTIÈREMENT à venir (campagne → jetons par FK
-        // cascade), MÊME pivot que les plannings de période (startDate > today). Une vacance DÉJÀ
-        // COMMENCÉE garde sa collecte. Le lien coach purgé devient un 404 BYTE-IDENTIQUE à un
-        // jeton inconnu (anti-énumération préservée).
+        // §7.1 planning lifecycle — lot 5, PR 6 (ligne 42 du plan) : la validation d'un socle au froid
+        // changé supprime le planning des vacances ENTIÈREMENT à venir, mais garde leur collecte, leurs
+        // doléances, leurs mutualisations et les liens des coachs. L'annonce compte les doléances
+        // conservées des vacances à venir (2), jamais celles d'une vacance déjà commencée.
         [$user, $club, $season] = $this->seed('VAL14');
         $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
         $this->choosePlanVersion($v1);
@@ -373,44 +375,37 @@ final class ValidateScheduleTest extends WebTestCase
 
         $this->scopeGucToClub($club->getId());
         $futureToken = $this->seedCollecte($club, $season, $future->getId(), 2); // 2 doléances à venir
-        $startedToken = $this->seedCollecte($club, $season, $started->getId(), 1); // 1 doléance déjà commencée
+        $this->seedCollecte($club, $season, $started->getId(), 1); // 1 doléance déjà commencée
 
-        $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $v2 = $this->candidateWithAColdChange($club, $season);
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
         $auth = ['HTTP_AUTHORIZATION' => 'Bearer ' . $jwt, 'CONTENT_TYPE' => 'application/json'];
 
-        // Sans confirmation → 409 qui ANNONCE les doléances à venir (2), jamais celles déjà
-        // commencées. Rien n'est écrit.
-        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth);
-        self::assertResponseStatusCodeSame(409);
-        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('overlays_exist', $body['code'] ?? null);
-        self::assertSame(2, $body['coachWishCount'] ?? null, 'le 409 annonce les doléances des vacances À VENIR seulement');
+        // L'annonce compte les doléances conservées des vacances À VENIR (2), jamais celles déjà commencées.
+        $this->client->request('GET', "/api/schedules/{$v2->getId()}/validate-impact", [], [], $auth);
+        self::assertResponseIsSuccessful();
+        $impact = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertIsArray($impact);
+        self::assertSame(2, $impact['keptWishes'] ?? null, 'l\'annonce compte les doléances conservées des vacances À VENIR seulement');
+        self::assertSame(['Toussaint'], array_column(\is_array($impact['destroyedPeriodPlans'] ?? null) ? $impact['destroyedPeriodPlans'] : [], 'title'), 'le planning des vacances à venir est annoncé supprimé');
 
-        // 404 d'un jeton INCONNU (référence anti-énumération), capturé AVANT la purge.
-        $this->client->request('GET', '/api/coach-wishes/public/' . str_repeat('a', 64));
-        self::assertResponseStatusCodeSame(404);
-        $unknown404 = (string) $this->client->getResponse()->getContent();
-
-        // Avec confirmation → la bascule détruit l'overlay ET purge la collecte à venir.
-        $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth, json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        $this->validateConfirmed($v2, $auth);
         self::assertResponseIsSuccessful();
 
         $this->em->clear();
         $this->scopeGucToClub($club->getId());
-        // Les vacances À VENIR : campagne, doléances, mutualisation ET jetons (FK cascade) partis.
-        self::assertCount(0, $this->em->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $future->getId()]), 'la campagne des vacances à venir est supprimée');
-        self::assertCount(0, $this->em->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $future->getId()]), 'les doléances des vacances à venir sont supprimées');
-        self::assertCount(0, $this->em->getRepository(CoachWishMutualization::class)->findBy(['calendarEntryId' => $future->getId()]), 'les mutualisations des vacances à venir sont supprimées');
-        self::assertCount(0, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $futureToken['campaignId']]), 'les jetons partent par FK cascade avec la campagne');
-        // Les vacances DÉJÀ COMMENCÉES gardent leur collecte.
+        self::assertNull($this->em->getRepository(Schedule::class)->find($overlay->getId()), 'témoin : le planning des vacances à venir est supprimé');
+        // Les vacances À VENIR gardent campagne, doléances, mutualisation et jetons ; les vacances commencées aussi.
+        self::assertCount(1, $this->em->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $future->getId()]), 'la campagne des vacances à venir est conservée');
+        self::assertCount(2, $this->em->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $future->getId()]), 'les doléances des vacances à venir sont conservées');
+        self::assertCount(1, $this->em->getRepository(CoachWishMutualization::class)->findBy(['calendarEntryId' => $future->getId()]), 'les mutualisations des vacances à venir sont conservées');
+        self::assertCount(1, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $futureToken['campaignId']]), 'le lien du coach est conservé');
         self::assertCount(1, $this->em->getRepository(CoachWishCampaign::class)->findBy(['calendarEntryId' => $started->getId()]), 'la collecte d\'une vacance déjà commencée survit');
         self::assertCount(1, $this->em->getRepository(CoachWish::class)->findBy(['calendarEntryId' => $started->getId()]), 'ses doléances survivent');
 
-        // Le lien coach purgé est un 404 BYTE-IDENTIQUE à un jeton inconnu.
+        // Le lien du coach s'ouvre toujours.
         $this->client->request('GET', '/api/coach-wishes/public/' . $futureToken['token']);
-        self::assertResponseStatusCodeSame(404);
-        self::assertSame($unknown404, (string) $this->client->getResponse()->getContent(), 'le lien d\'un jeton purgé est un 404 identique à un inconnu');
+        self::assertResponseIsSuccessful();
     }
 
     public function testAPeriodAlreadyUnderWaySurvivesTheSeasonChange(): void
@@ -559,6 +554,43 @@ final class ValidateScheduleTest extends WebTestCase
         $this->em->flush();
 
         return ['campaignId' => $campaign->getId(), 'token' => $token->getToken()];
+    }
+
+    /**
+     * Lot 5, PR 6 : seul le froid supprime les plannings de période. Une version terminée née APRÈS un changement du
+     * froid (un créneau de grille de plus), avec sa copie, chargée : celle dont la validation supprime.
+     */
+    private function candidateWithAColdChange(Club $club, Season $season): Schedule
+    {
+        $this->scopeGucToClub($club->getId());
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase du froid')->setCanSplit(false);
+        $this->em->persist($venue);
+        $planId = $this->em->getConnection()->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'', [$season->getId()]);
+        self::assertIsString($planId);
+        $this->slot($club, $season, $venue->getId(), $planId);
+        $this->em->flush();
+        $candidate = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($candidate, $states->capture($planId));
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($planId, $candidate->getId());
+
+        return $candidate;
+    }
+
+    /**
+     * Le geste « Valider » du dialogue : l'annonce, puis la validation confirmée sur le jeton de sa liste.
+     *
+     * @param array<string, string> $auth
+     */
+    private function validateConfirmed(Schedule $version, array $auth): void
+    {
+        $this->client->request('GET', "/api/schedules/{$version->getId()}/validate-impact", [], [], $auth);
+        self::assertResponseIsSuccessful();
+        $impact = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertIsArray($impact);
+        self::assertIsString($impact['changesToken'] ?? null, 'l\'annonce porte le jeton de sa liste');
+        $this->client->request('POST', "/api/schedules/{$version->getId()}/validate", [], [], $auth, json_encode(['confirmChanges' => $impact['changesToken']], \JSON_THROW_ON_ERROR));
     }
 
     private function uuid(): string
