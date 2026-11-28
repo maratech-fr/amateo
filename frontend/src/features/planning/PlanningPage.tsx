@@ -334,8 +334,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       return;
     }
     reworkMutation.mutate(validScheduleId, {
-      onSuccess: () => {
+      onSuccess: (created) => {
         setReworkOpen(false);
+        // L'écran s'ouvre sur la version de travail (l'étoile), au Wizard comme sur /planning (décision fondateur).
+        setSelectedScheduleId(created.id);
         // Même sortie que « Rouvrir » : le wizard, étape Génération, en mode SAISON déclaré.
         useWizardStore.getState().exitPeriodMode();
         useWizardStore.getState().jumpTo("generate");
@@ -400,6 +402,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // par une sélection LOCALE. Aucune écriture, aucune redirection : la version en vigueur (isChosen)
   // reste le calendrier. Même borne de plan que `scopeInFlight` (cf. lib/versions).
   const laterVersionId = useMemo(() => laterCompletedVersionId(displayed, schedules), [displayed, schedules]);
+  // Lot 5 — on regarde le planning de saison EN VIGUEUR alors qu'une version de travail est chargée (★) : la version à
+  // ouvrir est celle de travail. Null hors de ce cas.
+  const openWorkVersionId = true === displayed?.isChosen && isSeasonPlanType(displayed.planType)
+    ? (schedules.find((s) => isSeasonPlanType(s.planType) && true === s.isLiveContext && true !== s.isChosen)?.id ?? null)
+    : null;
   // P4-266 — l'empreinte de structure COURANTE du plan de la version affichée (SEASON ou période),
   // servie par le backend. On la COMPARE au snapshotHash figé de la version (le backend dit, le
   // front affiche) : égale ⇒ structure inchangée (« Régénérer » grisé) ; différente ⇒ la structure
@@ -983,18 +990,20 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         </NoticeBanner>
       ) : null}
 
-      {/* « Ouvrir la dernière version » n'a pas de sens sur la version chargée : c'est là qu'on travaille. */}
-      {!showGenerationWaiting && null !== laterVersionId && !showNotLoadedBanner && true !== displayed?.isLiveContext && true !== displayed?.isLockSource ? (
-        <NoticeBanner tone="muted" role="status" className="mb-4" message={PLANNING_TEXTS.earlierVersionNotice}>
+      {/* « Ouvrir la dernière version » n'a pas de sens sur la version chargée : c'est là qu'on travaille. Lot 5 : sur le
+          planning de saison EN VIGUEUR alors qu'une version de travail est chargée, le bandeau le dit et ouvre la version
+          de travail (l'étoile). */}
+      {!showGenerationWaiting && (null !== laterVersionId || null !== openWorkVersionId) && !showNotLoadedBanner && true !== displayed?.isLiveContext && true !== displayed?.isLockSource ? (
+        <NoticeBanner tone="muted" role="status" className="mb-4" message={null !== openWorkVersionId ? PLANNING_TEXTS.inForceWithWorkVersionNotice : PLANNING_TEXTS.earlierVersionNotice}>
           <Button
             size="sm"
             variant="outline"
             onClick={() => {
               armNavTransition(); // GESTE (ouverture d'une version) arme le voile de changement de page
-              setSelectedScheduleId(laterVersionId);
+              setSelectedScheduleId(openWorkVersionId ?? laterVersionId);
             }}
           >
-            {PLANNING_TEXTS.openLatestVersion}
+            {null !== openWorkVersionId ? PLANNING_TEXTS.openWorkVersion : PLANNING_TEXTS.openLatestVersion}
           </Button>
         </NoticeBanner>
       ) : null}

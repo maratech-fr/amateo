@@ -35,6 +35,9 @@ export const PLANNING_TEXTS = {
   renamePlanning: "Renommer le planning",
   earlierVersionNotice: "Vous regardez une version antérieure du planning.",
   openLatestVersion: "Ouvrir la dernière version",
+  // Lot 5 — le planning de saison en vigueur, regardé pendant qu'une version de travail existe.
+  inForceWithWorkVersionNotice: "Vous regardez le planning en vigueur — vos modifications sont dans la version de travail.",
+  openWorkVersion: "Ouvrir la version de travail",
   fillAutomatically: "Combler automatiquement",
   fillNoCreditLeft: "Vos crédits gratuits sont épuisés.",
   fillHint: "Place les séances à replacer sans toucher au reste du planning.",
