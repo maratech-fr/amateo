@@ -5,7 +5,7 @@ import type { SchedulePlan } from "@/features/cockpit/api";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { useWizardStore } from "@/features/wizard/store";
 
-import { OverlaysExistError, type Schedule } from "../api";
+import type { Schedule } from "../api";
 import { useReopenSchedule, useValidateImpact, useValidateSchedule } from "../queries";
 import { isSeasonPlanType } from "./versions";
 
@@ -40,33 +40,26 @@ export function useValidateReopen(
     [validateImpactQuery],
   );
 
-  // Validating a non-baseline version with overlays → 409 escalation (same
-  // destructive idiom as reopen): confirm, then re-POST with the flag.
-  const [validateOverlayCount, setValidateOverlayCount] = useState<number | null>(null);
-  const [validateWishCount, setValidateWishCount] = useState(0);
-  const validate = (confirmDeleteOverlays?: boolean) => {
+  // Lot 5 — ce que la validation change par rapport au planning en vigueur, lu sur la même annonce ; la
+  // confirmation porte le jeton de la liste vue (le serveur l'exige quand des plannings de période partent).
+  const announcement = useMemo(() => {
+    const data = validateImpactQuery.data;
+    return undefined === data ? null : { changes: data.changes ?? [], destroyedTitles: (data.destroyedPeriodPlans ?? []).map((plan) => plan.title), keptWishes: data.keptWishes ?? 0 };
+  }, [validateImpactQuery.data]);
+  const validate = () => {
     if (!validScheduleId) {
       return;
     }
     validateMutation.mutate(
-      { id: validScheduleId, confirmDeleteOverlays },
+      { id: validScheduleId, confirmChanges: validateImpactQuery.data?.changesToken },
       {
         onSuccess: () => {
-          setValidateOverlayCount(null);
-          setValidateWishCount(0);
           setValidateOpen(false);
           // Validated → land on /planning, the screen of the version IN FORCE. Valider
           // est la SORTIE de l'espace de travail (l'étape Génération du wizard) : le socle
           // validé devient la version en vigueur, et /planning en porte le badge de statut
-          // et « Rouvrir » (symétrie stricte, 2026-08-20 — Valider ↔ Rouvrir).
+          // et « Retravailler » (lot 5).
           navigate("/planning");
-        },
-        onError: (error) => {
-          if (error instanceof OverlaysExistError) {
-            setValidateOpen(false);
-            setValidateOverlayCount(error.count);
-            setValidateWishCount(error.coachWishCount);
-          }
         },
       },
     );
@@ -104,5 +97,5 @@ export function useValidateReopen(
     );
   };
 
-  return { validateOpen, setValidateOpen, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen };
+  return { validateOpen, setValidateOpen, validateMutation, reopenMutation, orphanImpact, announcement, validate, reopen };
 }

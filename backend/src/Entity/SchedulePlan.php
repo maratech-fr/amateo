@@ -134,6 +134,14 @@ class SchedulePlan implements TenantOwnedInterface
     private ?string $alertSeenKind = null;
 
     /**
+     * Lot 5 — l'instant de la dernière validation du planning de saison qui a changé du froid (une version au froid
+     * différent, ou « Valider ces modifications »). Posé en SQL par la validation ; une doléance reçue avant porte la
+     * mention « réponse donnée avant la modification ». null = aucun froid changé depuis la première validation.
+     */
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $coldChangedAt = null;
+
+    /**
      * Monotonic version counter (ADR-0002 lot B1). Never derived from
      * MAX(versionNumber): validating a plan DELETES the non-chosen versions, so a
      * MAX-based number would be reused (a deleted V3 then regenerated as V3
@@ -282,6 +290,11 @@ class SchedulePlan implements TenantOwnedInterface
     public function getFirstChosenAt(): ?DateTimeImmutable
     {
         return $this->firstChosenAt;
+    }
+
+    public function getColdChangedAt(): ?DateTimeImmutable
+    {
+        return $this->coldChangedAt;
     }
 
     public function getAutoValidatedDate(): ?DateTimeImmutable

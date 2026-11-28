@@ -6,7 +6,9 @@ import { Button } from "@/shared/components/ui/button";
 import { DeclaredFixturesNotice } from "@/shared/components/ui/declared-fixtures-notice";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { dayLabelLong } from "@/shared/lib/days";
 
+import type { PendingImpact, ValidateChange } from "./api";
 import { PLANNING_TEXTS } from "./texts";
 
 /** P2-52 — l'impact de dépointage de la validation, tel que l'écran le connaît au moment de
@@ -21,15 +23,61 @@ export interface OrphanImpact {
   onRetry: () => void;
 }
 
+/** Lot 5 — ce qu'une validation change par rapport au planning en vigueur, tel que le serveur l'annonce. */
+export interface ChangesAnnouncement {
+  changes: readonly ValidateChange[];
+  destroyedTitles: readonly string[];
+  keptWishes: number;
+}
+
+/**
+ * Ce que change la validation (lot 5) : la liste famille par famille (ou « rien ne change »), les plannings de
+ * période supprimés (ou « aucun n'est supprimé » quand rien d'autre ne les touche) et les doléances conservées.
+ * Le serveur décide ; l'écran affiche.
+ */
+function ChangesList({ announcement }: { announcement: ChangesAnnouncement }) {
+  // Une règle (un groupe) porte sa ligne de plan (ses membres) à côté : la règle seule se dit, la ligne ne la double pas.
+  const lines = announcement.changes.filter(
+    (line) =>
+      !("PlanConstraint" === line.family && announcement.changes.some((other) => "Constraint" === other.family)) &&
+      !("SharedTrainingBlockTeam" === line.family && announcement.changes.some((other) => "SharedTrainingBlock" === other.family)),
+  );
+  return (
+    <div className="mt-3 text-sm text-foreground">
+      {0 === lines.length ? (
+        <p>{PLANNING_TEXTS.validateNothingChanges}</p>
+      ) : (
+        <>
+          <p>{PLANNING_TEXTS.validateChangesHeader}</p>
+          <ul className="mt-1 list-disc pl-5">
+            {lines.map((line) => (
+              <li key={line.family}>{PLANNING_TEXTS.validateChangeLine(line.family, line.count)}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {announcement.destroyedTitles.length > 0 ? (
+        <NoticeBanner tone="destructive" className="mt-3" message={PLANNING_TEXTS.validateDeletesPeriodPlans([...announcement.destroyedTitles])} />
+      ) : lines.length > 0 ? (
+        <p className="mt-2">{PLANNING_TEXTS.validateNoPeriodPlanDeleted}</p>
+      ) : null}
+      {announcement.keptWishes > 0 ? <p className="mt-2 text-muted-foreground">{PLANNING_TEXTS.validateKeptWishes(announcement.keptWishes)}</p> : null}
+    </div>
+  );
+}
+
 /**
  * La confirmation de validation d'un planning. Elle S'AFFICHE comme aujourd'hui (aucun dialogue
  * ajouté) ; l'annonce « salle perdue » de P2-52 n'apparaît QUE si N>0 (aucun bruit préventif),
- * et le bouton Valider reste désactivé tant que l'impact n'est pas connu (en vol / échec).
+ * et le bouton Valider reste désactivé tant que l'impact n'est pas connu (en vol / échec). Lot 5 :
+ * elle dit aussi ce qui change par rapport au planning en vigueur (`announcement`) ; quand des
+ * plannings de période seront supprimés, le bouton devient « Valider et supprimer ».
  */
-export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy, orphan, onConfirm, onCancel }: { hasAlerts: boolean; missingSessions: readonly { teamId: string; teamName: string; count: number }[]; siblingCount: number; busy: boolean; orphan: OrphanImpact; onConfirm: () => void; onCancel: () => void }) {
+export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy, orphan, announcement = null, onConfirm, onCancel }: { hasAlerts: boolean; missingSessions: readonly { teamId: string; teamName: string; count: number }[]; siblingCount: number; busy: boolean; orphan: OrphanImpact; announcement?: ChangesAnnouncement | null; onConfirm: () => void; onCancel: () => void }) {
   // On ne laisse pas confirmer tant que l'impact n'est pas connu (en vol / échec) : confirmer à
   // l'aveugle est exactement ce que la route d'impact existe pour éviter.
   const confirmDisabled = busy || orphan.loading || orphan.failed;
+  const destroys = null !== announcement && announcement.destroyedTitles.length > 0;
   return (
     <Modal
       size="sm"
@@ -53,8 +101,8 @@ export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy,
           <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
             Annuler
           </Button>
-          <Button size="sm" onClick={onConfirm} disabled={confirmDisabled}>
-            Valider
+          <Button size="sm" variant={destroys ? "destructive" : "default"} onClick={onConfirm} disabled={confirmDisabled}>
+            {destroys ? PLANNING_TEXTS.validateAndDelete : PLANNING_TEXTS.validate}
           </Button>
         </>
       }
@@ -71,6 +119,7 @@ export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy,
           ))}
         </ul>
       ) : null}
+      {null === announcement ? null : <ChangesList announcement={announcement} />}
       {/* P2-52 — l'annonce « salle perdue » N'APPARAÎT QUE si N>0 (aucun bruit préventif sinon).
           Ton destructif encadré, distinct des deux paragraphes en prose ci-dessus/dessous. */}
       {orphan.orphanCount > 0 ? (
@@ -112,6 +161,82 @@ export function ValidateDialog({ hasAlerts, missingSessions, siblingCount, busy,
           Seule cette version sera conservée — {siblingCount > 1 ? `les ${siblingCount} autres versions seront définitivement supprimées` : "l'autre version sera définitivement supprimée"}.
         </p>
       ) : null}
+    </Modal>
+  );
+}
+
+/**
+ * Lot 5 — « Valider ces modifications », sans régénérer : ce qui change, les plannings de période supprimés, puis le
+ * contrôle d'incohérences du serveur avec le planning en vigueur (règles cassées nommées, séances manquantes, contrôle
+ * non concluant). Le contrôle avertit, il ne bloque pas : la confirmation reste possible dès que l'annonce est lue.
+ */
+export function ApplyPendingChangesDialog({ impact, loading, failed, busy, onRetry, onConfirm, onCancel }: { impact: PendingImpact | undefined; loading: boolean; failed: boolean; busy: boolean; onRetry: () => void; onConfirm: () => void; onCancel: () => void }) {
+  const destroys = undefined !== impact && impact.destroyedPeriodPlans.length > 0;
+  return (
+    <Modal
+      size="sm"
+      label={PLANNING_TEXTS.applyPendingChangesTitle}
+      title={PLANNING_TEXTS.applyPendingChangesTitle}
+      onClose={() => {
+        if (!busy) {
+          onCancel();
+        }
+      }}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
+            {PLANNING_TEXTS.cancel}
+          </Button>
+          <Button size="sm" variant={destroys ? "destructive" : "default"} onClick={onConfirm} disabled={busy || loading || failed || undefined === impact}>
+            {destroys ? PLANNING_TEXTS.validateAndDelete : PLANNING_TEXTS.validate}
+          </Button>
+        </>
+      }
+    >
+      <p className="mt-2 text-sm text-muted-foreground">{PLANNING_TEXTS.applyPendingChangesDescription}</p>
+      {loading ? (
+        <p aria-live="polite" className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Spinner className="size-3.5" />
+          {PLANNING_TEXTS.checkingCoherence}
+        </p>
+      ) : null}
+      {failed ? (
+        <p aria-live="polite" className="mt-3 text-sm text-destructive">
+          {PLANNING_TEXTS.checkFailed}{" "}
+          <button type="button" onClick={onRetry} className="underline underline-offset-2 hover:no-underline">
+            {PLANNING_TEXTS.retry}
+          </button>
+        </p>
+      ) : null}
+      {undefined === impact || loading ? null : (
+        <>
+          <ChangesList announcement={{ changes: impact.changes, destroyedTitles: impact.destroyedPeriodPlans.map((plan) => plan.title), keptWishes: impact.keptWishes }} />
+          <div aria-live="polite" className="mt-3 text-sm text-foreground">
+            {impact.checkInconclusive ? (
+              <NoticeBanner tone="warning" message={PLANNING_TEXTS.checkInconclusive} />
+            ) : 0 === impact.incoherences.length ? (
+              <p>{PLANNING_TEXTS.noIncoherence}</p>
+            ) : (
+              <NoticeBanner tone="warning">
+                <p>{PLANNING_TEXTS.incoherencesHeader(impact.incoherences.length)}</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {impact.incoherences.map((incoherence) => (
+                    <li key={`${incoherence.slotId}|${incoherence.rule}`}>{PLANNING_TEXTS.incoherenceLine(incoherence.teamName, dayLabelLong(incoherence.dayOfWeek), incoherence.startTime, incoherence.label)}</li>
+                  ))}
+                </ul>
+                <p className="mt-1">{PLANNING_TEXTS.incoherencesFollowUp}</p>
+              </NoticeBanner>
+            )}
+            {impact.missingSessions.length > 0 ? (
+              <ul className="mt-2 list-disc pl-5">
+                {impact.missingSessions.map((missing) => (
+                  <li key={missing.teamId}>{PLANNING_TEXTS.validateMissingSessions(missing.teamName, missing.count)}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

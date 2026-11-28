@@ -194,11 +194,13 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         $inForce = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         self::assertTrue(self::getContainer()->get(SchedulePlanProvisioner::class)->choose($inForce), 'témoin : la version 1 se pointe');
         $this->storeCopy($inForce);
+        // Une période à venir portant un plan → supprimée par ce froid. Elle naît avant le changement de froid : sa
+        // naissance par le décor recopie l'état du jour dans la copie en vigueur.
+        $this->seedFuturePeriodWithPlan();
         $this->addSeasonGridSlot(); // du froid change : un créneau de grille
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->storeCopy($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($version->getSchedulePlanId(), $version->getId()); // la chargée
-        $this->seedFuturePeriodWithPlan(); // une période à venir portant un plan → supprimée par ce froid
 
         self::assertArrayNotHasKey('overlaysDroppedOnValidate', $this->capabilitiesOf($version->getId()), 'la capacité ne compte plus les plannings supprimés');
 

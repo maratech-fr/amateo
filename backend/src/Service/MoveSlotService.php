@@ -35,6 +35,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Symfony\Contracts\HttpClient\Exception\TimeoutExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 
@@ -61,6 +62,8 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
  */
 final class MoveSlotService
 {
+    /** Le verdict admet au plus 50 séances candidates par demande (borne du moteur, `MAX_CANDIDATES`). */
+    public const int MAX_VERDICT_CANDIDATES = 50;
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
     private const string CONTRACT_VERSION = '1.12';
 
@@ -950,6 +953,69 @@ final class MoveSlotService
     }
 
     /**
+     * Le VERDICT sur des séances d'une version, à leur place actuelle, sans rien écrire (lot 5, contrôle d'incohérences
+     * avant « Valider ces modifications ») : la demande de {@see buildBasePayloadExcluding} (l'état de travail du plan,
+     * les séances de CETTE version figées), les candidates retirées de la baseline et posées à leur place. Une épingle
+     * de la même équipe à la même case (la réservation qui tient la séance) sort aussi de la baseline : la séance s'y
+     * heurterait à elle-même. Au plus {@see self::MAX_VERDICT_CANDIDATES} séances ; aucune référence (pas de compromis).
+     *
+     * @param list<string> $candidateSlotIds
+     *
+     * @throws EngineTimeoutException      le moteur a été trop lent
+     * @throws TransportExceptionInterface le moteur est injoignable
+     * @throws RuntimeException            le moteur refuse la demande ou répond sans verdict
+     * @throws InvalidArgumentException    plus de séances que le verdict n'en admet, ou une séance d'une autre version
+     *
+     * @return array{valid: bool, indeterminate: bool, violations: list<array{rule: string, message: string, teamId: ?string, coachId: ?string, venueId: ?string, dayOfWeek: ?int, startTime: ?string, conflictingTeamId: ?string}>}
+     */
+    public function verdictFor(Schedule $version, array $candidateSlotIds): array
+    {
+        if ([] === $candidateSlotIds || \count($candidateSlotIds) > self::MAX_VERDICT_CANDIDATES) {
+            throw new InvalidArgumentException(\sprintf('A verdict judges 1 to %d sessions.', self::MAX_VERDICT_CANDIDATES));
+        }
+        /** @var list<ScheduleSlotTemplate> $slots */
+        $slots = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(['id' => $candidateSlotIds, 'scheduleId' => $version->getId()], ['id' => 'ASC']);
+        if (\count($slots) !== \count(array_unique($candidateSlotIds))) {
+            throw new InvalidArgumentException('Every candidate must be a session of the judged version.');
+        }
+
+        $payload = $this->buildBasePayloadExcluding($version, $candidateSlotIds, $version->getId());
+        $placementOf = static fn (string $teamId, string $venueId, int $day, string $start): string => $teamId . '|' . $venueId . '|' . $day . '|' . substr($start, 0, 5);
+        $candidates = [];
+        $placements = [];
+        foreach ($slots as $slot) {
+            $start = $slot->getStartTime()->format('H:i');
+            $candidates[] = [
+                'teamId' => $slot->getTeamId(),
+                'venueId' => $slot->getVenueId(),
+                'dayOfWeek' => $slot->getDayOfWeek(),
+                'startTime' => $start,
+                'durationMinutes' => $slot->getDurationMinutes(),
+            ];
+            $placements[$placementOf($slot->getTeamId(), $slot->getVenueId(), $slot->getDayOfWeek(), $start)] = true;
+        }
+        $baseline = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
+        $payload['slotTemplates'] = array_values(array_filter(
+            $baseline,
+            static fn (mixed $pin): bool => !\is_array($pin) || !isset($placements[$placementOf((string) ($pin['teamId'] ?? ''), (string) ($pin['venueId'] ?? ''), (int) ($pin['dayOfWeek'] ?? 0), (string) ($pin['startTime'] ?? ''))]),
+        ));
+        $payload['candidates'] = $candidates;
+
+        $result = $this->validateUnderTimeout($payload);
+        if (!\is_bool($result['valid'] ?? null)) {
+            // Un refus de la demande (422) ou une erreur du moteur rend un corps sans verdict : ce n'est pas un « non ».
+            throw new RuntimeException('The engine answered the verdict request without a verdict.');
+        }
+        $valid = $result['valid'];
+
+        return [
+            'valid' => $valid,
+            'indeterminate' => true === ($result['indeterminate'] ?? false),
+            'violations' => $valid ? [] : $this->namedViolations($result),
+        ];
+    }
+
+    /**
      * Après un déplacement, plus de nom périmé : le coach stocké redevient le premier de l'équipe, ou
      * celui qu'imposent les autres séances à l'arrivée (« tant qu'un coach tient la séance »). Une
      * équipe sans coach principal garde ce qu'elle a. Une séance sans coach stocké occupe le premier
@@ -1399,11 +1465,14 @@ final class MoveSlotService
      * le rail `move-group`). C'est la maison unique de l'assemblage — le rail de groupe ne réécrit
      * pas la construction, il ne fait que fournir SES ids exclus.
      *
+     * `$seasonVersionId` : pour une version de saison, la version dont les séances forment la baseline (null : la
+     * version chargée, comme la retouche).
+     *
      * @param list<string> $excludedIds
      *
      * @return array<string, mixed>
      */
-    private function buildBasePayloadExcluding(Schedule $schedule, array $excludedIds): array
+    private function buildBasePayloadExcluding(Schedule $schedule, array $excludedIds, ?string $seasonVersionId = null): array
     {
         $overlayEntryId = $this->schedulePlanProvisioner->periodEntryIdOf($schedule);
         $overlayEntry = null === $overlayEntryId
@@ -1412,7 +1481,7 @@ final class MoveSlotService
 
         $payload = $overlayEntry instanceof CalendarEntry
             ? $this->constraintBuilder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())
-            : $this->constraintBuilder->buildForPlan($this->soclePlan->idOf($schedule->getSeasonId()));
+            : $this->constraintBuilder->buildForPlan($this->soclePlan->idOf($schedule->getSeasonId()), versionId: $seasonVersionId);
 
         $currentSlotTemplates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
         $payload['slotTemplates'] = $this->baselineWithoutSiblings($currentSlotTemplates, $schedule, $excludedIds);

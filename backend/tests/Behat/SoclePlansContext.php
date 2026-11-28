@@ -576,10 +576,8 @@ final class SoclePlansContext extends BaseContext
     #[When('je valide la copie de travail')]
     public function jeValideLaCopieDeTravail(): void
     {
-        $validated = $this->apiPost(\sprintf('schedules/%s/validate', $this->workCopyId), ['confirmDeleteOverlays' => true], $this->token);
-        if (200 !== $validated['status']) {
-            throw new RuntimeException(\sprintf('valider la copie de travail a répondu %d (200 attendu)', $validated['status']));
-        }
+        $this->impact = $this->validateImpactOf($this->workCopyId);
+        $this->confirmValidationOf($this->workCopyId);
     }
 
     #[Given('un créneau ajouté à la grille du planning de saison, sans valider')]

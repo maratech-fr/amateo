@@ -41,6 +41,8 @@ export const COACH_WISHES_MANAGER_TEXTS = {
   listDeclaredElsewhere: (people: { firstName: string; dayLabels: string[]; teamName: string }[]) =>
     `· déclaré ailleurs : ${people.map((p) => `${p.firstName} (${dayList(p.dayLabels)}, via ${p.teamName})`).join(", ")}`,
   keepsSlots: "souhaite garder ses créneaux",
+  // Lot 5 — la doléance est conservée quand le planning de saison change ; la mention dit qu'elle répondait à l'ancien.
+  answeredBeforeSocleChange: "Réponse donnée avant la modification du planning de saison",
   editWish: (team: string, week: string) => `Modifier la doléance · ${team} · semaine du ${week}`,
   deleteWish: (team: string, week: string) => `Supprimer la doléance · ${team} · semaine du ${week}`,
   mutualizationsTitle: "Mutualisations",

@@ -27,6 +27,35 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
     }
 
     /**
+     * Ce qu'une validation du planning de saison change (lot 5), commun à `validate-impact` et `pending-impact`.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function validationImpactProperties(): array
+    {
+        return [
+            'changes' => ['type' => 'array', 'items' => [
+                'type' => 'object',
+                'properties' => [
+                    'family' => ['type' => 'string', 'description' => 'Short name of the changed family (e.g. TeamCoach ; ScheduleSlotTemplate = moved sessions)'],
+                    'count' => ['type' => 'integer', 'description' => 'Rows added, removed or changed'],
+                    'destroys' => ['type' => 'boolean', 'description' => 'A cold change: validating deletes the period plans not yet started (always false for moved sessions)'],
+                ],
+            ]],
+            'changesToken' => ['type' => 'string', 'description' => 'Token of the announced list, to send back as confirmChanges'],
+            'destroyedPeriodPlans' => ['type' => 'array', 'items' => [
+                'type' => 'object',
+                'properties' => [
+                    'entryId' => ['type' => 'string'],
+                    'title' => ['type' => 'string'],
+                ],
+            ]],
+            'keptPeriodPlans' => ['type' => 'integer', 'description' => 'Period plans the validation keeps'],
+            'keptWishes' => ['type' => 'integer', 'description' => 'Coach wishes already received for the holidays to come, all kept'],
+        ];
+    }
+
+    /**
      * P4-47 — les routes `#[Route]` custom qui n'apparaissaient nulle part dans le contrat.
      *
      * ⚑ Une route absente d'OpenAPI n'existe pour personne : le frontend écrit ses types à
@@ -58,19 +87,20 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 responses: [
                     '200' => new Response('Version pointed as the plan in force; COMPLETED siblings are archived'),
                     '401' => $unauthorized,
-                    '409' => new Response('A version is already in force for this plan, or the schedule is not COMPLETED'),
+                    '409' => new Response('The schedule is not COMPLETED, not the loaded version, a sibling is generating, or the validation deletes period plans and the body lacks the token of the announced list (code=changes_to_confirm, with the list of the day)'),
                 ],
-                summary: 'Point this version as the plan in force',
+                summary: 'Point this version as the plan in force (body: confirmChanges, the token of the announced list)',
             )),
             '/api/schedules/{id}/validate-impact' => new PathItem(get: new Operation(
                 operationId: 'getApiScheduleValidateImpact',
                 tags: ['Schedules'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('What validating this version will make lose its venue: home matches pointing at a venue no longer affiliated to the club (deleted venue, or a dangling pointer left by exploration). Same predicate as the validation trigger — read-only, open to any member.', [
+                    '200' => $this->schemas->jsonResponse('What validating this version changes: the matches that lose their venue, the cold settings that differ from the version in force family by family (moved sessions for information), the period plans not yet started it deletes and those it keeps, the coach wishes kept, and the token of the list. Same houses as the validation trigger — read-only, open to any member.', [
                         'type' => 'object',
                         'properties' => [
                             'orphanedFixtures' => ['type' => 'integer', 'description' => 'Home matches that will go back to « à placer » on validation'],
                             'declaredOrphanedFixtures' => ['type' => 'integer', 'description' => 'Subset already declared to the federation (SUBMITTED/VALIDATED) — to re-submit'],
+                            ...$this->validationImpactProperties(),
                         ],
                     ]),
                     '401' => $unauthorized,
@@ -128,6 +158,61 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                     '404' => new Response('Unknown plan, or another club\'s (never an existence oracle)'),
                 ],
                 summary: 'What waits for the validation of the season plan',
+            )),
+            '/api/schedule_plans/{id}/pending-impact' => new PathItem(get: new Operation(
+                operationId: 'getApiSchedulePlanPendingImpact',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('What validating the pending changes without regenerating changes: the shape of validate-impact, plus the coherence check of the touched sessions of the version in force (broken rules named with their session, missing sessions, inconclusive check). Empty for a period plan or a season plan never validated. Read-only, open to members.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'orphanedFixtures' => ['type' => 'integer', 'description' => 'Home matches that will go back to « à placer »'],
+                            'declaredOrphanedFixtures' => ['type' => 'integer', 'description' => 'Subset already declared to the federation'],
+                            ...$this->validationImpactProperties(),
+                            'incoherences' => ['type' => 'array', 'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'slotId' => ['type' => 'string', 'description' => 'The session of the version in force'],
+                                    'teamId' => ['type' => 'string'],
+                                    'teamName' => ['type' => 'string'],
+                                    'dayOfWeek' => ['type' => 'integer', 'description' => 'ISO weekday, 1 = Monday'],
+                                    'startTime' => ['type' => 'string', 'description' => 'HH:MM'],
+                                    'rule' => ['type' => 'string', 'description' => 'The broken rule, as the engine names it'],
+                                    'label' => ['type' => 'string', 'description' => 'The broken rule, in words'],
+                                ],
+                            ]],
+                            'missingSessions' => ['type' => 'array', 'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'teamId' => ['type' => 'string'],
+                                    'teamName' => ['type' => 'string'],
+                                    'count' => ['type' => 'integer'],
+                                ],
+                            ]],
+                            'checkInconclusive' => ['type' => 'boolean', 'description' => 'The check could not conclude (too many touched sessions, engine refusal, error or timeout)'],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '404' => new Response('Unknown plan, or another club\'s (never an existence oracle)'),
+                ],
+                summary: 'What validating the pending changes without regenerating changes',
+            )),
+            '/api/schedule_plans/{id}/apply-pending-changes' => new PathItem(post: new Operation(
+                operationId: 'postApiSchedulePlanApplyPendingChanges',
+                tags: ['Schedules'],
+                responses: [
+                    '200' => $this->schemas->jsonResponse('The version in force adopted the pending changes without regenerating: its settings copy, the coach of the sessions of the teams whose main coach changed, its frozen input and fingerprint. No session moves, no version is born.', [
+                        'type' => 'object',
+                        'properties' => [
+                            'id' => ['type' => 'string', 'description' => 'The version in force'],
+                        ],
+                    ]),
+                    '401' => $unauthorized,
+                    '403' => new Response('Not a manager of the club'),
+                    '404' => new Response('Unknown plan, or another club\'s (never an existence oracle)'),
+                    '409' => new Response('A period plan, no version in force, nothing pending, a generation is running (code=generation_in_progress), or the body lacks the token of the announced list (code=changes_to_confirm, with the announcement of the day)'),
+                ],
+                summary: 'Validate the pending changes of the season plan without regenerating (body: confirmChanges)',
             )),
             '/api/schedule_plans/{id}/transcribe-from-socle' => new PathItem(post: new Operation(
                 operationId: 'postApiSchedulePlanTranscribeFromSocle',

@@ -7,6 +7,7 @@ namespace App\State\Provider;
 use ApiPlatform\Metadata\Operation;
 use App\ApiResource\CoachWishResource;
 use App\Entity\CoachWish;
+use DateTimeImmutable;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -26,7 +27,7 @@ class CoachWishStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): CoachWishResource
     {
-        return CoachWishResource::fromEntity($entity);
+        return CoachWishResource::fromEntity($entity, $this->socleColdChangedAt($entity->getSeasonId()));
     }
 
     /**
@@ -62,5 +63,16 @@ class CoachWishStateProvider extends AbstractStateProvider
         $qb->orderBy('e.weekStart', 'ASC')->addOrderBy('e.id', 'ASC');
 
         return array_map([$this, 'mapEntityToOutput'], $qb->getQuery()->getResult());
+    }
+
+    /** L'instant de la dernière validation du planning de saison qui a changé du froid (lot 5), ou null. */
+    private function socleColdChangedAt(string $seasonId): ?DateTimeImmutable
+    {
+        $changedAt = $this->entityManager->getConnection()->fetchOne(
+            'SELECT cold_changed_at FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'',
+            [$seasonId],
+        );
+
+        return \is_string($changedAt) ? new DateTimeImmutable($changedAt) : null;
     }
 }

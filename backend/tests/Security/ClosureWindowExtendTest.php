@@ -26,6 +26,7 @@ use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -460,10 +461,24 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertTrue($this->planExists($club, $futurePlan), 'retravailler le socle laisse le segment FUTUR en place');
         $work = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR)['id'];
 
-        // Valider la copie de travail — avec confirmation : les plans FUTURS sont balayés.
+        // Lot 5, PR 6 : seul le froid supprime. Une règle de club ajoutée au socle, puis la copie de travail régénérée
+        // (sa copie du froid la porte, comme après une génération).
+        $this->scopeGucToClub($club->getId());
+        $this->em->persist((new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Plutôt après 17:00')
+            ->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::TIME)->setRuleType(ConstraintRuleType::PREFERRED)->setConfig(['minStartTime' => '17:00']));
+        $this->em->flush();
+        $workVersion = $this->em->getRepository(Schedule::class)->find($work);
+        self::assertInstanceOf(Schedule::class, $workVersion);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($workVersion, $states->capture($workVersion->getSchedulePlanId()));
+
+        // Valider la copie de travail — confirmée sur le jeton de la liste annoncée : les plans FUTURS sont balayés.
+        $this->client->request('GET', '/api/schedules/' . $work . '/validate-impact', [], [], $this->authHeaders($user));
+        self::assertResponseIsSuccessful();
+        $token = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR)['changesToken'] ?? null;
         $this->client->request('POST', '/api/schedules/' . $work . '/validate', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
-        ], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+        ], json_encode(['confirmChanges' => $token], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
 
         self::assertFalse($this->planExists($club, $futurePlan), 'le segment FUTUR né du geste est balayé par la validation d\'un autre socle');

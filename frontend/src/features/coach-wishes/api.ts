@@ -24,6 +24,8 @@ export interface CoachWish {
   done: boolean;
   /** Le coach souhaite garder ses créneaux habituels de saison cette semaine-là (volet B). */
   keepSeasonSlots: boolean;
+  /** Réponse donnée avant la dernière validation du planning de saison qui a changé ses réglages (lot 5). */
+  answeredBeforeSocleChange?: boolean;
 }
 
 export interface CoachWishPayload {

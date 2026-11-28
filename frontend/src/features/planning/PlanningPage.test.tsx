@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, reworkSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getValidateImpact, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, placeSlot, removeSlot, reopenSchedule, reworkSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -108,8 +108,16 @@ vi.mock("./api", () => {
       this.name = "VerdictAbandonedError";
     }
   }
+  // Lot 5, PR 6 : classe réelle pour le garde `error instanceof ChangesToConfirmError` des hooks de validation.
+  class ChangesToConfirmError extends Error {
+    constructor() {
+      super("changes_to_confirm");
+      this.name = "ChangesToConfirmError";
+    }
+  }
   return {
   OverlaysExistError,
+  ChangesToConfirmError,
   MoveRejectedError,
   GenerationInProgressError,
   TargetLockedError,
@@ -136,7 +144,7 @@ vi.mock("./api", () => {
   getPendingChanges: vi.fn(() => Promise.resolve({ pending: false, hasWorkVersion: false, changes: [] })),
   // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
   // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
-  getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 })),
+  getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [], changesToken: "jeton", destroyedPeriodPlans: [], keptPeriodPlans: 0, keptWishes: 0 })),
   getDiagnostics: vi.fn(() =>
     Promise.resolve([
       { id: "diag-1", scheduleId: SID, type: "conflict", severity: "ERROR", teamId: null, venueId: "venue-1", coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Conflit de gymnase.", suggestions: [], causes: [], openCandidates: null },
@@ -295,7 +303,7 @@ vi.mock("@/features/auth/queries", () => ({
 
 // P2-8 : la toolbar lit les gestes (Valider…) du bloc `capabilities` serveur, plus d'un
 // calcul client — une version de travail terminée « ordinaire » est validable.
-const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canLoad: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } }];
+const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canLoad: false, versionsDeletedOnValidate: 0 } }];
 
 beforeEach(() => {
   meState.chosenScheduleId = null;
@@ -500,7 +508,7 @@ describe("PlanningPage (integration)", () => {
         id: SID, name: "Version de période", status: "COMPLETED", score: null,
         createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
         planType: "HOLIDAY", schedulePlanId: "ete-plan", isChosen: false,
-        capabilities: { canDelete: true, canValidate: false, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 },
+        capabilities: { canDelete: true, canValidate: false, canLoad: true, versionsDeletedOnValidate: 0 },
       },
     ]);
     plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
@@ -526,8 +534,8 @@ describe("PlanningPage (integration)", () => {
   ])("charger une version : prévient que les réglages non générés seront perdus ($warns), puis charge", async ({ currentStructureHash, warns }) => {
     vi.mocked(loadVersion).mockClear();
     vi.mocked(listSchedules).mockResolvedValue([
-      { id: "v1", name: "Planning A", status: "COMPLETED", score: 10, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H1", isLiveContext: false, capabilities: { canDelete: true, canValidate: false, canLoad: true, loadBlockedReason: null, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } },
-      { id: "v2", name: "Planning A", status: "COMPLETED", score: 11, createdAt: "2026-01-02T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H2", isLiveContext: true, capabilities: { canDelete: true, canValidate: true, canLoad: false, loadBlockedReason: null, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } },
+      { id: "v1", name: "Planning A", status: "COMPLETED", score: 10, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H1", isLiveContext: false, capabilities: { canDelete: true, canValidate: false, canLoad: true, loadBlockedReason: null, versionsDeletedOnValidate: 0 } },
+      { id: "v2", name: "Planning A", status: "COMPLETED", score: 11, createdAt: "2026-01-02T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H2", isLiveContext: true, capabilities: { canDelete: true, canValidate: true, canLoad: false, loadBlockedReason: null, versionsDeletedOnValidate: 0 } },
     ] as Schedule[]);
     vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash });
     usePlanningStore.setState({ selectedScheduleId: "v1" });
@@ -1288,32 +1296,28 @@ describe("PlanningPage (integration)", () => {
     expect(navigate).toHaveBeenCalledWith("/planning");
   });
 
-  // planning lifecycle (§7.1) — le JUMEAU de l'escalade « Rouvrir » (cf. describe « reopen
-  // escalation »). Valider une version dont l'ancien principal porte des plannings de période
-  // 409 (OverlaysExistError) ; l'UI escalade vers un confirm proportionné, PUIS re-POST avec
-  // `confirmDeleteOverlays`. Filet posé AVANT l'extraction de `useValidateReopen` (P4-255 PR 1) :
-  // ce chemin d'escalade n'était exercé que côté « Rouvrir » — son jumeau « Valider » ne l'était
-  // pas. Miroir exact du test reopen 409.
-  it("« Valider » : 409 → confirm nommant le compte d'overlays → re-POST avec confirmDeleteOverlays", async () => {
+  // planning lifecycle (§7.1) — valider une version dont le froid change supprime des plannings de période :
+  // le dialogue les NOMME avant le clic (annonce `validate-impact`, lot 5), le bouton le dit, et la
+  // validation part avec le jeton de la liste vue. Filet posé AVANT l'extraction de `useValidateReopen`
+  // (P4-255 PR 1), adapté au lot 5 (l'annonce remplace l'escalade 409).
+  it("« Valider » : l'annonce nomme les plannings de période supprimés → « Valider et supprimer » envoie le jeton de la liste", async () => {
     const user = userEvent.setup();
     vi.mocked(validateSchedule).mockReset(); // per-test call count + queued once-values
-    vi.mocked(validateSchedule).mockRejectedValueOnce(new OverlaysExistError(2, [])).mockResolvedValueOnce({});
+    vi.mocked(validateSchedule).mockResolvedValueOnce({});
+    vi.mocked(getValidateImpact).mockResolvedValueOnce({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [{ family: "Constraint", count: 1, destroys: true }], changesToken: "jeton-annonce", destroyedPeriodPlans: [{ entryId: "e1", title: "Toussaint" }, { entryId: "e2", title: "Noël" }], keptPeriodPlans: 0, keptWishes: 0 });
     renderWithProviders(<PlanningPage embedded />); // Valider vit dans le wizard (embedded)
     await screen.findByText("U11");
 
-    // Toolbar « Valider » ouvre la modale d'impact ; on confirme dedans (impact {0,0}).
+    // Toolbar « Valider » ouvre la modale d'impact ; elle nomme les plannings de période supprimés.
     await user.click(screen.getByRole("button", { name: /valider/i }));
-    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Valider" });
+    expect(await screen.findByText(/2 plannings de période/i)).toBeInTheDocument();
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Valider et supprimer" });
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
-    // First validate (no flag) → 409 → proportional confirm dialog naming the overlay count.
-    expect(await screen.findByText(/2 plannings de période/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Valider et remplacer" }));
-
-    // Re-sent with the flag (le second appel porte confirmDeleteOverlays: true).
-    expect(vi.mocked(validateSchedule)).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(validateSchedule).mock.calls[1]).toEqual([SID, { confirmDeleteOverlays: true }]);
+    // Une seule validation, portant le jeton de la liste annoncée.
+    await waitFor(() => expect(vi.mocked(validateSchedule)).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(validateSchedule).mock.calls[0]).toEqual([SID, { confirmChanges: "jeton-annonce" }]);
   });
 
   // F2b — retouche du rail : le geste PARLE (toast + surlignage du conflit) et déverrouiller
@@ -3401,7 +3405,7 @@ describe("PlanningPage — comblement refusé par un blocage", () => {
 // Plan « version chargée » : une version non chargée se consulte, ne se modifie pas. Le serveur décide
 // (`capabilities.canEdit`), la page affiche ; capacité absente = aucun motif, le serveur refusera seul.
 describe("PlanningPage — version chargée", () => {
-  const CAPS = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+  const CAPS = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0 };
   const LOADED_CAPS = { ...CAPS, canEdit: true, editBlockedReason: null };
   const NOT_LOADED_CAPS = { ...CAPS, canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version" };
   const version = (id: string, createdAt: string, extra: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan", ...extra });

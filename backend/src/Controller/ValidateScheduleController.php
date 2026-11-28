@@ -7,14 +7,13 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
-use App\Entity\CalendarEntry;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
+use App\Plans\ValidationImpact;
 use App\Service\FixtureVenueLossMarker;
-use App\Service\FutureHolidayCollectePurger;
 use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
 use App\Service\ScheduleCapabilityResolver;
@@ -23,6 +22,7 @@ use App\Service\VersionEditability;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -33,13 +33,15 @@ use Throwable;
 
 /**
  * Choose a COMPLETED version: the manager settles on it and the plan POINTS at
- * it (ADR-0002 inv. 1). To edit again, reopen it (ReopenScheduleController).
+ * it (ADR-0002 inv. 1). A season plan is reworked, not reopened (lot 5).
  *
  * "Validated" is not a status — it is derived from the pointer, which is the
  * single truth. Choosing a version also DELETES its siblings of the same scope
  * (season versions share calendarEntryId=null, a period's versions share that
  * period's id): the plan holds the one version that counts, not a graveyard.
- * Overlays are never touched by a season-plan choice. A sibling still
+ * A season version whose cold differs from the version in force deletes the
+ * period plans not yet started, on the token of the announced list (409
+ * `changes_to_confirm` otherwise); the coach-wish collecte stays. A sibling still
  * generating blocks the choice (409) — a running solve cannot be deleted out
  * from under the worker.
  */
@@ -57,10 +59,11 @@ final class ValidateScheduleController extends AbstractController implements Sea
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly OrphanedFixtureFinder $orphanedFixtureFinder,
         private readonly FixtureVenueLossMarker $fixtureVenueLossMarker,
-        private readonly FutureHolidayCollectePurger $collectePurger,
         private readonly VersionEditability $versionEditability,
         private readonly PlanStates $planStates,
         private readonly PlanComposition $planComposition,
+        private readonly ValidationImpact $validationImpact,
+        private readonly ClockInterface $clock,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -169,45 +172,25 @@ final class ValidateScheduleController extends AbstractController implements Sea
                 $siblings[] = $sibling;
             }
 
-            // Garde destructive (même idiome que ReopenScheduleController) : choisir une
-            // AUTRE version déplace le calendrier de base, ce qui invalide les plans
-            // secondaires bâtis sur l'ancien socle. Clé sur le POINTEUR — la seule
-            // vérité (inv. 1/14) — et jamais composer silencieusement un ajustement
-            // par-dessus un autre plan de base.
-            // Un pointeur NULL n'exempte pas : le plan est alors un espace de travail, mais
-            // des plans secondaires peuvent survivre (socle rouvert, donnée migrée). Choisir
-            // cette version leur donnerait un autre socle que celui sur lequel ils ont été
-            // bâtis — silencieusement. La seule question est « le plan pointe-t-il DÉJÀ cette
-            // version ? » ; sinon le calendrier bouge, et il faut le confirmer.
-            // (Cas normal : à la 1re validation aucun plan secondaire n'existe — inv. 13 les
-            // interdit sans socle pointé — donc la garde ne coûte rien.)
+            // Garde destructive, lot 5 : seul le FROID supprime. Valider une version dont la copie diffère de celle
+            // de la version en vigueur sur un champ froid périme les plans secondaires bâtis sur l'ancien socle ; une
+            // séance déplacée s'annonce et ne supprime rien, un verrou ne s'annonce pas. Un pointeur NULL n'exempte
+            // pas : des plans secondaires peuvent survivre (donnée migrée), et choisir cette version leur donnerait un
+            // autre socle — silencieusement. L'annonce et cette gâchette sortent de la même maison
+            // ({@see ValidationImpact}) : quand la validation supprime, elle exige le jeton de la liste vue.
             $currentlyChosen = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
             // Lot 5 : la copie de la version qui quitte la vigueur, lue avant que la suppression des sœurs ne l'emporte —
             // les lignes de règle des périodes suivront l'écart entre elle et la version validée.
             $socleChanges = null === $entryId && $schedule->getId() !== $currentlyChosen && $this->planStates->has($schedule->getId());
             $replaced = $socleChanges && null !== $currentlyChosen && $this->planStates->has($currentlyChosen) ? $this->planStates->of($currentlyChosen) : null;
-            $overlaysToDelete = [];
-            $futureHolidayMotherIds = [];
-            if (null === $entryId && $schedule->getId() !== $currentlyChosen) {
-                $overlaysToDelete = $this->overlayManager->periodPlansInvalidatedBySeasonChange($schedule->getClubId(), $schedule->getSeasonId());
-                if ([] !== $overlaysToDelete) {
-                    // Q8bis — déplacer le socle emporte AUSSI la collecte et les doléances des
-                    // vacances à venir : on les annonce (chiffre) et on les purge au même geste
-                    // confirmé que les plannings de période (wishes ⟹ plan ⟹ overlay, Q8).
-                    $futureHolidayMotherIds = $this->collectePurger->futureHolidayMotherIds($schedule->getClubId(), $schedule->getSeasonId());
-                }
-                if ([] !== $overlaysToDelete && !$this->confirmedDeleteOverlays()) {
-                    return $this->json([
-                        'code' => 'overlays_exist',
-                        'error' => 'Choisir cette version remplace le planning de la saison : les plannings de période à venir sont supprimés et devront être refaits.',
-                        'count' => \count($overlaysToDelete),
-                        'coachWishCount' => $this->collectePurger->countReceivedWishes($futureHolidayMotherIds),
-                        'overlays' => array_map(static fn (CalendarEntry $e): array => [
-                            'entryId' => $e->getId(),
-                            'title' => $e->getTitle(),
-                        ], $overlaysToDelete),
-                    ], Response::HTTP_CONFLICT);
-                }
+            $impact = $this->validationImpact->ofVersion($schedule);
+            $overlaysToDelete = $impact['destroyed'];
+            if ([] !== $overlaysToDelete && $impact['token'] !== $this->confirmedChangesToken()) {
+                return $this->json([
+                    'code' => 'changes_to_confirm',
+                    'error' => 'Valider cette version supprime des plannings de période à venir : confirmez ce qui change.',
+                    ...ValidationImpact::served($impact),
+                ], Response::HTTP_CONFLICT);
             }
 
             // Suppression des plans secondaires + pointeur + suppression des versions
@@ -216,14 +199,16 @@ final class ValidateScheduleController extends AbstractController implements Sea
             foreach ($overlaysToDelete as $entry) {
                 // Le PLAN entier, pas seulement ses versions : le socle est la base dont
                 // la grille d'une période est copiée, la déplacer périme cette copie
-                // (décision fondateur 2026-07-24). force : destruction confirmée.
+                // (décision fondateur 2026-07-24). force : destruction confirmée. La
+                // collecte de doléances des vacances reste (lot 5).
                 $this->overlayManager->deletePeriodPlanForEntry($entry, force: true);
             }
-
-            // Q8bis — même geste destructif : la collecte + les doléances des vacances à venir
-            // partent (campagne → jetons en cascade). Jamais une vacance déjà commencée.
-            if ([] !== $overlaysToDelete) {
-                $this->collectePurger->purge($futureHolidayMotherIds);
+            // La date de la dernière validation qui a changé du froid : une doléance reçue avant porte la mention.
+            if (null !== $currentlyChosen && $impact['changes']->destroys()) {
+                $this->entityManager->getConnection()->executeStatement(
+                    'UPDATE schedule_plan SET cold_changed_at = ? WHERE id = ?',
+                    [$this->clock->now()->format(\DATE_ATOM), $planId],
+                );
             }
 
             // ADR-0002 inv. 1 — VALIDER = POINTER. Seule vérité : « validé » se dérive
@@ -277,15 +262,16 @@ final class ValidateScheduleController extends AbstractController implements Sea
         });
     }
 
-    private function confirmedDeleteOverlays(): bool
+    /** Le jeton de la liste vue (`confirmChanges`), ou null. */
+    private function confirmedChangesToken(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
         $content = $request?->getContent();
         if (!\is_string($content) || '' === $content) {
-            return false;
+            return null;
         }
         $data = json_decode($content, true);
 
-        return \is_array($data) && true === ($data['confirmDeleteOverlays'] ?? false);
+        return \is_array($data) && \is_string($data['confirmChanges'] ?? null) ? $data['confirmChanges'] : null;
     }
 }

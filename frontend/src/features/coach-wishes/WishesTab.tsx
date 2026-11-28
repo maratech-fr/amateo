@@ -427,6 +427,8 @@ export function WishesTab({
                             {TEXTS.keepsSlots}
                           </StatusPill>
                         ) : null}
+                        {/* Lot 5 — la doléance répondait au planning de saison d'avant sa dernière modification validée. */}
+                        {true === w.answeredBeforeSocleChange ? <p className="mt-1 text-xs text-muted-foreground">{TEXTS.answeredBeforeSocleChange}</p> : null}
                       </div>
                       <ManagerOnly>
                       <div className="flex shrink-0 items-center gap-1">

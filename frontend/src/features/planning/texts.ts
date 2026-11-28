@@ -90,7 +90,6 @@ export const PLANNING_TEXTS = {
   // Dialogues Rouvrir / Déverrouiller / Valider / Charger de PlanningPage.
   thisPlanningFallback: "ce planning",
   unlock: "Déverrouiller",
-  validateAndReplace: "Valider et remplacer",
   load: "Charger",
   // PlanningToolbar
   viewByVenue: "Par gymnase",
@@ -111,6 +110,64 @@ export const PLANNING_TEXTS = {
   reworkDescription: "Une copie de travail est créée. Le planning validé reste en vigueur, et rien ne change tant que vous ne validez pas cette copie.",
   reworkKeepsPending: "Vos modifications en attente sont gardées.",
   pendingChangesBanner: "Des modifications attendent la validation.",
+  // Lot 5, PR 6 — « Valider ces modifications », sans régénérer, et ce que dit une validation.
+  applyPendingChanges: "Valider ces modifications",
+  applyPendingChangesTitle: "Valider ces modifications ?",
+  applyPendingChangesDescription: "Aucune séance ne change de place : rien n'est régénéré. Les modifications valent ensuite pour les matchs et les plannings de période.",
+  noIncoherence: "Aucune incohérence avec le planning en vigueur.",
+  incoherencesHeader: (n: number): string => (1 === n ? "1 incohérence avec le planning en vigueur :" : `${n} incohérences avec le planning en vigueur :`),
+  incoherenceLine: (team: string, day: string, time: string, rule: string): string => `${team}, ${day} ${time} : ${rule}`,
+  incoherencesFollowUp: "Vous pouvez valider quand même, ou régénérer pour que le système replace ces séances.",
+  checkInconclusive: "Le contrôle n'a pas pu conclure. Vous pouvez valider, ou régénérer pour vérifier.",
+  checkingCoherence: "Contrôle du planning en vigueur…",
+  checkFailed: "Lecture impossible pour l'instant —",
+  retry: "Réessayer",
+  cancel: "Annuler",
+  validateNothingChanges: "Rien ne change par rapport au planning en vigueur.",
+  validateChangesHeader: "Ce qui change par rapport au planning en vigueur :",
+  validateChangeLine: (changed: string, n: number): string => {
+    const one = 1 === n;
+    switch (changed) {
+      case "PlanTeam":
+        return one ? "1 équipe dont la participation ou les séances changent" : `${n} équipes dont la participation ou les séances changent`;
+      case "VenueTrainingSlot":
+        return one ? "1 créneau de gymnase ajouté, retiré ou modifié" : `${n} créneaux de gymnase ajoutés, retirés ou modifiés`;
+      case "Constraint":
+      case "PlanConstraint":
+        return one ? "1 règle ajoutée, retirée ou modifiée" : `${n} règles ajoutées, retirées ou modifiées`;
+      case "Reservation":
+        return one ? "1 réservation ajoutée, retirée ou modifiée" : `${n} réservations ajoutées, retirées ou modifiées`;
+      case "SharedTrainingBlock":
+      case "SharedTrainingBlockTeam":
+        return one ? "1 mutualisation ajoutée, retirée ou modifiée" : `${n} mutualisations ajoutées, retirées ou modifiées`;
+      case "TeamLink":
+        return one ? "1 passerelle ajoutée, retirée ou modifiée" : `${n} passerelles ajoutées, retirées ou modifiées`;
+      case "TeamCoach":
+        return one ? "1 équipe change de coach principal" : `${n} équipes changent de coach principal`;
+      case "CoachPlayerMembership":
+        return one ? "1 coach-joueur ajouté ou retiré" : `${n} coach-joueurs ajoutés ou retirés`;
+      case "Team":
+        return one ? "1 équipe change de catégorie, de niveau, de rang ou de gymnase imposé" : `${n} équipes changent de catégorie, de niveau, de rang ou de gymnase imposé`;
+      case "VenueTravelRuleSetting":
+        return "La règle de trajet change";
+      case "ScheduleSlotTemplate":
+        return one ? "1 séance déplacée" : `${n} séances déplacées`;
+      case "Venue":
+        return one ? "1 gymnase devient divisible ou non, actif ou non" : `${n} gymnases deviennent divisibles ou non, actifs ou non`;
+      case "PlanVenue":
+        return one ? "1 gymnase dont la participation change" : `${n} gymnases dont la participation change`;
+      default:
+        return one ? "1 réglage de bien-être modifié" : `${n} réglages de bien-être modifiés`;
+    }
+  },
+  validateNoPeriodPlanDeleted: "Aucun planning de période n'est supprimé.",
+  validateDeletesPeriodPlans: (titles: string[]): string =>
+    1 === titles.length
+      ? `1 planning de période pas encore commencé sera supprimé et devra être refait : ${titles[0]}.`
+      : `${titles.length} plannings de période pas encore commencés seront supprimés et devront être refaits : ${titles.join(", ")}.`,
+  validateKeptWishes: (n: number): string => (1 === n ? "La doléance déjà reçue pour les vacances à venir est conservée." : `Les ${n} doléances déjà reçues pour les vacances à venir sont conservées.`),
+  validateAndDelete: "Valider et supprimer",
+  changesToConfirmAgain: "Ce qui change a bougé depuis l'annonce : relisez la liste avant de confirmer.",
   backToInForce: "Revenir au planning en vigueur",
   backToInForceTitle: "Revenir au planning en vigueur ?",
   backToInForceDescription: "Les réglages du planning reviennent à ceux de la version en vigueur. Vos modifications en attente sont perdues. Les versions de travail restent dans la liste.",

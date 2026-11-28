@@ -24,11 +24,11 @@ use Symfony\Component\Serializer\Attribute\Groups;
  *                       version terminée qui ne se charge pas, mot pour mot le `error` du refus
  *  - canEdit         ⇄ les neuf guichets de retouche (VersionEditability) ; editBlockedReason dit le code
  *
- * Et deux compteurs, lus au même endroit que les gardes, pour que le front annonce
+ * Et un compteur, lu au même endroit que les gardes, pour que le front annonce
  * l'effet avant le clic :
  *  - versionsDeletedOnValidate  : le nombre de versions sœurs supprimées si l'on valide
- *  - overlaysDroppedOnValidate  : le nombre de plannings de période à venir détruits si l'on valide
- *                                 (le count IDENTIQUE à celui du 409 `overlays_exist`)
+ * Les plannings de période qu'une validation supprime n'ont qu'une source : l'annonce
+ * `GET /api/schedules/{id}/validate-impact` (lot 5).
  */
 final class ScheduleCapabilities
 {
@@ -41,8 +41,6 @@ final class ScheduleCapabilities
         public bool $canLoad,
         #[Groups(['read'])]
         public int $versionsDeletedOnValidate,
-        #[Groups(['read'])]
-        public int $overlaysDroppedOnValidate,
         #[Groups(['read'])]
         public bool $canEdit = true,
         #[Groups(['read'])]

@@ -54,7 +54,7 @@ final class CoachWishesContext extends BaseContext
 
     private int $transferConverted = 0;
 
-    /** `cold_changed_at` du planning de saison à l'entrée du scénario (`-` = nul), pointée par le scénario puis remise. */
+    /** `cold_changed_at` du planning de saison à l'entrée du scénario (`aucune` = nulle ; un tiret seul serait lu comme une ligne de séparation par `dbalScalar`), pointée par le scénario puis remise. */
     private string $coldChangedAtEntry = '';
 
     /** L'entrée de calendrier dont la saison a reçu la date pointée (vide : rien à remettre). */
@@ -218,7 +218,7 @@ final class CoachWishesContext extends BaseContext
     public function uneModificationDuFroidEstValideeApresLaReponse(): void
     {
         $this->coldChangedAtEntry = $this->dbalScalar(
-            'SELECT COALESCE(p.cold_changed_at::text, \'-\') AS behatval FROM schedule_plan p JOIN coach_wish w ON w.season_id = p.season_id'
+            'SELECT COALESCE(p.cold_changed_at::text, \'aucune\') AS behatval FROM schedule_plan p JOIN coach_wish w ON w.season_id = p.season_id'
             . \sprintf(' WHERE w.calendar_entry_id = \'%s\' AND w.team_id = \'%s\' AND p.type = \'SEASON\' LIMIT 1', $this->entryId, $this->teamId),
             admin: true,
         );
@@ -320,7 +320,7 @@ final class CoachWishesContext extends BaseContext
         // La date de la dernière validation qui a changé du froid, pointée par le scénario : remise avant que l'entrée parte.
         if ('' !== $this->coldChangedPlanSeasonOfEntry && '' !== $this->coldChangedAtEntry) {
             $this->dbalExec(
-                \sprintf('UPDATE schedule_plan p SET cold_changed_at = %s FROM calendar_entry e', '-' === $this->coldChangedAtEntry ? 'NULL' : \sprintf('\'%s\'', $this->coldChangedAtEntry))
+                \sprintf('UPDATE schedule_plan p SET cold_changed_at = %s FROM calendar_entry e', 'aucune' === $this->coldChangedAtEntry ? 'NULL' : \sprintf('\'%s\'', $this->coldChangedAtEntry))
                 . \sprintf(' WHERE e.season_id = p.season_id AND e.id = \'%s\' AND p.type = \'SEASON\'', $this->coldChangedPlanSeasonOfEntry),
                 admin: true,
             );

@@ -57,11 +57,12 @@ final class ValidateChangesConfirmationTest extends WebTestCase
     public function testValidatingWithTheTokenOfAListThatChangedSinceIsRefusedUntilConfirmedAgain(): void
     {
         $inForce = $this->inForceVersion();
+        // La période naît avant le changement de froid : sa naissance par le décor recopie l'état du jour dans la copie en vigueur.
+        $entryId = $this->futurePeriodWithPlan();
         $this->addGridSlot(2, '19:00'); // du froid change : un créneau de grille
         $candidate = $this->loadVersionOf($this->soclePlanId);
         $this->sessionOf($candidate, 1, '18:00');
         $this->makeLoaded($candidate);
-        $entryId = $this->futurePeriodWithPlan();
 
         $impact = $this->get('/api/schedules/' . $candidate->getId() . '/validate-impact');
         $announced = $impact['changesToken'] ?? null;
