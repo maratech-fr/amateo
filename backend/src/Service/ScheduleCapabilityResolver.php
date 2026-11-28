@@ -179,8 +179,8 @@ final class ScheduleCapabilityResolver
                 $overlaysDropped = $seasonOverlays[$seasonId];
             }
 
-            // « Charger » (tout plan) : version d'un plan (jamais une version anomale sans plan) TERMINÉE, plan
-            // NON validé, aucune génération en cours dans la saison, chargeable (copie présente, niveau des
+            // « Charger » (tout plan) : version d'un plan (jamais une version anomale sans plan) TERMINÉE, plan de
+            // période NON validé (un socle en vigueur se charge, lot 5), aucune génération en cours dans la saison, chargeable (copie présente, niveau des
             // équipes engagées intact), ET pas DÉJÀ la version chargée (sinon le geste ne changerait rien — on
             // ne l'offre pas). Miroir des gardes de LoadVersionController.
             $hasPlan = null !== ($planTypeById[$id] ?? null);
@@ -195,7 +195,7 @@ final class ScheduleCapabilityResolver
                 canDelete: !$isChosen && !$isInFlight && !$isLastFinishedSeasonVersion
                     && !($isSeason && $isLoaded && $hasInFlightSibling),
                 canValidate: $isCompleted && !$hasInFlightSibling && VersionEditability::NOT_LOADED !== $editBlockedReason,
-                canLoad: $hasPlan && $isCompleted && !$planValidated
+                canLoad: $hasPlan && $isCompleted && ($isSeason || !$planValidated)
                     && !$seasonInFlight[$seasonId] && null === $loadReason && !$isLoaded,
                 versionsDeletedOnValidate: max(0, $stats['total'] - 1),
                 overlaysDroppedOnValidate: $overlaysDropped,

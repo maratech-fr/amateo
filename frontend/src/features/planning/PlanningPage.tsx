@@ -318,7 +318,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
   // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
   // retournées (deleteMutation et regenerateFromMutation restent en page).
-  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, reopenWishCount, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
+  const { validateOpen, setValidateOpen, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
   // Lot 5 — « Retravailler » le planning de saison en vigueur (à la place de « Rouvrir ») et ce qui attend sa
@@ -1564,17 +1564,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           onConfirm={() => validate()}
         />
       ) : null}
-
-      <ConfirmDialog
-        open={reopenOverlayCount !== null}
-        destructive
-        title={PLANNING_TEXTS.reopenTitle(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback)}
-        description={`${PLANNING_TEXTS.reopenDeletesPeriodPlans(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback, reopenOverlayCount ?? 0)}${coachWishPurgeClause(reopenWishCount)}`}
-        confirmLabel={PLANNING_TEXTS.reopenAndDelete}
-        confirmPhrase={PLANNING_TEXTS.reopenConfirmPhrase}
-        onConfirm={() => reopen(true)}
-        onCancel={() => setReopenOverlayCount(null)}
-      />
 
       <ConfirmDialog
         open={null !== pendingUnlockSlotId}

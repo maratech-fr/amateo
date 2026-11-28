@@ -85,11 +85,7 @@ export const PLANNING_TEXTS = {
   regenerateEditedConfirm: "Régénérer quand même",
   regenerateLoadedEditedNote: (label: string): string => `La version ${label} a été modifiée à la main : seules ses séances verrouillées et les réservations gardent leur place.`,
   // Dialogues Rouvrir / Déverrouiller / Valider / Charger de PlanningPage.
-  reopenTitle: (plan: string) => `Rouvrir « ${plan} » ?`,
   thisPlanningFallback: "ce planning",
-  reopenDeletesPeriodPlans: (plan: string, n: number) => `Rouvrir « ${plan} » supprimera ${n} planning${n > 1 ? "s" : ""} de période (à refaire ensuite).`,
-  reopenAndDelete: "Rouvrir et supprimer",
-  reopenConfirmPhrase: "modifier mon planning de saison",
   unlock: "Déverrouiller",
   validateAndReplace: "Valider et remplacer",
   load: "Charger",

@@ -47,11 +47,6 @@ interface Props {
   occupancies?: VenueOccupancy[];
   /** Ouvre une occupation. Absent : le bloc est un `<div>` inerte, même hors lecture seule. */
   onSelectOccupancy?: (occupancy: VenueOccupancy) => void;
-  /**
-   * Créneaux INERTES, cases et occupations actives (planning de saison validé, vu du gestionnaire :
-   * les créneaux sont une contrainte, les occupations restent modifiables).
-   */
-  slotsLocked?: boolean;
 }
 
 export function VenueAvailabilityGrid({
@@ -65,7 +60,6 @@ export function VenueAvailabilityGrid({
   readOnly = false,
   occupancies = [],
   onSelectOccupancy,
-  slotsLocked = false,
 }: Props) {
   // Une ouverture datée n'a pas sa place dans une grille hebdomadaire : ni fantôme, ni plage étirée.
   const matchWindows = allMatchWindows.filter((w) => null == w.openingDate);
@@ -287,8 +281,8 @@ export function VenueAvailabilityGrid({
           // une bande de remplacement (grain JOUR strict, lu de `weekdays`).
           const closedBy = closureForSlot(slot, closures);
           const closedText = closedBy ? closureLabel(closedBy) : "";
-          // Créneaux inertes : lecture seule, ou planning validé (les occupations restent actives).
-          const slotInert = readOnly || slotsLocked;
+          // Créneaux inertes : lecture seule.
+          const slotInert = readOnly;
           const slotClass = cn(
             // Full border + OPAQUE fill so a slot is always clearly bounded — the old
             // semi-transparent var(--muted) fill was identical to the empty cells'

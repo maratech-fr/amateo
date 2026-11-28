@@ -37,8 +37,8 @@ import { TeamDailyCapPanel } from "./TeamDailyCapPanel";
  *  - l'ENTENTE (CTC) (D4, décision fondateur 2026-10-25) est un REPÈRE de club valable toute la
  *    saison, sans effet moteur : elle se règle ici (case + partenaire) par un PUT d'équipe complet,
  *    sur l'équipe d'ouverture SEULE, et n'hérite PAS de `readOnlyLinks` (se règle même en période) ;
- *  - les SÉANCES PAR JOUR (`TeamDailyCapPanel`) : en saison sur l'équipe, en lecture seule sous
- *    planning de saison en vigueur (`dailyCapReadOnly`) ; en période, sur la surcharge du plan.
+ *  - les SÉANCES PAR JOUR (`TeamDailyCapPanel`) : en saison sur l'équipe (modifiable sous planning de
+ *    saison en vigueur, la modification attend la validation) ; en période, sur la surcharge du plan.
  */
 export function TeamLinksModal({
   team,
@@ -47,7 +47,6 @@ export function TeamLinksModal({
   schedulePlanId,
   pausedTeamIds,
   readOnlyLinks,
-  dailyCapReadOnly = false,
   onClose,
 }: {
   team: Pick<Team, "id" | "name">;
@@ -58,8 +57,6 @@ export function TeamLinksModal({
   pausedTeamIds?: ReadonlySet<string>;
   /** Passerelles en lecture seule (période/vacances) : la saison seule les déclare. */
   readOnlyLinks: boolean;
-  /** Plafond de séances par jour en lecture seule (saison sous planning de saison en vigueur). */
-  dailyCapReadOnly?: boolean;
   onClose: () => void;
 }) {
   const linksRead = useTeamLinks();
@@ -69,7 +66,7 @@ export function TeamLinksModal({
 
   return (
     <Modal label={TEAMS_TEXTS.linksModalTitle(team.name)} title={TEAMS_TEXTS.linksModalTitle(team.name)} onClose={onClose} size="lg">
-      {pending ? <Spinner /> : <TeamLinksTabs openingTab={openingTab} team={team} teams={teams} tiers={tiers} schedulePlanId={schedulePlanId} pausedTeamIds={pausedTeamIds} readOnlyLinks={readOnlyLinks} dailyCapReadOnly={dailyCapReadOnly} />}
+      {pending ? <Spinner /> : <TeamLinksTabs openingTab={openingTab} team={team} teams={teams} tiers={tiers} schedulePlanId={schedulePlanId} pausedTeamIds={pausedTeamIds} readOnlyLinks={readOnlyLinks} />}
     </Modal>
   );
 }
@@ -83,7 +80,6 @@ function TeamLinksTabs({
   schedulePlanId,
   pausedTeamIds,
   readOnlyLinks,
-  dailyCapReadOnly,
 }: {
   openingTab: "passerelles" | "mutualisation";
   team: Pick<Team, "id" | "name">;
@@ -92,7 +88,6 @@ function TeamLinksTabs({
   schedulePlanId: string | null;
   pausedTeamIds?: ReadonlySet<string>;
   readOnlyLinks: boolean;
-  dailyCapReadOnly: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"passerelles" | "mutualisation" | "entente" | "seances">(openingTab);
   // L'onglet « Séances par jour » lit l'équipe FRAÎCHE (le PUT est complet), jamais le snapshot `team`.
@@ -124,7 +119,7 @@ function TeamLinksTabs({
       <TabPanel tabId="seances" idPrefix="team-links" active={"seances" === activeTab}>
         {/* Monté à l'ouverture de l'onglet seulement : sans état local à garder, il ne lit la
             surcharge de période que quand on le consulte. */}
-        {"seances" === activeTab && null !== fresh ? <TeamDailyCapPanel team={fresh} schedulePlanId={schedulePlanId} readOnly={null === schedulePlanId && dailyCapReadOnly} /> : null}
+        {"seances" === activeTab && null !== fresh ? <TeamDailyCapPanel team={fresh} schedulePlanId={schedulePlanId} readOnly={false} /> : null}
       </TabPanel>
     </div>
   );
