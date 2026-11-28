@@ -44,7 +44,7 @@ const READ_ONLY_NOTICE = "Consultation : réservé aux gestionnaires";
  */
 const ALLOWED_WRITES = [/^\/api\/matches\/module-visit$/, /^\/api\/release-notes\/seen$/, /^\/api\/constraints\/validate$/];
 const OUTBOUND = [/^\/api\/ffbb\//, /^\/api\/geocode/, /^\/api\/venues\/geo-check/, /\/email-preview$/];
-const WRITE_BUTTON = /^(Générer|Lancer la génération|Enregistrer|Ajouter|Supprimer|Valider|Rouvrir|Retravailler|Revenir au planning en vigueur|Importer|Approuver|Copier le lien|Appliquer|Tout appliquer|Relancer)/;
+const WRITE_BUTTON = /^(Générer|Lancer la génération|Enregistrer|Ajouter|Supprimer|Valider|Rouvrir|Retravailler|Revenir au planning en vigueur|Régénérer|Importer|Approuver|Copier le lien|Appliquer|Tout appliquer|Relancer)/;
 
 interface Watch {
   violations: string[];
@@ -181,6 +181,31 @@ async function createSeasonOccupancy(manager: Page): Promise<string> {
   return ((await occupancy.json()) as { id: string }).id;
 }
 
+/**
+ * Lot 5, PR 6 — décor des deux gestes d'écriture neufs du bandeau « en attente » (« Valider ces
+ * modifications », « Régénérer »), posé par le GESTIONNAIRE et par l'API : un créneau ajouté à la grille
+ * du planning de saison en vigueur, sans valider (du froid attend). Le dimanche à 8 h : hors des heures
+ * que cherche l'occupation (9 h à 21 h). Effacé en `finally`, ce qui éteint « en attente ».
+ */
+async function addPendingSeasonGridSlot(manager: Page): Promise<{ slotId: string; planId: string }> {
+  const me = (await (await manager.request.get("/api/me")).json()) as { seasonPlan?: { id?: string; chosenScheduleId?: string | null } | null };
+  const planId = me.seasonPlan?.id ?? "";
+  expect(me.seasonPlan?.chosenScheduleId ?? null, "décor : le planning de saison du club seedé est en vigueur").not.toBeNull();
+  const venues = (await (await manager.request.get("/api/venues")).json()) as { id: string; name: string }[] | { member?: { id: string; name: string }[] };
+  const venue = (Array.isArray(venues) ? venues : (venues.member ?? [])).find((v) => !v.name.startsWith("Gymnase coordonnées"));
+  if (undefined === venue || "" === planId) {
+    throw new Error("décor non tenu : ni gymnase ni planning de saison");
+  }
+  const slot = await manager.request.post("/api/venue_training_slots", {
+    headers: { "Content-Type": "application/json" },
+    data: { venueId: venue.id, dayOfWeek: 7, startTime: "08:00", durationMinutes: 60, capacity: 1 },
+  });
+  expect(slot.status(), `ajout d'un créneau à la grille du planning de saison (HTTP ${slot.status()})`).toBe(201);
+  const pending = (await (await manager.request.get(`/api/schedule_plans/${planId}/pending-changes`)).json()) as { pending?: boolean };
+  expect(pending.pending, "décor : du froid attend la validation").toBe(true);
+  return { slotId: ((await slot.json()) as { id: string }).id, planId };
+}
+
 test.describe("Membre — lecture seule de bout en bout", () => {
   test("club établi : chaque écran se lit, rien ne s'écrit, rien ne sort", async ({ page, browser }) => {
     test.setTimeout(240_000);
@@ -188,6 +213,7 @@ test.describe("Membre — lecture seule de bout en bout", () => {
     const email = `membre-${uniqueAra("m").toLowerCase()}@test.fr`;
     let locatedVenueId = "";
     let occupancyId = "";
+    let pendingSlotId = "";
     try {
       await loginSeededClub(manager);
       const meRes = await manager.request.get("/api/me");
@@ -202,6 +228,8 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       expect(venue.ok(), "le gestionnaire crée un gymnase localisé sans adresse").toBe(true);
       locatedVenueId = ((await venue.json()) as { id: string }).id;
       occupancyId = await createSeasonOccupancy(manager);
+      const pendingDecor = await addPendingSeasonGridSlot(manager);
+      pendingSlotId = pendingDecor.slotId;
 
       await becomeMember(page, manager, ara, email);
       const watch = watchMember(page);
@@ -218,6 +246,17 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       await expect(page.getByRole("checkbox", { name: PLANNING_TEXTS.exportShowOccupancies }), "/planning : le Membre ne voit pas « Afficher les occupations » dans Exporter").toBeVisible();
       expect(watch.violations, `/planning (Exporter) : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
       await visit(page, watch, "/planning", false);
+      // Lot 5, PR 6 — du froid attend : le Membre LIT le bandeau « en attente » (témoin positif), mais
+      // ne se voit offrir ni « Valider ces modifications » ni « Régénérer » ; et s'il force le geste par
+      // l'API, il est refusé (403), rien n'est validé. Jumeaux : `MemberWriteSweepTest`
+      // (`apply-pending-changes`) et `ApplyPendingChangesGuardsTest`.
+      await expect(page.getByRole("status").filter({ hasText: PLANNING_TEXTS.pendingChangesBanner }), "/planning : le Membre lit que des modifications attendent").toBeVisible();
+      await expect(page.getByRole("button", { name: PLANNING_TEXTS.applyPendingChanges }), "/planning : « Valider ces modifications » est offert au Membre").toHaveCount(0);
+      await expect(page.getByRole("button", { name: PLANNING_TEXTS.regenerate, exact: true }), "/planning : « Régénérer » est offert au Membre").toHaveCount(0);
+      const forced = await page.request.post(`/api/schedule_plans/${pendingDecor.planId}/apply-pending-changes`, { data: { confirmChanges: "jeton" } });
+      expect(forced.status(), "le Membre ne valide pas ces modifications").toBe(403);
+      const stillPending = (await (await manager.request.get(`/api/schedule_plans/${pendingDecor.planId}/pending-changes`)).json()) as { pending?: boolean };
+      expect(stillPending.pending, "refusé : les modifications attendent toujours").toBe(true);
       for (const sub of ["consulter", "semaine-type", "conflits"]) {
         await visit(page, watch, `/matchs/${sub}`, false);
       }
@@ -271,6 +310,9 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       }
       if ("" !== occupancyId) {
         await manager.request.delete(`/api/venue_occupancies/${occupancyId}`).catch(() => undefined);
+      }
+      if ("" !== pendingSlotId) {
+        await manager.request.delete(`/api/venue_training_slots/${pendingSlotId}`).catch(() => undefined);
       }
       await manager.context().close();
     }

@@ -115,11 +115,11 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
 
 ### 6.6 bis Cycle de vie du planning (le pointeur du plan)
 
-- **Valider ↔ Rouvrir sont les deux sorties symétriques du cycle de vie** (arbitrage fondateur,
+- **Valider ↔ Retravailler (Rouvrir pour une période) sont les deux sorties symétriques du cycle de vie** (arbitrage fondateur,
   symétrie stricte 2026-08-20) : Valider vit dans l'espace de travail (wizard, `embedded`) et en
-  est la SORTIE — son succès navigue vers `/planning` ; Rouvrir vit sur `/planning` autonome
-  (`!embedded`, l'écran de la version en vigueur) et en est la sortie inverse — il ramène au
-  wizard. Le badge de statut et la pastille « Période », eux, sont visibles dans les DEUX modes
+  est la SORTIE — son succès navigue vers `/planning` ; Retravailler (planning de saison) ou Rouvrir (plan de
+  période) vit sur `/planning` autonome (`!embedded`, l'écran de la version en vigueur) et en est la sortie
+  inverse — il ramène au wizard. Le badge de statut et la pastille « Période », eux, sont visibles dans les DEUX modes
   (`PlanningToolbar.tsx`) : conséquence assumée, la pastille « Période » apparaît donc aussi en
   standalone sur un overlay.
 - Un planning `COMPLETED` peut être **validé** (bouton « Valider » de la toolbar, visible
@@ -137,10 +137,21 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   (bouton « Réessayer », jamais un impact inconnu présenté comme vide). La validation elle-même
   dépointe alors ces matchs (`UNPLACED` + raison persistante `venue_lost`, heure conservée) —
   détail métier : `specs/courantes/module-matchs-perimetre-engage.md` §11 « Le périmètre engagé ».
-- « Rouvrir » (`POST /api/schedules/{id}/reopen`, bouton `/planning` autonome uniquement,
-  `!embedded`) **dépointe** le plan (inv. 2) : la version survit et redevient éditable. Toute
+  **Ce qui change (lot 5)** : la même annonce dit, famille par famille, ce que la validation change par
+  rapport au planning en vigueur (« Rien ne change » sinon), le coach qui tiendra les séances d'une équipe
+  dont le coach principal change, les plannings de période supprimés (le bouton devient « Valider et
+  supprimer ») et les doléances conservées ; le serveur décide, l'écran affiche. Un 409
+  `changes_to_confirm` (`ChangesToConfirmError`) est un état d'UI : un toast demande de relire la liste. **« Valider ces
+  modifications »** (`ApplyPendingChangesDialog`, bandeau du planning de saison, seulement quand du froid
+  attend) lit `GET /api/schedule_plans/{id}/pending-impact` et y ajoute les incohérences avec le planning
+  en vigueur, qui avertissent sans bloquer.
+- « Retravailler » (`POST /api/schedules/{id}/rework`, planning de saison, bouton `/planning`
+  autonome uniquement, `!embedded`, `PlanningPage.tsx` `rework()`) copie la version en vigueur en une
+  version de travail et y pose l'étoile ; le pointeur ne bouge pas, rien n'est détruit. « Rouvrir »
+  (`POST /api/schedules/{id}/reopen`) ne concerne plus qu'un plan de **période** : il **dépointe** le plan
+  (inv. 2), la version survit et redevient éditable. Toute
   navigation qui suit **déclare son mode** (fix terrain 2026-08-19 défaut 3, `PlanningPage.tsx`
-  `reopen()`) — jamais un `jumpTo("generate")` nu qui laisserait le mode ambiant du `localStorage`
+  `reopen()` / `rework()`) — jamais un `jumpTo("generate")` nu qui laisserait le mode ambiant du `localStorage`
   décider : la version rouverte est résolue (`schedulePlanId` → plan → `calendarEntryId`) et le
   wizard s'ouvre en mode période (`startPeriodMode`) si ce plan n'est pas `SEASON`, en mode saison
   (`exitPeriodMode`) sinon.
@@ -157,34 +168,13 @@ Le gestionnaire ne voit jamais le concept de `club_id` ou `season_id`. Le fronte
   2026-09-28) : un second bouton, distinct de « Ouvrir », rendu **seulement quand le socle est
   validé** — sort d'un éventuel mode période (`exitPeriodMode`) et ouvre le wizard sur l'étape
   Équipes (`jumpTo("teams")`), **sans** poser de pointeur ni le déplacer : ce n'est ni « Valider »
-  ni « Rouvrir », le plan de saison reste en vigueur tel quel. Sert à compléter le modèle du club
-  (coach déclaré tard, équipe, gymnase) pendant la saison, sans détruire les plans de période
-  futurs qu'un « Rouvrir » supprimerait (§2bis de `accueil-cockpit-temporel.md`). `WizardLayout`
-  dérive `seasonEditLocked = !periodMode && socleValidated` : dans cet état, un bandeau
-  (`NoticeBanner`, ton `accent`) dit « le planning de la saison reste en vigueur — vos
-  modifications s'appliqueront à la prochaine génération » et les étapes **Contraintes** et
-  **Génération** sont verrouillées dans le `StepRail` — confort seul, le serveur refuse déjà la
-  génération d'une version de saison pointée (`SocleGuard`, §3.2bis de
-  `planning-lifecycle-validated.md`). Gymnases et Coachs restent pleinement accessibles ; l'étape
-  Équipes l'est aussi **à une exception près** (voir plus bas : le nombre de séances d'une équipe
-  existante y est verrouillé, comme les créneaux).
-  L'étape Gymnases (`VenuesStep`/`VenueAvailabilityGrid`) y passe la grille des créneaux
-  d'entraînement en **lecture seule** (`readOnly`, cellules et créneaux non cliquables, mention
-  « rouvrez le planning pour les modifier ») — la fiche du gymnase reste éditable, et un
-  deep-link `?slot=` n'y ouvre plus l'éditeur de créneau. Hors ce régime (onboarding, ou après
-  un « Rouvrir »), la grille garde l'édition normale.
-  L'étape Équipes (`TeamsStep`) y passe le champ **« Séances/sem » d'une équipe existante en
-  lecture seule** (`readOnly` — décision fondateur 2026-09-28 : le nombre de séances par semaine
-  est une **contrainte** du planning en vigueur, au même titre que les créneaux, `useSocleValidated()`
-  gouverne le verrou). La valeur reste **visible** (readOnly, pas `disabled` — le champ ne sort pas
-  de l'ordre de tabulation et reste lu), et une explication unique au-dessus de la liste dit
-  « Rouvrez le planning de la saison pour modifier le nombre de séances ». Le **rang** (priorité,
-  flèches/« Trier ») et le **niveau** restent éditables (le niveau garde sa garde « équipe engagée »).
-  ⚠ La **création** d'une équipe reste libre : le champ « Séances/sem » du formulaire d'ajout n'est
-  jamais verrouillé (sinon aucune équipe neuve ne pourrait recevoir son nombre de séances) — le
-  verrou porte sur l'ÉDITION d'une équipe existante, pas sur la création. La surcharge de période
-  (`PeriodTeams`, mode période) et la mutualisation ne passent PAS par ce chemin et sont inchangées.
-  Hors ce régime (onboarding, ou après un « Rouvrir »), le champ redevient éditable.
+  ni « Retravailler », le plan de saison reste en vigueur tel quel. Sert à compléter le modèle du club
+  (coach déclaré tard, équipe, gymnase) pendant la saison ; seul un changement de **froid** validé supprime
+  ensuite les plans de période futurs (§2bis de `accueil-cockpit-temporel.md`). `WizardLayout` affiche, en mode
+  saison avec socle en vigueur et pour un gestionnaire (`seasonInForceNotice`), un bandeau (`NoticeBanner`, ton
+  `accent`) : le planning de saison validé reste en vigueur, ce qu'on modifie ne vaut pour les matchs et les
+  plannings de période qu'après validation. Toutes les étapes restent modifiables (plus aucun verrou de
+  `StepRail` ni champ en lecture seule sur un socle validé).
 - **Invalidation croisée wizard→planning des liens coach** (`wizard/queries.ts`) : les mutations
   de lien équipe↔coach (`useCreateTeamCoach`/`useDeleteTeamCoach`) et coach-joueur
   (`useCreateCoachPlayer`/`useDeleteCoachPlayer`/`useDeleteCoach`) invalident désormais, en plus

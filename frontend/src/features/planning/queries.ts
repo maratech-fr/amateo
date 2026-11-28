@@ -12,7 +12,8 @@ import { isScheduleStreamConnected, useScheduleStream } from "./lib/scheduleStre
 import { toast } from "@/shared/stores/toastStore";
 
 import type { LockLevel, MutualizeAtCaseBody, MutualizeBody, PlaceSlotBody, SlotMovePatch, SwapBody } from "./api";
-import { EngineTimeoutError, GenerationInProgressError, MoveRejectedError, MutualizationRefusedError, OverlaysExistError, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
+import { ChangesToConfirmError, EngineTimeoutError, GenerationInProgressError, MoveRejectedError, MutualizationRefusedError, OverlaysExistError, SlotEditError, TargetLockedError, VerdictAbandonedError } from "./api";
+import { PLANNING_TEXTS } from "./texts";
 import * as planningApi from "./api";
 
 /**
@@ -612,16 +613,30 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
   return { run, busy };
 }
 
-/** Lock a COMPLETED schedule → VALIDATED (read-only). */
+/**
+ * Lot 5 — la liste de ce qui change a bougé depuis l'annonce : l'annonce se relit (le dialogue reste ouvert), le toast
+ * le dit. Tout autre échec garde le message du serveur.
+ */
+function changesToConfirmFeedback(queryClient: QueryClient, error: unknown): void {
+  if (error instanceof ChangesToConfirmError) {
+    void queryClient.invalidateQueries({ queryKey: ["validate-impact"] });
+    void queryClient.invalidateQueries({ queryKey: ["pending-impact"] });
+    toast.error(PLANNING_TEXTS.changesToConfirmAgain);
+    return;
+  }
+  void errorMessage(error).then((message) => toast.error(message));
+}
+
+/** Lock a COMPLETED schedule → VALIDATED (read-only), on the token of the announced list when it deletes. */
 export function useValidateSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, confirmDeleteOverlays }: { id: string; confirmDeleteOverlays?: boolean }) => planningApi.validateSchedule(id, { confirmDeleteOverlays }),
+    mutationFn: ({ id, confirmChanges }: { id: string; confirmChanges?: string }) => planningApi.validateSchedule(id, { confirmChanges }),
+    onError: (error) => changesToConfirmFeedback(queryClient, error),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      // Valider peut SUPPRIMER les plans secondaires (confirmDeleteOverlays) — même
-      // destruction serveur que rouvrir, qui l'invalide déjà. Sans ça le cockpit
-      // continue d'afficher des périodes dont l'overlay n'existe plus.
+      // Valider peut SUPPRIMER les plans secondaires (froid changé, lot 5) — sans ça le
+      // cockpit continue d'afficher des périodes dont l'overlay n'existe plus.
       void queryClient.invalidateQueries({ queryKey: ["calendar-entries"] });
       // Le radar dérive désormais du POINTEUR, que ce geste déplace : ses conflits ET
       // son `seasonPlanChosen` changent. L'ancienne baseline était auto-posée et
@@ -633,6 +648,38 @@ export function useValidateSchedule() {
       void queryClient.invalidateQueries({ queryKey: ["me"] });
       // Lot 5 : la version validée devient la référence de ce qui attend la validation.
       void queryClient.invalidateQueries({ queryKey: ["pending-changes"] });
+      // Une doléance reçue avant un froid validé porte la mention.
+      void queryClient.invalidateQueries({ queryKey: ["coach-wishes"] });
+    },
+  });
+}
+
+/**
+ * Lot 5 — ce que change « Valider ces modifications » (`GET /schedule_plans/{id}/pending-impact`), contrôle
+ * d'incohérences compris. Armé (planId non nul) seulement quand le dialogue est ouvert ; `staleTime: 0` : la liste
+ * confirmée doit être celle du moment.
+ */
+export function usePendingImpact(planId: string | null) {
+  return useQuery({
+    queryKey: ["pending-impact", planId],
+    queryFn: () => planningApi.getPendingImpact(planId as string),
+    enabled: null !== planId,
+    staleTime: 0,
+  });
+}
+
+/** Lot 5 — « Valider ces modifications » : la version en vigueur adopte ce qui attend, sans régénérer. */
+export function useApplyPendingChanges() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, confirmChanges }: { planId: string; confirmChanges: string }) => planningApi.applyPendingChanges(planId, confirmChanges),
+    onError: (error) => changesToConfirmFeedback(queryClient, error),
+    onSuccess: () => {
+      // Le coach des séances en vigueur change, des plannings de période peuvent disparaître : le planning, le
+      // cockpit, les conflits et ce qui attend se relisent.
+      for (const key of ["schedules", "slots", "calendar-entries", "entry-conflicts", "training", "me", "pending-changes", "coach-wishes"]) {
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      }
     },
   });
 }

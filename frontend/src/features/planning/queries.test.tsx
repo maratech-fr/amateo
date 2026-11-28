@@ -66,7 +66,7 @@ vi.mock("./api", async (importOriginal) => {
     getSlots: vi.fn().mockResolvedValue([]),
     getDiagnostics: vi.fn().mockResolvedValue([]),
     getSocleDeviation: vi.fn().mockResolvedValue({}),
-    getValidateImpact: vi.fn().mockResolvedValue({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 }),
+    getValidateImpact: vi.fn().mockResolvedValue({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [], changesToken: "jeton", destroyedPeriodPlans: [], keptPeriodPlans: 0, keptWishes: 0, coachChanges: [] }),
     getTeams: vi.fn().mockResolvedValue([]),
     getVenues: vi.fn().mockResolvedValue([]),
     getCoaches: vi.fn().mockResolvedValue([]),
@@ -647,7 +647,7 @@ describe("planning queries — les mutations de version rafraîchissent la liste
 describe("planning queries — useValidateImpact : clé scopée par scheduleId, désarmée sur null", () => {
   it("scheduleId null → idle (aucun fetch) ; deux ids distincts → deux fetches distincts", async () => {
     vi.mocked(planningApi.getValidateImpact).mockImplementation((id: string) =>
-      Promise.resolve({ orphanedFixtures: id === "s-a" ? 1 : 2, declaredOrphanedFixtures: 0 }),
+      Promise.resolve({ orphanedFixtures: id === "s-a" ? 1 : 2, declaredOrphanedFixtures: 0, changes: [], changesToken: "jeton", destroyedPeriodPlans: [], keptPeriodPlans: 0, keptWishes: 0, coachChanges: [] }),
     );
     const client = makeClient();
     const wrapper = wrapperFor(client);

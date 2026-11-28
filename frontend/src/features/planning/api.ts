@@ -86,14 +86,13 @@ export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
  *  - canLoad           : « Charger » cette version, tout plan (terminée, plan non validé, rien en cours,
  *                        chargeable, pas déjà la version chargée)
  *  - versionsDeletedOnValidate : nb de sœurs supprimées si l'on valide (annoncé avant le clic)
- *  - overlaysDroppedOnValidate : nb de plannings de période détruits si l'on valide (= count du 409 overlays_exist)
+ * Les plannings de période qu'une validation supprime se lisent sur l'annonce (`getValidateImpact`, lot 5).
  */
 export interface ScheduleCapabilities {
   canDelete: boolean;
   canValidate: boolean;
   canLoad: boolean;
   versionsDeletedOnValidate: number;
-  overlaysDroppedOnValidate: number;
   /** Absent d'un cache antérieur : aucun motif n'est alors inventé, le serveur refusera seul. */
   canEdit?: boolean;
   editBlockedReason?: string | null;
@@ -1114,22 +1113,36 @@ export const generateSchedule = (id: string): Promise<unknown> => api.post(`sche
 
 /**
  * Choose a COMPLETED version: its plan POINTS at it — it becomes the calendar in
- * force (read-only), and its sibling versions are SUPPRIMÉES. Choosing a different
- * version while period overlays exist → 409 overlays_exist unless
- * confirmDeleteOverlays is passed (same destructive idiom as reopen).
+ * force (read-only), and its sibling versions are SUPPRIMÉES. Lot 5 : quand la
+ * validation supprime des plannings de période (du froid change), elle exige le
+ * jeton de la liste annoncée (`confirmChanges`, celui de `getValidateImpact`) ; une
+ * liste qui a changé depuis → 409 `changes_to_confirm` ({@link ChangesToConfirmError}).
  */
-export async function validateSchedule(id: string, opts?: { confirmDeleteOverlays?: boolean }): Promise<unknown> {
+export async function validateSchedule(id: string, opts?: { confirmChanges?: string }): Promise<unknown> {
   try {
-    return await api.post(`schedules/${id}/validate`, opts?.confirmDeleteOverlays ? { json: { confirmDeleteOverlays: true } } : undefined).json();
+    return await api.post(`schedules/${id}/validate`, undefined === opts?.confirmChanges ? undefined : { json: { confirmChanges: opts.confirmChanges } }).json();
   } catch (error) {
-    if (error instanceof HTTPError && 409 === error.response.status) {
-      const body = ((error as { data?: unknown }).data ?? {}) as { code?: string; count?: number; coachWishCount?: number; overlays?: { entryId: string; title: string }[] };
-      if ("overlays_exist" === body.code) {
-        throw new OverlaysExistError(body.count ?? 0, body.overlays ?? [], body.coachWishCount ?? 0);
-      }
-    }
-    throw error;
+    throw asChangesToConfirm(error);
   }
+}
+
+/** Lot 5 — la liste de ce qui change a bougé depuis l'annonce (409 `changes_to_confirm`) : l'écran relit l'annonce. */
+export class ChangesToConfirmError extends Error {
+  constructor() {
+    super("changes_to_confirm");
+    this.name = "ChangesToConfirmError";
+  }
+}
+
+function asChangesToConfirm(error: unknown): unknown {
+  if (error instanceof HTTPError && 409 === error.response.status) {
+    // ky 2.x parses the error body into error.data (re-reading the response throws "body stream already read").
+    const body = ((error as { data?: unknown }).data ?? {}) as { code?: string };
+    if ("changes_to_confirm" === body.code) {
+      return new ChangesToConfirmError();
+    }
+  }
+  return error;
 }
 
 /** Thrown when reopening the season's chosen version would delete period overlays (409). */
@@ -1203,6 +1216,43 @@ export interface PendingChanges {
  * version en vigueur, et la présence d'une version de travail) ; toujours faux pour une période.
  */
 export const getPendingChanges = (planId: string): Promise<PendingChanges> => api.get(`schedule_plans/${planId}/pending-changes`).json<PendingChanges>();
+
+/** Une règle cassée par les modifications en attente sur une séance du planning en vigueur, nommée par le serveur. */
+export interface PendingIncoherence {
+  slotId: string;
+  teamId: string;
+  teamName: string;
+  dayOfWeek: number;
+  startTime: string;
+  rule: string;
+  label: string;
+}
+
+/**
+ * Lot 5 — ce que change « Valider ces modifications » : la forme de {@link ValidateImpact}, plus le contrôle
+ * d'incohérences avec le planning en vigueur (règles cassées, séances manquantes, contrôle non concluant).
+ */
+export interface PendingImpact extends ValidateImpact {
+  incoherences: PendingIncoherence[];
+  missingSessions: { teamId: string; teamName: string; count: number }[];
+  checkInconclusive: boolean;
+  /** Le contrôle a été fait (gestionnaire seulement : il appelle le moteur) ; faux, ses listes sont vides. */
+  checkPerformed: boolean;
+}
+
+export const getPendingImpact = (planId: string): Promise<PendingImpact> => api.get(`schedule_plans/${planId}/pending-impact`).json<PendingImpact>();
+
+/**
+ * « Valider ces modifications » (lot 5) : la version en vigueur adopte ce qui attend, sans régénérer, sur le jeton de
+ * la liste annoncée. Une liste qui a changé depuis → {@link ChangesToConfirmError} ; tout autre refus remonte tel quel.
+ */
+export async function applyPendingChanges(planId: string, confirmChanges: string): Promise<{ id: string }> {
+  try {
+    return await api.post(`schedule_plans/${planId}/apply-pending-changes`, { json: { confirmChanges } }).json<{ id: string }>();
+  } catch (error) {
+    throw asChangesToConfirm(error);
+  }
+}
 /** planning-versions: the plain "Régénérer" creates a NEW linear version (V2…)
  *  from the current structure, carrying the version's HARD-locked slots. */
 export const regenerate = (id: string): Promise<{ id: string; status: string; sourceScheduleId: string | null }> => api.post(`schedules/${id}/regenerate`).json();
@@ -1309,11 +1359,36 @@ export const getStructureHash = (planId: string): Promise<{ currentStructureHash
  */
 export const getSocleDeviation = (scheduleId: string): Promise<SocleDeviation> => api.get(`schedules/${scheduleId}/socle-deviation`).json<SocleDeviation>();
 
+/** Une ligne de ce que change une validation (lot 5) : une famille de réglages, ou les séances déplacées
+ *  (`ScheduleSlotTemplate`, pour information : `destroys` toujours faux). */
+export interface ValidateChange {
+  family: string;
+  count: number;
+  destroys: boolean;
+}
+
+/** Lot 5 — une équipe dont le coach principal change, et le coach qui tiendra ses séances (null : l'équipe n'a plus
+ *  de coach principal). */
+export interface ValidateCoachChange {
+  teamId: string;
+  teamName: string;
+  coachId: string | null;
+  coachName: string | null;
+}
+
 /** P2-52 — combien de matchs perdront leur salle si l'on VALIDE ce planning (gymnase disparu),
- * et combien parmi eux sont déjà déclarés à la fédération. Même prédicat que la gâchette. */
+ * et combien parmi eux sont déjà déclarés à la fédération. Même prédicat que la gâchette.
+ * Lot 5 — ce qui change par rapport au planning en vigueur, les plannings de période pas commencés
+ * supprimés et gardés, les doléances conservées, et le jeton de la liste vue (à renvoyer en confirmant). */
 export interface ValidateImpact {
   orphanedFixtures: number;
   declaredOrphanedFixtures: number;
+  changes: ValidateChange[];
+  changesToken: string;
+  destroyedPeriodPlans: { entryId: string; title: string }[];
+  keptPeriodPlans: number;
+  keptWishes: number;
+  coachChanges: ValidateCoachChange[];
 }
 
 export const getValidateImpact = (scheduleId: string): Promise<ValidateImpact> => api.get(`schedules/${scheduleId}/validate-impact`).json<ValidateImpact>();

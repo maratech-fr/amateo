@@ -1,18 +1,45 @@
 # language: fr
 Fonctionnalité: Le planning de saison commande les plannings de période
-  Le planning de saison est la base. Le valider efface les plannings de période
-  ENTIÈREMENT à venir — jamais un planning déjà commencé, qu'on ne détruit pas au
-  milieu. Le retravailler ne détruit rien : le planning validé reste en vigueur
-  tant qu'une copie de travail n'est pas validée, et l'écran dit quand des
-  modifications attendent la validation. Tant qu'aucun planning de saison n'a été
-  validé, on ne peut pas ouvrir un planning de période : il n'y a pas de base sur
-  laquelle l'adapter.
+  Le planning de saison est la base. Valider dit d'abord ce qui change, famille par
+  famille : seul un changement du froid (règles, grille, réservations, coach principal…)
+  efface les plannings de période ENTIÈREMENT à venir — jamais un planning déjà
+  commencé, qu'on ne détruit pas au milieu, ni la collecte de doléances. Une séance
+  déplacée s'annonce et ne supprime rien ; un verrou ne s'annonce pas. Le retravailler
+  ne détruit rien : le planning validé reste en vigueur tant qu'une copie de travail
+  n'est pas validée, et l'écran dit quand des modifications attendent la validation.
+  Tant qu'aucun planning de saison n'a été validé, on ne peut pas ouvrir un planning
+  de période : il n'y a pas de base sur laquelle l'adapter.
 
-  Scénario: Valider le planning de saison efface les plannings de période à venir, garde ceux déjà commencés
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+  Scénario: Valider annonce ce qui change ; ce froid supprime les plannings de période à venir, garde celui commencé et la collecte
+    Étant donné un petit club dont le planning de saison est en vigueur
     Et un planning de période à venir et un planning de période déjà commencé
-    Quand je valide le planning de saison
+    Et une collecte de doléances ouverte sur des vacances à venir
+    Et une règle et deux créneaux ajoutés au planning de saison, puis une version générée
+    Quand je demande ce que change la validation
+    Alors j'apprends que 1 règle et 2 créneaux changent
+    Et l'annonce nomme les plannings de période à venir qui seront supprimés, et garde la doléance reçue
+    Quand je valide en confirmant ce que la liste annonce
     Alors le planning de période à venir a disparu et celui déjà commencé subsiste
+    Et la collecte et ses doléances des vacances à venir subsistent
+    Et la doléance reçue porte la mention « réponse donnée avant la modification du planning de saison »
+
+  Plan du scénario: Ni un nom, ni un verrou, ni une séance déplacée ne suppriment les plannings de période à venir
+    Une séance déplacée figure dans la liste, pour information ; un verrou et un nom n'y figurent pas. Déplacer
+    demande une case libre : la grille du club de démonstration est pleine, ces gestes se jouent sur le petit club.
+    Étant donné <club>
+    Et un planning de période à venir et un planning de période déjà commencé
+    Et je retravaille le planning de saison
+    Quand je <geste> puis je valide la copie de travail
+    Alors la liste annonce <liste>
+    Et les plannings de période à venir sont gardés
+
+    Exemples:
+      | club                                                                     | geste                                         | liste             |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | renomme une équipe                            | rien              |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | renomme un groupe mutualisé                   | rien              |
+      | le club de démonstration, connecté, dont le planning de saison est en vigueur | verrouille une séance sans la déplacer        | rien              |
+      | un petit club dont le planning de saison est en vigueur                  | déplace une séance à la main                  | 1 séance déplacée |
+      | un petit club dont le planning de saison est en vigueur                  | déplace une séance à la main et la verrouille | 1 séance déplacée |
 
   Scénario: Retravailler le planning de saison ne détruit rien
     Une copie de travail naît de la version en vigueur, chargée ; tant qu'elle n'est pas validée, rien d'autre ne change.
@@ -43,12 +70,6 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Alors des modifications attendent la validation, sur une copie de travail
     Quand je valide la copie de travail
     Alors rien n'attend la validation
-
-  Scénario: Valider le planning de saison emporte aussi la collecte de doléances des vacances à venir
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une collecte de doléances ouverte sur des vacances à venir
-    Quand je valide le planning de saison
-    Alors la collecte et ses doléances des vacances à venir ont disparu
 
   Scénario: Le planning de saison et les vacances ont chacun leur grille
     Les vacances naissent avec une copie de la grille du planning de saison en vigueur, même quand des modifications attendent ; ensuite chacun garde la sienne.

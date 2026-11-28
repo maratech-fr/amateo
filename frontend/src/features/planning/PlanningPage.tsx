@@ -53,7 +53,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadVersion, useMutualizeSlot, usePendingChanges, usePlacedConflicts, useRegenerate, useRegenerateOverlay, useReworkSchedule, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadVersion, useMutualizeSlot, useApplyPendingChanges, usePendingChanges, usePendingImpact, usePlacedConflicts, useRegenerate, useRegenerateOverlay, useReworkSchedule, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -74,7 +74,7 @@ import { usePlanHeader } from "./lib/usePlanHeader";
 import { useSlotHighlight } from "./lib/useSlotHighlight";
 import { useRetouchGestures } from "./lib/useRetouchGestures";
 import { SeasonComparisonModal } from "./SeasonComparisonModal";
-import { ValidateDialog } from "./ValidateDialog";
+import { ApplyPendingChangesDialog, ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
 import { deviatedSlots } from "./lib/socleDeviationCells";
 import { usePlanningStore } from "./store";
@@ -109,16 +109,6 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
  *  `periodEntry.periodType`, le serveur reste seul juge — la route refuse 422 sinon). En embarqué,
  *  SEUL déclencheur du « Bilan par rang » ; sur `/planning` autonome, c'est le TYPE de la version
  *  affichée (CLOSURE) qui l'arme. Une vacance ou une version de saison n'appellent JAMAIS la route. */
-/**
- * Q8bis (P2-63) — clause annoncée au confirm de validation/réouverture du socle : les
- * doléances déjà reçues pour les vacances à venir partent avec la collecte. Vide si 0.
- */
-function coachWishPurgeClause(coachWishCount: number): string {
-  if (coachWishCount <= 0) {
-    return "";
-  }
-  return ` Et ${coachWishCount} doléance${coachWishCount > 1 ? "s" : ""} déjà reçue${coachWishCount > 1 ? "s" : ""} pour les vacances à venir partiront aussi — il faudra relancer la collecte.`;
-}
 
 export function PlanningPage({ embedded = false, scopePlanId = null, calendarEntryId = null, toReplace = null, isClosurePeriod = false, onDisplayedScheduleChange }: { embedded?: boolean; scopePlanId?: string | null; calendarEntryId?: string | null; toReplace?: ToReplaceEntry[] | null; isClosurePeriod?: boolean; onDisplayedScheduleChange?: (id: string | null) => void } = {}) {
   // UXS-09 — on garde l'objet query : `readFailed` distingue « aucun planning » d'« échec de
@@ -318,7 +308,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
   // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
   // retournées (deleteMutation et regenerateFromMutation restent en page).
-  const { validateOpen, setValidateOpen, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
+  const { validateOpen, setValidateOpen, validateMutation, reopenMutation, orphanImpact, announcement, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
   // Lot 5 — « Retravailler » le planning de saison en vigueur (à la place de « Rouvrir ») et ce qui attend sa
@@ -329,6 +319,20 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const [backToInForceOpen, setBackToInForceOpen] = useState(false);
   const pendingChanges = usePendingChanges(!embedded && !scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? selectedSchedule.schedulePlanId : null);
   const seasonInForce = schedules.find((s) => true === s.isChosen && isSeasonPlanType(s.planType)) ?? null;
+  // Lot 5, PR 6 — « Valider ces modifications », sans régénérer : offert quand du froid attend (pas une simple version
+  // de travail). L'annonce, contrôle d'incohérences compris, ne se lit qu'à l'ouverture du dialogue.
+  const [applyOpen, setApplyOpen] = useState(false);
+  const pendingImpact = usePendingImpact(applyOpen ? (seasonInForce?.schedulePlanId ?? null) : null);
+  const applyMutation = useApplyPendingChanges();
+  const coldPending = (pendingChanges.data?.changes ?? []).length > 0;
+  const applyPending = () => {
+    const planId = seasonInForce?.schedulePlanId ?? null;
+    const token = pendingImpact.data?.changesToken;
+    if (null === planId || undefined === token) {
+      return;
+    }
+    applyMutation.mutate({ planId, confirmChanges: token }, { onSuccess: () => setApplyOpen(false) });
+  };
   const rework = () => {
     if (null === validScheduleId) {
       return;
@@ -956,9 +960,21 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {!showGenerationWaiting && true === pendingChanges.data?.pending ? (
         <NoticeBanner tone="warning" role="status" className="mb-4" message={PLANNING_TEXTS.pendingChangesBanner}>
           {canManage && null !== seasonInForce ? (
-            <Button size="sm" variant="outline" className="border-foreground/40 bg-card" disabled={actionBusy} onClick={() => setBackToInForceOpen(true)}>
-              {PLANNING_TEXTS.backToInForce}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {coldPending ? (
+                <Button size="sm" disabled={actionBusy || applyMutation.isPending} onClick={() => setApplyOpen(true)}>
+                  {PLANNING_TEXTS.applyPendingChanges}
+                </Button>
+              ) : null}
+              {coldPending ? (
+                <Button size="sm" variant="outline" className="border-foreground/40 bg-card" disabled={actionBusy || regenerateDisabled} onClick={() => launchSeasonRegenerate(seasonInForce.id)}>
+                  {PLANNING_TEXTS.regenerate}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" className="border-foreground/40 bg-card" disabled={actionBusy} onClick={() => setBackToInForceOpen(true)}>
+                {PLANNING_TEXTS.backToInForce}
+              </Button>
+            </div>
           ) : null}
         </NoticeBanner>
       ) : null}
@@ -1569,8 +1585,22 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           siblingCount={selectedSchedule?.capabilities?.versionsDeletedOnValidate ?? 0}
           busy={validateMutation.isPending}
           orphan={orphanImpact}
+          announcement={announcement}
+          isSeason={isSeasonPlanType(selectedSchedule?.planType)}
           onCancel={() => setValidateOpen(false)}
           onConfirm={() => validate()}
+        />
+      ) : null}
+
+      {applyOpen ? (
+        <ApplyPendingChangesDialog
+          impact={pendingImpact.data}
+          loading={readLoading(pendingImpact)}
+          failed={readFailed(pendingImpact)}
+          busy={applyMutation.isPending}
+          onRetry={() => void pendingImpact.refetch()}
+          onCancel={() => setApplyOpen(false)}
+          onConfirm={applyPending}
         />
       ) : null}
 
@@ -1684,16 +1714,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         }
         onConfirm={confirmRemove}
         onCancel={cancelRemove}
-      />
-
-      <ConfirmDialog
-        open={validateOverlayCount !== null}
-        title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning de saison ?`}
-        description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).${coachWishPurgeClause(validateWishCount)}`}
-        confirmLabel={PLANNING_TEXTS.validateAndReplace}
-        destructive
-        onConfirm={() => validate(true)}
-        onCancel={() => setValidateOverlayCount(null)}
       />
 
       {/* Lot 5 — « Retravailler » : une copie de travail naît de la version en vigueur, qui le reste. */}

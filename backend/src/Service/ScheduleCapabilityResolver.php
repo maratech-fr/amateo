@@ -34,7 +34,6 @@ final class ScheduleCapabilityResolver
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly OverlayManager $overlayManager,
         private readonly LoadFeasibility $loadFeasibility,
     ) {}
 
@@ -107,7 +106,7 @@ final class ScheduleCapabilityResolver
      * Le bloc `capabilities` de chaque version, en BATCH — ZÉRO N+1. Reçoit du provider les
      * ensembles qu'il calcule déjà pour les autres champs du DTO (choisi / type de plan /
      * copie d'état), puis n'ajoute qu'UN GROUP BY (schedule_plan_id, status) sur les plans présents
-     * et UN appel par saison (générations en cours + périodes invalidées). Les verdicts
+     * et UN appel par saison (générations en cours). Les verdicts
      * reproduisent EXACTEMENT les prédicats unitaires ci-dessus.
      *
      * @param list<Schedule>        $schedules
@@ -146,7 +145,6 @@ final class ScheduleCapabilityResolver
         );
 
         $seasonInFlight = []; // seasonId => bool, résolu une fois par saison
-        $seasonOverlays = []; // seasonId => int, résolu une fois par saison
         $capabilities = [];
         foreach ($schedules as $schedule) {
             $id = $schedule->getId();
@@ -165,18 +163,6 @@ final class ScheduleCapabilityResolver
 
             if (!isset($seasonInFlight[$seasonId])) {
                 $seasonInFlight[$seasonId] = $this->inFlightInSeason($schedule->getClubId(), $seasonId);
-            }
-
-            // overlaysDroppedOnValidate : seul un socle NON-choisi déplace le calendrier de base
-            // et invalide les plannings de période à venir (miroir de ValidateScheduleController).
-            $overlaysDropped = 0;
-            if ($isSeason && !$isChosen) {
-                if (!isset($seasonOverlays[$seasonId])) {
-                    $seasonOverlays[$seasonId] = \count(
-                        $this->overlayManager->periodPlansInvalidatedBySeasonChange($schedule->getClubId(), $seasonId),
-                    );
-                }
-                $overlaysDropped = $seasonOverlays[$seasonId];
             }
 
             // « Charger » (tout plan) : version d'un plan (jamais une version anomale sans plan) TERMINÉE, plan de
@@ -198,7 +184,6 @@ final class ScheduleCapabilityResolver
                 canLoad: $hasPlan && $isCompleted && ($isSeason || !$planValidated)
                     && !$seasonInFlight[$seasonId] && null === $loadReason && !$isLoaded,
                 versionsDeletedOnValidate: max(0, $stats['total'] - 1),
-                overlaysDroppedOnValidate: $overlaysDropped,
                 canEdit: null === $editBlockedReason,
                 editBlockedReason: $editBlockedReason,
                 loadBlockedReason: $loadReason,

@@ -30,6 +30,7 @@ use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\MemberReadOnlyContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\ParcImportContext;
+use App\Tests\Behat\PendingChangesApplyContext;
 use App\Tests\Behat\PeriodAutoValidationContext;
 use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
@@ -127,6 +128,11 @@ return (new Config)
                 new Suite('socle')
                     ->withPaths('%paths.base%/features/le-socle-commande-les-plans.feature')
                     ->withContexts(SoclePlansContext::class),
+            )
+            ->withSuite(
+                new Suite('valider-sans-regenerer')
+                    ->withPaths('%paths.base%/features/valider-des-modifications-sans-regenerer.feature')
+                    ->withContexts(PendingChangesApplyContext::class),
             )
             ->withSuite(
                 new Suite('validation-automatique')

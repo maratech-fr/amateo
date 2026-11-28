@@ -184,8 +184,11 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
 
         // Une version née d'une génération porte sa copie (la porte et « Retravailler » la lisent).
         $version = $this->photo();
+        // La validation se confirme sur le jeton de la liste annoncée (lot 5, PR 6).
+        $this->client->request('GET', '/api/schedules/' . $version->getId() . '/validate-impact', [], [], $this->headers());
+        $token = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR)['changesToken'] ?? null;
         foreach (['validate', 'rework'] as $gesture) {
-            $this->client->request('POST', '/api/schedules/' . $version->getId() . '/' . $gesture, [], [], $this->headers() + ['CONTENT_TYPE' => 'application/json'], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
+            $this->client->request('POST', '/api/schedules/' . $version->getId() . '/' . $gesture, [], [], $this->headers() + ['CONTENT_TYPE' => 'application/json'], json_encode(['confirmChanges' => $token], \JSON_THROW_ON_ERROR));
             self::assertResponseIsSuccessful(\sprintf('décor : « %s » du planning de saison doit réussir', $gesture));
         }
 

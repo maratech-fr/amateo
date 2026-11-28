@@ -22,7 +22,7 @@ const noop = () => {};
 // par le bloc `capabilities` SERVEUR, plus par un calcul client. Défaut = une version de
 // travail terminée « ordinaire » ; chaque test surcharge le champ qui porte son scénario.
 // `capabilities: null` force l'absence (réponse d'écriture / cache périmé → fail-closed).
-const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0 };
 type ScheduleOver = Partial<Omit<Schedule, "capabilities">> & { capabilities?: Partial<ScheduleCapabilities> | null };
 
 const schedule = (status: Schedule["status"], over: ScheduleOver = {}): Schedule => {

@@ -21634,6 +21634,45 @@
                 ]
             }
         },
+        "/api/schedule_plans/{id}/apply-pending-changes": {
+            "post": {
+                "operationId": "postApiSchedulePlanApplyPendingChanges",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The version in force adopted the pending changes without regenerating: its settings copy, the coach of the sessions of the teams whose main coach changed, its frozen input and fingerprint. No session moves, no version is born.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "The version in force"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Not a manager of the club"
+                    },
+                    "404": {
+                        "description": "Unknown plan, or another club's (never an existence oracle)"
+                    },
+                    "409": {
+                        "description": "A period plan, no version in force, nothing pending, a generation is running (code=generation_in_progress), or the body lacks the token of the announced list (code=changes_to_confirm, with the announcement of the day)"
+                    }
+                },
+                "summary": "Validate the pending changes of the season plan without regenerating (body: confirmChanges)"
+            }
+        },
         "/api/schedule_plans/{id}/pending-changes": {
             "get": {
                 "operationId": "getApiSchedulePlanPendingChanges",
@@ -21689,6 +21728,175 @@
                     }
                 },
                 "summary": "What waits for the validation of the season plan"
+            }
+        },
+        "/api/schedule_plans/{id}/pending-impact": {
+            "get": {
+                "operationId": "getApiSchedulePlanPendingImpact",
+                "tags": [
+                    "Schedules"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What validating the pending changes without regenerating changes: the shape of validate-impact, plus the coherence check of the touched sessions of the version in force (broken rules named with their session, missing sessions, inconclusive check). Empty for a period plan or a season plan never validated. Read-only, open to members.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "orphanedFixtures": {
+                                            "type": "integer",
+                                            "description": "Home matches that will go back to \u00ab \u00e0 placer \u00bb"
+                                        },
+                                        "declaredOrphanedFixtures": {
+                                            "type": "integer",
+                                            "description": "Subset already declared to the federation"
+                                        },
+                                        "changes": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "description": "Short name of the changed family (e.g. TeamCoach ; ScheduleSlotTemplate = moved sessions)"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer",
+                                                        "description": "Rows added, removed or changed"
+                                                    },
+                                                    "destroys": {
+                                                        "type": "boolean",
+                                                        "description": "A cold change: validating deletes the period plans not yet started (always false for moved sessions)"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "changesToken": {
+                                            "type": "string",
+                                            "description": "Token of the announced list, to send back as confirmChanges"
+                                        },
+                                        "destroyedPeriodPlans": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "entryId": {
+                                                        "type": "string"
+                                                    },
+                                                    "title": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "keptPeriodPlans": {
+                                            "type": "integer",
+                                            "description": "Period plans the validation keeps"
+                                        },
+                                        "keptWishes": {
+                                            "type": "integer",
+                                            "description": "Coach wishes already received for the holidays to come, all kept"
+                                        },
+                                        "coachChanges": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "coachId": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The main coach who will hold the team sessions; null when the team has no main coach any more"
+                                                    },
+                                                    "coachName": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "incoherences": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "slotId": {
+                                                        "type": "string",
+                                                        "description": "The session of the version in force"
+                                                    },
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "dayOfWeek": {
+                                                        "type": "integer",
+                                                        "description": "ISO weekday, 1 = Monday"
+                                                    },
+                                                    "startTime": {
+                                                        "type": "string",
+                                                        "description": "HH:MM"
+                                                    },
+                                                    "rule": {
+                                                        "type": "string",
+                                                        "description": "The broken rule, as the engine names it"
+                                                    },
+                                                    "label": {
+                                                        "type": "string",
+                                                        "description": "The broken rule, in words"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "missingSessions": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "checkInconclusive": {
+                                            "type": "boolean",
+                                            "description": "The check could not conclude (too many touched sessions, engine refusal, error or timeout)"
+                                        },
+                                        "checkPerformed": {
+                                            "type": "boolean",
+                                            "description": "The coherence check ran (managers only: it calls the engine); false for a member or a period plan, the check lists are then empty"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "description": "Unknown plan, or another club's (never an existence oracle)"
+                    }
+                },
+                "summary": "What validating the pending changes without regenerating changes"
             }
         },
         "/api/schedule_plans/{id}/structure-hash": {
@@ -21937,10 +22145,10 @@
                         "description": "Unauthorized"
                     },
                     "409": {
-                        "description": "A version is already in force for this plan, or the schedule is not COMPLETED"
+                        "description": "The schedule is not COMPLETED, not the loaded version, a sibling is generating, or the validation deletes period plans and the body lacks the token of the announced list (code=changes_to_confirm, with the list of the day)"
                     }
                 },
-                "summary": "Point this version as the plan in force"
+                "summary": "Point this version as the plan in force (body: confirmChanges, the token of the announced list)"
             }
         },
         "/api/schedules/{id}/validate-impact": {
@@ -21951,7 +22159,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "What validating this version will make lose its venue: home matches pointing at a venue no longer affiliated to the club (deleted venue, or a dangling pointer left by exploration). Same predicate as the validation trigger \u2014 read-only, open to any member.",
+                        "description": "What validating this version changes: the matches that lose their venue, the cold settings that differ from the version in force family by family (moved sessions for information), the period plans not yet started it deletes and those it keeps, the coach wishes kept, and the token of the list. Same houses as the validation trigger \u2014 read-only, open to any member.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -21964,6 +22172,79 @@
                                         "declaredOrphanedFixtures": {
                                             "type": "integer",
                                             "description": "Subset already declared to the federation (SUBMITTED/VALIDATED) \u2014 to re-submit"
+                                        },
+                                        "changes": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "family": {
+                                                        "type": "string",
+                                                        "description": "Short name of the changed family (e.g. TeamCoach ; ScheduleSlotTemplate = moved sessions)"
+                                                    },
+                                                    "count": {
+                                                        "type": "integer",
+                                                        "description": "Rows added, removed or changed"
+                                                    },
+                                                    "destroys": {
+                                                        "type": "boolean",
+                                                        "description": "A cold change: validating deletes the period plans not yet started (always false for moved sessions)"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "changesToken": {
+                                            "type": "string",
+                                            "description": "Token of the announced list, to send back as confirmChanges"
+                                        },
+                                        "destroyedPeriodPlans": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "entryId": {
+                                                        "type": "string"
+                                                    },
+                                                    "title": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "keptPeriodPlans": {
+                                            "type": "integer",
+                                            "description": "Period plans the validation keeps"
+                                        },
+                                        "keptWishes": {
+                                            "type": "integer",
+                                            "description": "Coach wishes already received for the holidays to come, all kept"
+                                        },
+                                        "coachChanges": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "teamId": {
+                                                        "type": "string"
+                                                    },
+                                                    "teamName": {
+                                                        "type": "string"
+                                                    },
+                                                    "coachId": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "description": "The main coach who will hold the team sessions; null when the team has no main coach any more"
+                                                    },
+                                                    "coachName": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ]
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -30165,6 +30446,11 @@
                         "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "answeredBeforeSocleChange": {
+                        "description": "La r\u00e9ponse a \u00e9t\u00e9 donn\u00e9e avant la derni\u00e8re validation du planning de saison qui a chang\u00e9 du froid (lot 5) : la\ndol\u00e9ance est conserv\u00e9e, l'\u00e9cran porte la mention.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -30375,6 +30661,11 @@
                         "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
                         "default": false,
                         "type": "boolean"
+                    },
+                    "answeredBeforeSocleChange": {
+                        "description": "La r\u00e9ponse a \u00e9t\u00e9 donn\u00e9e avant la derni\u00e8re validation du planning de saison qui a chang\u00e9 du froid (lot 5) : la\ndol\u00e9ance est conserv\u00e9e, l'\u00e9cran porte la mention.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -30470,6 +30761,11 @@
                             },
                             "keepSeasonSlots": {
                                 "description": "Le coach souhaite garder ses cr\u00e9neaux habituels de saison cette semaine-l\u00e0 (volet B).",
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "answeredBeforeSocleChange": {
+                                "description": "La r\u00e9ponse a \u00e9t\u00e9 donn\u00e9e avant la derni\u00e8re validation du planning de saison qui a chang\u00e9 du froid (lot 5) : la\ndol\u00e9ance est conserv\u00e9e, l'\u00e9cran porte la mention.",
                                 "default": false,
                                 "type": "boolean"
                             }
@@ -34807,9 +35103,6 @@
                     "versionsDeletedOnValidate": {
                         "type": "integer"
                     },
-                    "overlaysDroppedOnValidate": {
-                        "type": "integer"
-                    },
                     "canEdit": {
                         "type": "boolean"
                     },
@@ -34842,9 +35135,6 @@
                     "versionsDeletedOnValidate": {
                         "type": "integer"
                     },
-                    "overlaysDroppedOnValidate": {
-                        "type": "integer"
-                    },
                     "canEdit": {
                         "type": "boolean"
                     },
@@ -34875,9 +35165,6 @@
                         "type": "boolean"
                     },
                     "versionsDeletedOnValidate": {
-                        "type": "integer"
-                    },
-                    "overlaysDroppedOnValidate": {
                         "type": "integer"
                     },
                     "canEdit": {

@@ -1,6 +1,6 @@
 # Lot 5 · Le socle froid : plan d'exécution
 
-**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 à PR 3 livrées (« Écarts au plan, tels que livrés », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
+**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 à PR 6 livrées (« Écarts au plan, tels que livrés », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
 
 **Limite à dire d'entrée** : la PR 5 concentre la porte sur la copie, « Retravailler », l'écran, la propagation des lignes de période et environ 49 fichiers de test, alors que le plafond Behat (950 s) est déjà dépassé en local. **Un dépassement est probable** ; relever le plafond exige la ligne datée du fondateur dans le corps de la PR.
 
@@ -293,6 +293,17 @@ Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1
 - Document, dans cette PR : l'exception E6 dans l'invariant « version chargée » de `CLAUDE.md` §6.
 - Écran : `ValidateDialog.tsx`, `PlanningPage.tsx`, `SeasonPlanBanner.tsx`, `coach-wishes/WishesTab.tsx`, textes.
 - Tests : lignes 39 à 49. `/security-review` : oui.
+
+**Livrée le 2026-11-28 (PR 6), sur `lot/conception`, non déployée.** Écarts au plan, tels que livrés (décisions de l'orchestrateur, que le fondateur peut contester) :
+- (a) **Le jeton de `validate`** n'est exigé que si des plannings de période sont supprimés (le §5 disait « si une ligne détruit »). `apply-pending-changes` l'exige toujours. Les deux relisent le jeton sous le verrou de la saison.
+- (b) **La mention « Réponse donnée avant la modification du planning de saison »** compare `updatedAt` de la doléance à `schedule_plan.cold_changed_at` (migration `Version20261206120000`, posée par `validate` et par `apply-pending-changes` quand du froid change) : une doléance retouchée après la validation perd la mention.
+- (c) **`coachChanges`** s'ajoute au contrat du §5, sur `validate-impact` comme sur `pending-impact` : `[{teamId, teamName, coachId, coachName}]`, `coachId` nul quand l'équipe n'a plus de coach principal. Deux phrases : « Les séances de {équipe} sont désormais tenues par {coach}. » et « Les séances de {équipe} n'ont plus de coach principal. »
+- (d) **Les boutons du bandeau** (« Valider ces modifications », régénérer) ne s'affichent que si du froid attend (ligne 167 du plan) : une version de travail seule n'en offre pas.
+- (e) **Le contrôle de cohérence de `pending-impact`** ne tourne que pour un gestionnaire (`checkPerformed`). Un Membre lit l'annonce sans que le moteur travaille.
+- (f) **Clés gardées** : `orphanedFixtures` et `declaredOrphanedFixtures` (celles que `validate-impact` servait déjà) à la place de `orphanCount` et `declaredCount` du §5. `PlanStates::replace` n'est pas créé : `store` remplace déjà.
+- (g) **Textes ajoutés hors du plan** : `noMainCoachAnyMore`, `checkingCoherence`, `checkFailed`, `retry`, `changesToConfirmAgain`, `validateReadOnlyNote`.
+- (h) `FutureHolidayCollectePurger` et la capacité `overlaysDroppedOnValidate` sont supprimés ; le 409 `overlays_exist` de `validate` devient `changes_to_confirm`. Gardes bloquantes ajoutées : `InForceCoherenceTest`, `ApplyPendingChangesGuardsTest` (step `Blocking suite`, `blocking-tests.md`) ; feature Behat `valider-des-modifications-sans-regenerer.feature`, référence `validation-22-controle-en-vigueur.json`.
+- (i) **Limites** : valider une version de travail non régénérée annonce « Rien ne change » et le froid reste en attente, le dialogue ne le dit pas ; le focus initial du dialogue reste sur le panneau, pas sur « Annuler » (comportement de `Modal`) ; la liste des incohérences n'est pas plafonnée à l'écran ; la relecture « génération en cours » sous le verrou d'`apply-pending-changes` n'est pas testée (fenêtre de concurrence) ; aucun test PHPUnit ne prouve « plannings gardés sans froid changé », seul le Behat le prouve ; le `coachChanges` de `validate-impact` n'est pas prouvé par un test (même maison que `pending-impact`) ; le code front mort `OverlaysExistError` est laissé en place ; le plafond Behat, déjà dépassé, reste à relever par le fondateur dans la PR finale.
 
 ### PR 7 · « La saison suivante reprend le socle en vigueur », et les documents
 - `SeasonTransitionService` lu sur le catalogue ; réservations du socle reprises.

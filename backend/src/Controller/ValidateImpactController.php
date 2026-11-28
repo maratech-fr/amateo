@@ -8,6 +8,7 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Entity\Schedule;
+use App\Plans\ValidationImpact;
 use App\Service\OrphanedFixtureFinder;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -25,14 +26,19 @@ use Throwable;
  * part direct comme aujourd'hui, aucun bruit ; N>0 → l'annonce « N matchs (dont X déjà déclarés à
  * la fédération) perdront leur salle ».
  *
- * PARITÉ PAR CONSTRUCTION : le MÊME prédicat ({@see OrphanedFixtureFinder}) sert cette annonce ET
- * la gâchette de validation ({@see ValidateScheduleController}) — la route ne peut pas annoncer
- * autre chose que ce que la validation dépointe.
+ * Lot 5 : l'annonce dit aussi ce que la validation change par rapport au planning en vigueur
+ * (`changes`, famille par famille, séances déplacées pour information), les plannings de période
+ * qu'elle supprime (`destroyedPeriodPlans`), ceux qu'elle garde, les doléances conservées, et le
+ * jeton de la liste vue (`changesToken`) que la validation exige quand elle supprime.
+ *
+ * PARITÉ PAR CONSTRUCTION : les MÊMES maisons ({@see OrphanedFixtureFinder}, {@see ValidationImpact})
+ * servent cette annonce ET la gâchette de validation ({@see ValidateScheduleController}) — la route
+ * ne peut pas annoncer autre chose que ce que la validation fait.
  *
  * ── LECTURE, ouverte au Membre (patron {@see DeletionImpactController}/{@see SocleDeviationController})
  * PAS de garde management, aucune écriture. Défense club en profondeur : RLS + filtre Doctrine
  * scopent déjà le club (find rend null pour un autre club → 404), et on re-vérifie le club (403).
- * AUCUN identifiant interne servi — seulement deux comptes.
+ * Seuls des comptes, des familles et les titres des périodes du club sont servis.
  */
 #[AsController]
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
@@ -44,6 +50,8 @@ final class ValidateImpactController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly OrphanedFixtureFinder $orphanedFixtureFinder,
+        // Lot 5 : ce que la validation change. Optionnel pour les tests unitaires des gardes, qui ne l'atteignent jamais.
+        private readonly ?ValidationImpact $validationImpact = null,
     ) {}
 
     #[Route('/api/schedules/{id}/validate-impact', name: 'api_schedule_validate_impact', methods: ['GET'])]
@@ -71,6 +79,11 @@ final class ValidateImpactController extends AbstractController
             return $this->json(['error' => 'Accès refusé.'], Response::HTTP_FORBIDDEN);
         }
 
-        return $this->json($this->orphanedFixtureFinder->impact($schedule->getClubId(), $schedule->getSeasonId()));
+        $orphans = $this->orphanedFixtureFinder->impact($schedule->getClubId(), $schedule->getSeasonId());
+        if (!$this->validationImpact instanceof ValidationImpact) {
+            return $this->json($orphans);
+        }
+
+        return $this->json([...$orphans, ...ValidationImpact::served($this->validationImpact->ofVersion($schedule))]);
     }
 }

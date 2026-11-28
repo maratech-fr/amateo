@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace App\Tests\Integration;
 
 use App\Entity\Schedule;
+use App\Entity\TeamCoach;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Enum\TeamCoachRole;
+use App\Plans\InForceCoherence;
 use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
+use App\Service\EngineClient;
+use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
@@ -22,6 +27,8 @@ use App\Tests\EngineRequestTravelDecorTrait;
 use App\Tests\Integration\Migration\Lot4MigrationChainTest;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
@@ -53,10 +60,12 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *  20 et 21. le filet du lot 5 (`EngineRequestSocleNetDecorTrait`) : le socle de la saison suivante née par
  *      le vrai geste depuis un socle complet en vigueur, et le placement quand une équipe créée après la
  *      validation porte un match. Témoins de décor lus en base, comme 16 à 19 ;
+ *  22. le contrôle d'incohérences avant « Valider ces modifications » (lot 5, PR 6) : le coach principal des U13
+ *      changé sans valider, les séances touchées du socle en vigueur soumises au verdict (`/validate-assignments`),
+ *      à leur place actuelle ;
  *  23 à 25. le filet du lot 9 (`EngineRequestRulesNetDecorTrait`) : le socle au trajet obligatoire réglé, à la
  *      passerelle obligatoire et à la contrainte permanente éteinte ; le même club dans un plan de vacances où la
- *      règle éteinte est cochée ; le placement aux règles de match à bornes ouvertes. Témoins lus en base. Le numéro
- *      22 est réservé (lot 5, PR 6).
+ *      règle éteinte est cochée ; le placement aux règles de match à bornes ouvertes. Témoins lus en base.
  *
  * Jumeau de conversion : {@see Lot4MigrationChainTest} compare aux MÊMES fichiers les demandes composées
  * sur ce décor écrit en SQL dans le schéma d'avant le lot 4, une fois toutes les migrations jouées.
@@ -456,6 +465,43 @@ final class EngineRequestReferenceTest extends KernelTestCase
 
         self::assertContains(self::ER_TEAM_U17_AFTER_VALIDATION, array_column(\is_array($body['teams'] ?? null) ? $body['teams'] : [], 'id'), 'témoin 21 : U17 F, créée après la validation, part au moteur');
         $this->assertReference('placement-21-equipe-creee-apres-validation', $body);
+    }
+
+    /**
+     * Le contrôle d'incohérences avant « Valider ces modifications » (lot 5, PR 6) : le coach principal des U13 passe de
+     * A à B, sans valider ; les trois séances du socle en vigueur sont touchées (U13, et les équipes de A et de B) et
+     * partent au verdict à leur place actuelle, en une demande.
+     */
+    public function testCoherenceCheckOfTheVersionInForceBeforeApplyingPendingChanges(): void
+    {
+        $this->seedSocleInForce();
+        $em = $this->erEm();
+        $link = $em->find(TeamCoach::class, self::erId('7c0a', 1));
+        self::assertInstanceOf(TeamCoach::class, $link, 'témoin 22 : le lien U13-A existe');
+        $em->remove($link);
+        $em->flush();
+        $em->persist((new TeamCoach)->setId(self::erId('7c0a', 9))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+            ->setTeamId(self::ER_TEAM_U13)->setCoachId(self::ER_COACH_B)->setRole(TeamCoachRole::MAIN));
+        $em->flush();
+        $em->clear();
+        $this->purgeEngineRequestCache();
+        $this->scopeGucToClub(self::ER_CLUB);
+
+        $bodies = [];
+        self::getContainer()->set(EngineClient::class, new EngineClient(new MockHttpClient(static function (string $method, string $url, array $options) use (&$bodies): MockResponse {
+            self::assertStringEndsWith('/validate-assignments', $url, 'le contrôle passe par le verdict existant');
+            $bodies[] = json_decode((string) ($options['body'] ?? ''), true, 512, \JSON_THROW_ON_ERROR);
+
+            return new MockResponse('{"valid":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}', ['http_code' => 200]);
+        }), new RequestIdContext));
+
+        $result = self::getContainer()->get(InForceCoherence::class)->check($this->erSeasonPlanId());
+
+        self::assertFalse($result['inconclusive'], 'le moteur simulé accepte : le contrôle conclut');
+        self::assertCount(1, $bodies, 'trois séances touchées : une seule demande');
+        self::assertIsArray($bodies[0]);
+        self::assertCount(3, \is_array($bodies[0]['candidates'] ?? null) ? $bodies[0]['candidates'] : [], 'témoin 22 : les trois séances sont candidates');
+        $this->assertReference('validation-22-controle-en-vigueur', $bodies[0]);
     }
 
     /**

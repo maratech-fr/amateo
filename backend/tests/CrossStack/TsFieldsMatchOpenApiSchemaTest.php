@@ -89,6 +89,9 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         // pour rafraîchir les rencontres — un renommage serveur le rendrait muet sans bruit.
         'matches/LeagueValidationOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'LeagueValidationOutlook', 'response' => ['GET', '/api/fixtures/league-validation']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
+        // Lot 5 — le coach qui tiendra les séances d'une équipe dont le coach principal change, lu par les deux dialogues.
+        'planning/ValidateCoachChange' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateCoachChange', 'response' => ['GET', '/api/schedules/{id}/validate-impact'], 'items' => 'coachChanges'],
+        'planning/PendingCoachChange' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateCoachChange', 'response' => ['GET', '/api/schedule_plans/{id}/pending-impact'], 'items' => 'coachChanges'],
         'matches/FfbbRencontresResult' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
         // Une ligne d'engagement vit dans le tableau `engagements` du corps 200 : `items` descend
         // dans le schéma d'UN élément (deducedLevel/alignment gardés contre une dérive de champ).

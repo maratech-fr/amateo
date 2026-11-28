@@ -96,7 +96,15 @@ class CoachWishResource
     #[Groups(['read'])]
     public bool $keepSeasonSlots = false;
 
-    public static function fromEntity(CoachWish $entity): self
+    /**
+     * La réponse a été donnée avant la dernière validation du planning de saison qui a changé du froid (lot 5) : la
+     * doléance est conservée, l'écran porte la mention.
+     */
+    #[Groups(['read'])]
+    public bool $answeredBeforeSocleChange = false;
+
+    /** `$socleColdChangedAt` : l'instant de la dernière validation du socle qui a changé du froid (null : aucune). */
+    public static function fromEntity(CoachWish $entity, ?DateTimeImmutable $socleColdChangedAt = null): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -114,6 +122,7 @@ class CoachWishResource
         $dto->comment = $entity->getComment();
         $dto->done = $entity->isDone();
         $dto->keepSeasonSlots = $entity->keepsSeasonSlots();
+        $dto->answeredBeforeSocleChange = $socleColdChangedAt instanceof DateTimeImmutable && $entity->getUpdatedAt() < $socleColdChangedAt;
 
         return $dto;
     }

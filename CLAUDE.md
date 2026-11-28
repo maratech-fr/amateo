@@ -108,7 +108,10 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   pris **avant** `lockPlanScope`, ordre club → entrée uniforme sur les trois écritures).
 - **Version chargée** (ADR-0002, amendement 2026-11-03) : seule la version chargée (l'étoile) d'un
   plan se modifie, se valide et part au moteur ; les autres se consultent (409 `not_loaded_version`,
-  `VersionEditability`).
+  `VersionEditability`). **Seule exception** : « Valider ces modifications »
+  (`POST /api/schedule_plans/{id}/apply-pending-changes`, `PendingChanges::apply`) écrit la version
+  EN VIGUEUR du socle, et seulement sa copie du froid, le coach de ses séances, son entrée figée et
+  son empreinte — aucune séance ne bouge, aucune version ne naît.
 - **Génération async** : controller → Messenger (Redis) → handler (snapshot figé → POST engine →
   import → Mercure). Worker = conteneur `messenger-worker`.
 - **Grille de gymnase possédée par la période** (ADR-0002) : slots d'une période = **copie**
@@ -117,11 +120,12 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   SOURCE du plan, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` ; « Charger » les pose).
 - **Le socle commande les plans de période** (ADR-0002) : (1) **aucune génération de période sans
   socle EN VIGUEUR** (`SocleGuard`) — « et si le socle n'a pas de version ? » est un cas
-  IMPOSSIBLE, jamais un repli à écrire ; (2) **valider/rouvrir le socle DÉTRUIT les plans de
-  période FUTURS** (l'entrée de calendrier survit) — ⚠ critère = la **DATE** (`startDate >
+  IMPOSSIBLE, jamais un repli à écrire ; (2) **valider un socle dont le FROID change DÉTRUIT les plans de
+  période FUTURS** (l'entrée de calendrier survit ; une séance déplacée ou un verrou n'y change rien ;
+  le socle ne se rouvre plus, il se retravaille) — ⚠ critère = la **DATE** (`startDate >
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
-  copiée ne peut périmer en silence que pour une période **déjà commencée**. Même bascule emporte
-  aussi la collecte de doléances des vacances à venir (`FutureHolidayCollectePurger`).
+  copiée ne peut périmer en silence que pour une période **déjà commencée**. La collecte de
+  doléances des vacances à venir, elle, reste (lot 5).
 - **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.12**, un seul
   contrat pour `/generate` · `/place-matches` · `/validate-assignments`, **allégé** : un champ que le
   solveur ne lit pas n'est ni envoyé ni accepté), **sync manuelle, pas de codegen** — gardé par les 3 `*ContractSchemaTest`.

@@ -13,6 +13,12 @@ use App\Structure\Family;
  */
 final readonly class PlanState
 {
+    /**
+     * Les familles dont le compte se dit par une cible, pas par ligne : changer le coach principal d'une équipe retire
+     * un lien et en ajoute un, c'est une équipe qui change.
+     */
+    private const array COUNTED_BY = ['TeamCoach' => 'teamId'];
+
     /** @param array<string, array<string, array<string, mixed>>> $families */
     public function __construct(private array $families) {}
 
@@ -24,7 +30,8 @@ final readonly class PlanState
 
     /**
      * Ce qui diffère d'ici à l'autre copie, famille par famille : une ligne présente d'un seul côté, ou dont un champ
-     * froid diffère, compte une fois. Tout écart porte sur du froid : chaque ligne supprimerait.
+     * froid diffère, compte une fois (le coach principal, une fois par équipe). Tout écart porte sur du froid : chaque
+     * ligne supprimerait.
      */
     public function changesTo(self $other): PlanChanges
     {
@@ -33,20 +40,24 @@ final readonly class PlanState
         sort($families);
 
         $lines = [];
+        $rows = [];
         foreach ($families as $family) {
             $mine = $this->families[$family] ?? [];
             $their = $theirs[$family] ?? [];
-            $count = 0;
+            $counted = [];
             foreach (array_unique([...array_keys($mine), ...array_keys($their)]) as $rowId) {
                 if (!isset($mine[$rowId], $their[$rowId]) || $mine[$rowId] !== $their[$rowId]) {
-                    ++$count;
+                    $rows[$family][(string) $rowId] = [$mine[$rowId] ?? null, $their[$rowId] ?? null];
+                    $by = self::COUNTED_BY[$family] ?? null;
+                    $target = null === $by ? null : ($mine[$rowId][$by] ?? $their[$rowId][$by] ?? null);
+                    $counted[\is_string($target) ? $target : (string) $rowId] = true;
                 }
             }
-            if ($count > 0) {
-                $lines[] = ['family' => $family, 'count' => $count, 'destroys' => true];
+            if ([] !== $counted) {
+                $lines[] = ['family' => $family, 'count' => \count($counted), 'destroys' => true];
             }
         }
 
-        return new PlanChanges($lines);
+        return new PlanChanges($lines, $rows);
     }
 }
