@@ -343,6 +343,24 @@ final class SoclePlansContext extends BaseContext
         }
     }
 
+    #[Then('la doléance reçue porte la mention « réponse donnée avant la modification du planning de saison »')]
+    public function laDoleanceRecuePorteLaMention(): void
+    {
+        $wishes = $this->apiGet(\sprintf('coach_wishes?calendarEntryId=%s', $this->collecteEntryId), $this->token);
+        $members = $wishes['json']['member'] ?? $wishes['json'];
+        foreach (\is_array($members) ? $members : [] as $wish) {
+            if (\is_array($wish) && $this->collecteWishId === ($wish['id'] ?? null)) {
+                if (true !== ($wish['answeredBeforeSocleChange'] ?? null)) {
+                    throw new RuntimeException(\sprintf('la doléance reçue avant la validation du froid porte la mention (answeredBeforeSocleChange vrai attendu) ; lu : %s', json_encode($wish, \JSON_UNESCAPED_UNICODE)));
+                }
+
+                return;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('la doléance reçue est introuvable côté gestionnaire (HTTP %d)', $wishes['status']));
+    }
+
     #[When('je valide en confirmant ce que la liste annonce')]
     public function jeValideEnConfirmant(): void
     {

@@ -21,6 +21,7 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Quand je valide en confirmant ce que la liste annonce
     Alors le planning de période à venir a disparu et celui déjà commencé subsiste
     Et la collecte et ses doléances des vacances à venir subsistent
+    Et la doléance reçue porte la mention « réponse donnée avant la modification du planning de saison »
 
   Plan du scénario: Ni un nom, ni un verrou, ni une séance déplacée ne suppriment les plannings de période à venir
     Une séance déplacée figure dans la liste, pour information ; un verrou et un nom n'y figurent pas. Déplacer
