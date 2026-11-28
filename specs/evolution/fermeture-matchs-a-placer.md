@@ -326,11 +326,8 @@ le planning n'est pas validé.
   `docs/architecture/adr-0002-pattern-plan.md:199-202` (point 6 : structure partagée, indépendance des versions par la
   photo) ; l'alternative « chaque version possède ses équipes » est **écartée** (`:381-384` : explosion de données,
   ambiguïté « quelle version j'édite »).
-- « Charger » **écrase** la structure vivante : `Service/StructureRestorer.php:93-130` (`apply`) et `:266-273`
-  (`wipeStructure`) ; il **efface pour de bon** les lignes d'absence des coachs absents de la photo
-  (`eraseStaffLinesOfCoachesAbsentFromPhoto`, :131-152) et **recrée les liens de collecte** (`coachWishTokenSync->syncSeason`,
-  :126-129 : les anciens liens sont perdus). Sa confirmation front (`frontend/src/features/planning/PlanningPage.tsx:1609-1621`)
-  ne le dit pas : P4-509 de la roadmap.
+- « Charger » (`POST /api/schedules/{id}/load`, `LoadVersionController`) remet l'état de travail du plan d'après la copie du
+  froid de la version (`PlanStates::restore`) ; il ne crée ni ne supprime équipe, gymnase, coach ou catégorie.
 - « Valider » est le **seul geste** qui met « à placer » les matchs dont le gymnase n'existe plus
   (`Controller/ValidateScheduleController.php:252-262`, `OrphanedFixtureFinder` + `FixtureVenueLossMarker`).
 - Supprimer à la main un gymnase qui a des matchs est **refusé** (`State/Processor/VenueStateProcessor.php:58-60`).
