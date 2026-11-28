@@ -112,7 +112,11 @@ final class LoadVersionGuardsTest extends WebTestCase
         $this->loadTeam('SM1');
         $inForce = $this->loadVersionOf($this->soclePlanId);
         $this->choosePlanVersion($inForce);
+        // L'état réel après validation : l'étoile reste sur la version en vigueur (sans pointeur, le repli prendrait
+        // la dernière terminée, la sœur, qui passerait pour déjà chargée).
+        $this->makeLoaded($inForce);
         $sibling = $this->loadVersionOf($this->soclePlanId);
+        self::assertSame($inForce->getId(), $this->loadedOf($this->soclePlanId), 'témoin : l\'étoile est sur la version en vigueur');
 
         self::assertTrue($this->capabilitiesOf($sibling->getId())['canLoad'] ?? null, 'la capacité offre « Charger » sous un socle en vigueur');
         $this->loadVersion($sibling->getId());
