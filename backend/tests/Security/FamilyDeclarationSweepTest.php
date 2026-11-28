@@ -20,6 +20,7 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
+use App\Service\SeasonTransitionService;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
 use App\Structure\Level;
@@ -336,6 +337,32 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         ));
     }
 
+    /**
+     * Lot 5, PR 7 (ligne 52 du plan) — « une famille que la saison suivante reprend a sa routine de reprise » : chaque
+     * famille déclarée `copiedToNextSeason: true` a une routine nommée dans `SeasonTransitionService::ROUTINES` (famille
+     * => méthode du service), et aucune routine ne reprend une famille déclarée `false`. Une famille déclarée reprise sans
+     * routine rougit ici, au lieu de ne jamais suivre la saison. Angle jumeau, cité :
+     * `preparer-la-saison-suivante-reprend-la-structure.feature` (ce que la reprise écrit réellement).
+     */
+    public function testEveryFamilyTheNextSeasonTakesOverHasItsRoutine(): void
+    {
+        // Témoin : le contrôle voit une famille reprise sans routine, une routine sans famille reprise, une routine
+        // nommée qui n'existe pas.
+        self::assertSame(
+            ['sans routine : Sans', 'reprise non déclarée : Routine seule', 'routine absente du service : Fantôme::nothing'],
+            $this->routineGaps(['Sans', 'Fantôme'], ['Routine seule' => 'catalog', 'Fantôme' => 'nothing'], self::class),
+        );
+
+        $routines = \defined(SeasonTransitionService::class . '::ROUTINES') ? \constant(SeasonTransitionService::class . '::ROUTINES') : null;
+        self::assertIsArray($routines, 'SeasonTransitionService::ROUTINES nomme la routine de reprise de chaque famille (famille => méthode)');
+
+        $gaps = $this->routineGaps($this->catalog()->copiedToNextSeason(), $routines, SeasonTransitionService::class);
+        self::assertSame([], $gaps, \sprintf(
+            "La reprise de la saison suivante ne suit pas la déclaration des familles (#[Family(…, copiedToNextSeason: …)]) :\n  - %s",
+            implode("\n  - ", $gaps),
+        ));
+    }
+
     public function testAnUndeclaredClassIsRefusedLoudly(): void
     {
         // Le catalogue d'abord : une erreur du conteneur est aussi une LogicException.
@@ -432,6 +459,38 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         sort($silent);
 
         return $silent;
+    }
+
+    /**
+     * Les écarts entre les familles déclarées reprises et les routines : reprise sans routine, routine d'une famille non
+     * déclarée reprise, routine qui ne nomme pas une méthode du service.
+     *
+     * @param list<string> $takenOver familles déclarées `copiedToNextSeason: true`
+     * @param array<mixed> $routines  famille => nom de méthode
+     * @param class-string $service   la classe qui porte les routines
+     *
+     * @return list<string>
+     */
+    private function routineGaps(array $takenOver, array $routines, string $service): array
+    {
+        $gaps = [];
+        foreach ($takenOver as $family) {
+            if (!\array_key_exists($family, $routines)) {
+                $gaps[] = 'sans routine : ' . $family;
+            }
+        }
+        foreach (array_keys($routines) as $family) {
+            if (!\in_array($family, $takenOver, true)) {
+                $gaps[] = 'reprise non déclarée : ' . $family;
+            }
+        }
+        foreach ($routines as $family => $method) {
+            if (!\is_string($method) || !method_exists($service, $method)) {
+                $gaps[] = \sprintf('routine absente du service : %s::%s', $family, \is_string($method) ? $method : get_debug_type($method));
+            }
+        }
+
+        return $gaps;
     }
 
     /** @return array<class-string, Family> la déclaration de chaque entité Doctrine qui en porte une */

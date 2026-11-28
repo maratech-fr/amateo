@@ -167,10 +167,7 @@ Les refus, dans l'ordre (`App\Service\ParcImport\ParcImportGate`, patron
    fuiterait l'existence du club) ;
 2. membre non gestionnaire → **403** `{"error":"Forbidden."}` ;
 3. saison archivée → **409** (`SeasonAccessGuard::assertWritable`) ;
-4. socle **EN VIGUEUR** → **409** (`SocleGuard::assertSeasonPlanNotChosen`) — importer un parc
-   est un geste d'**onboarding**, avant qu'un plan de saison pointe une version (rouvrir d'abord).
-   C'est l'inverse de `TeamImportGate`, qui ne porte pas cette garde ;
-5. limiteur `parc_import` **par utilisateur** (JWT) → **429**, consommé après l'auth pour que
+4. limiteur `parc_import` **par utilisateur** (JWT) → **429**, consommé après l'auth pour que
    403/404/409 gagnent d'abord.
 
 Puis, dans le contrôleur (le corps n'est lu qu'une fois l'appelant autorisé et non throttlé) —

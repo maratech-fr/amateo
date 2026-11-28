@@ -1,6 +1,6 @@
 # Lot 5 · Le socle froid : plan d'exécution
 
-**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 à PR 6 livrées (« Écarts au plan, tels que livrés », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
+**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 à PR 7 livrées : **le lot est livré** sur `lot/conception`, non déployé (« Écarts au plan, tels que livrés », §4). L'exécution a suivi l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
 
 **Limite à dire d'entrée** : la PR 5 concentre la porte sur la copie, « Retravailler », l'écran, la propagation des lignes de période et environ 49 fichiers de test, alors que le plafond Behat (950 s) est déjà dépassé en local. **Un dépassement est probable** ; relever le plafond exige la ligne datée du fondateur dans le corps de la PR.
 
@@ -309,6 +309,16 @@ Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1
 - `SeasonTransitionService` lu sur le catalogue ; réservations du socle reprises.
 - ADR-0007 à la place de l'ADR-0002, le reste de `CLAUDE.md` §6 et §7.1, état des lieux, fiche du lot (dont les étapes de conversion du §6).
 - Tests : lignes 50 à 52. `/security-review` : non.
+
+**Livrée le 2026-11-28 (PR 7), sur `lot/conception`, non déployée.** Écarts au plan, tels que livrés :
+- (a) `SeasonTransitionService` lit le catalogue : `SeasonTransitionService::ROUTINES` nomme la routine de chaque famille reprise (famille => méthode), dans l'ordre où elles s'enchaînent ; la reprise lève si une famille déclarée `copiedToNextSeason` n'a pas de routine, ou l'inverse, et `FamilyDeclarationSweepTest` (ligne 52) le garde dans les deux sens.
+- (b) **La reprise lit la porte `InForce`** : la copie de la version en vigueur, ou l'état de travail si rien n'a été validé. Une modification qui attend la validation ne suit pas (ligne 51, deux exemples du plan de scénario).
+- (c) `Reservation` passe à `copiedToNextSeason: true`. Une réservation d'équipe suit vers l'équipe copiée ; **une réservation libre suit avec son libellé**, au gymnase copié ; une référence pendante (équipe ou gymnase non copié) fait abandonner la ligne. `coachLateToleranceMinutes` suit (`SeasonTransitionServiceTest`). Les réservations ne sont pas comptées dans `counts`.
+- (d) La **référence 20 ne change que par ses réservations** : une séance `HARD` dans `slotTemplates` et, dans la capacité du créneau, la place que prend la réservation libre ; `EngineRequestReferenceTest` le garde.
+- (e) **L'entente et les mutualisations ne suivent pas** (`SharedTrainingBlock` et `SharedTrainingBlockTeam` restent `copiedToNextSeason: false`).
+- (f) **Règle de trajet : seul le cran suit** (`copyTravelRule` ne copie que l'intensité) ; battement et temps par défaut au lot 9 PR 3.
+- (g) Documents : ADR-0007 à la place de l'ADR-0002 pour le plan de saison (statut « remplacé partiellement » sur l'ADR-0002, pas de réécriture), `CLAUDE.md` §6 et §7.1, état des lieux, fiche du lot dans le découpage avec les étapes de conversion du §6. **`docs/ops/deploy.md` n'est pas touchée** (interdit par le §12) : les étapes de conversion sont dans la fiche du lot 5 du découpage, et la dernière PR du lot conception les porte dans `docs/ops/deploy.md`.
+- (h) **Limites** : l'import du parc n'est plus refusé socle en vigueur (PR 5), mais `import-du-parc.md` § garde 4 cite encore `SocleGuard::assertSeasonPlanNotChosen`, supprimée ; le texte du 409 de `GenerateScheduleController` (« Rouvrez-le ») reste celui d'avant pour un plan de saison .
 
 ## 5. Contrats nouveaux
 

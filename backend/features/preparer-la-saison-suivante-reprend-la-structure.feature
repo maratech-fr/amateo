@@ -10,6 +10,10 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
   saison la corrige dans l'autre, mais le dissocier de sa salle fédérale ne vaut que pour sa saison.
   Le temps de trajet entre deux gymnases est celui de leurs lieux : le corriger dans une saison le
   corrige dans l'autre.
+  La saison suivante reprend aussi les réservations, les passerelles, les règles de bien-être et les
+  séances de chaque équipe ; ni les groupes mutualisés ni l'entente ne la suivent. Elle part du
+  planning de saison en vigueur : une modification qui attend la validation ne la suit pas. Un club
+  qui n'a jamais validé son planning de saison part de son état de travail.
 
   Scénario: La saison suivante reprend la structure, une seule fois, sans toucher la saison en cours
     Étant donné un petit club dont l'offre complète règle aussi la saison suivante
@@ -18,8 +22,16 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Et le « Gymnase Nord » est relié à sa salle fédérale, avec son adresse et sa position
     Et le trajet entre le « Gymnase Nord » et le « Gymnase Sud » est saisi à 12 minutes en voiture
     Et le trajet entre gymnases réglé sur « Obligatoire », battement 10 minutes, temps par défaut 15 minutes
+    Et une réservation des « U13M1 » le lundi à 18:00 au « Gymnase Centre »
+    Et une réservation libre « Mairie » le mardi à 18:00 au « Gymnase Nord »
+    Et une passerelle entre les « SM1 » et les « U20M1 »
+    Et la règle de bien-être « Les jeunes avant les grands » éteinte
+    Et les « U13F1 » passés à 2 séances par semaine
+    Et les « U17F1 » et les « U15F1 » mutualisés
+    Et les « SM1 » en entente avec « Club voisin »
     Quand je prépare la saison suivante
     # Règles : les cinq règles semées à l'inscription du club, plus celle qui impose un gymnase.
+    # Le planning de saison n'a jamais été validé : la saison suivante part de l'état de travail.
     Alors la saison suivante reprend la structure de la saison en cours :
       | ce qui est repris         | nombre |
       | équipes                   | 11     |
@@ -28,6 +40,11 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
       | gymnases                  | 3      |
       | créneaux de gymnase       | 36     |
       | règles                    | 6      |
+      | réservations              | 2      |
+      | passerelles               | 1      |
+    Et la règle de bien-être « Les jeunes avant les grands » reste éteinte dans la saison suivante
+    Et les « U13F1 » ont 2 séances par semaine dans la saison suivante
+    Et ni le groupe mutualisé ni l'entente ne suivent la saison suivante
     Et la grille reprise est celle du planning de saison de la saison suivante
     # Chaque saison a sa compétition d'office « Amicaux » : née à l'inscription du club, et à la préparation de la suivante.
     Et chaque saison du club a sa compétition « Amicaux », une seule
@@ -59,3 +76,19 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Quand je dissocie le « Gymnase Nord » de sa salle fédérale dans la saison suivante
     Alors le « Gymnase Nord » de la saison en cours garde son adresse et ses temps de trajet
     Et le « Gymnase Nord » de la saison suivante n'a plus d'adresse, sur un lieu distinct de celui de la saison en cours
+
+  Plan du scénario: La saison suivante part du planning en vigueur, jamais d'une modification qui attend la validation
+    Étant donné un petit club dont l'offre complète règle aussi la saison suivante
+    Et nous sommes le 15 mai de la saison en cours
+    Et une réservation des « U13M1 » le lundi à 18:00 au « Gymnase Centre »
+    Et le planning de saison <planning>
+    Et les « U13F1 » passés à 2 séances par semaine
+    Et une réservation des « U13F1 » le mercredi à 18:00 au « Gymnase Sud »
+    Quand je prépare la saison suivante
+    Alors la saison suivante porte <réservations>
+    Et les « U13F1 » ont <séances> par semaine dans la saison suivante
+
+    Exemples:
+      | planning                | réservations   | séances   |
+      | généré sans être validé | 2 réservations | 2 séances |
+      | généré puis validé      | 1 réservation  | 1 séance  |

@@ -12,6 +12,7 @@ use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
 use App\Entity\PriorityTier;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -419,6 +420,28 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             [$copied->getIntensity(), $copied->getToleranceMinutes(), $copied->getDefaultMinutes()],
             'le cran est repris, battement et temps par défaut repartent à 20 minutes',
         );
+    }
+
+    /**
+     * Lot 5, PR 7 — la tolérance de retard du coach d'une réservation est froide et part au moteur
+     * (`slotTemplates.coachLateToleranceMinutes`) : elle suit la réservation dans la saison suivante. Le reste de la
+     * reprise des réservations : `EngineRequestReferenceTest`, cas 20, et `preparer-la-saison-suivante-reprend-la-structure.feature`.
+     */
+    public function testAReservationKeepsItsCoachLateToleranceInTheNextSeason(): void
+    {
+        [$club, $season, $refs] = $this->createClubGraph();
+        $this->em->persist((new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
+            ->setTeamId($refs['teamA']->getId())->setVenueId($refs['venueA']->getId())
+            ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
+            ->setCoachLateToleranceMinutes(10));
+        $this->em->flush();
+
+        $target = $this->service->transition($season, $this->inPreparationWindow());
+
+        $copied = $this->em->getRepository(Reservation::class)->findOneBy(['seasonId' => $target->getId()]);
+        self::assertInstanceOf(Reservation::class, $copied, 'la réservation suit la saison suivante');
+        self::assertSame(10, $copied->getCoachLateToleranceMinutes(), 'la tolérance de retard du coach suit la réservation');
     }
 
     public function testCoachIsVehicledSurvivesTheTransition(): void

@@ -88,9 +88,11 @@ final class GenerateScheduleController extends AbstractController implements Sea
         }
 
         // ADR-0002 inv. 1 : la version CHOISIE est le planning en vigueur — la
-        // régénérer l'écraserait. Rouvrir (dépointer) d'abord.
+        // régénérer l'écraserait. Le planning de saison se retravaille d'abord (lot 5), une période se rouvre.
         if ($this->schedulePlanProvisioner->isChosen($schedule->getId())) {
-            return $this->json(['error' => 'La version choisie est le planning en vigueur. Rouvrez-le avant de régénérer.'], Response::HTTP_CONFLICT);
+            return $this->json(['error' => $this->schedulePlanProvisioner->isSeasonSchedule($schedule)
+                ? 'La version choisie est le planning en vigueur. Retravaillez-le avant de régénérer.'
+                : 'La version choisie est le planning en vigueur. Rouvrez-le avant de régénérer.'], Response::HTTP_CONFLICT);
         }
 
         // A secondary plan (period overlay) can only be generated once the season's

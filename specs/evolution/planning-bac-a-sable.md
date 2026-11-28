@@ -47,7 +47,6 @@ Le bac à sable est un **socle de saison indépendant, relié à rien**, qui par
 
 - **P4-597** (une occupation de gymnase rattachée au plan d'une autre saison du même club, existence seule contrôlée) : **à embarquer**, un plan d'essai est « un plan d'une autre saison ».
 - **P4-612** (variante de semaine, planning « avec événement ») : partage la notion de « planning sans date à côté du socle » et la difficulté ADR-0002. Décision de conception commune à prendre avant de planifier l'un des deux. Différence : la variante est un planning réel qu'on applique, l'essai ne l'est jamais.
-- **P4-509** (la confirmation de « Charger cette version » n'annonce pas deux effets) : non embarquée, sauf si une PR touche cet écran.
 - Hors sujet : mode démo libre-service, stacks de test de l'équipe (`with-sandbox`, épreuve), « Préparer la saison suivante » (modèle de copie, pas le besoin).
 
 ## Taille

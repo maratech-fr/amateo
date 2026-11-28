@@ -329,7 +329,7 @@ survive is naturally bounded by a modal's lifetime.
    (`CLAUDE.md` §7.1) — touching it requires a non-regression test.
 9. **The planning pointer moves by validating, and by nothing else.** There is no "set as
    main" action (ADR-0002; locked by `PlanningToolbar.test.tsx`). Validating points the plan
-   at a version and deletes its sibling versions; reopening un-points it.
+   at a version and deletes its sibling versions; reopening un-points it (a PERIOD plan only — a season plan is reworked, "Retravailler", ADR-0007).
 10. **A period owns its venue grid.** In wizard period mode the Venues step is **editable**, not
     a read-only summary: the period's slots are a copy taken at plan birth and never unioned
     with the season's own. Same gestures as the season, barre « À poser » included (P4-43).

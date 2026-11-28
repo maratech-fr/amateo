@@ -21,6 +21,11 @@ use RuntimeException;
  * fédérale dans la saison suivante le passe sur un lieu neuf et laisse la saison en cours intacte
  * (décision 2, A). Le temps de trajet entre deux gymnases est celui de leurs lieux (PR 5) : une seule valeur, servie
  * dans chaque saison rangée selon les gymnases de cette saison, corrigée dans l'une, lue corrigée dans l'autre.
+ * Lot 5, PR 7 : la saison suivante reprend aussi réservations (d'équipe et libres), passerelles, règles de bien-être et
+ * séances par équipe, jamais les groupes mutualisés ni l'entente ; elle part de la copie du planning de saison en
+ * vigueur (une modification en attente ne suit pas), ou de l'état de travail si rien n'a jamais été validé. Le reste de
+ * la promesse au niveau de la demande au moteur : `EngineRequestReferenceTest`, cas 20 ; la liste des familles reprises
+ * et de leurs routines : `FamilyDeclarationSweepTest`.
  *
  * Décor DÉDIÉ ({@see SmallClubFixtureTrait}, sans génération) passé hors Découverte par le geste
  * support réel `app:clubs:set-plan --plan=complete --tier=palier-1 --paid-season=next` : la bascule exige que la
@@ -43,13 +48,20 @@ final class SeasonTransitionContext extends BaseContext
         'gymnases' => 'venue',
         'créneaux de gymnase' => 'venue_training_slot',
         'règles' => 'constraint',
+        'réservations' => 'reservation',
+        'passerelles' => 'team_link',
     ];
+
+    private const array DAYS = ['lundi' => 1, 'mardi' => 2, 'mercredi' => 3, 'jeudi' => 4];
 
     private const string CORRECTED_PHONE = '0612345678';
 
     private const string LINKED_ADDRESS = '12 rue du Nord, 69100 Villeurbanne';
 
     private const string CORRECTED_ADDRESS = '14 rue du Nord, 69100 Villeurbanne';
+
+    /** L'équipe mise en entente au décor. */
+    private string $ctcTeam = '';
 
     /** Les minutes en voiture du trajet Nord–Sud, saisies au décor, puis corrigées dans la saison suivante. */
     private int $drivingMinutes = 0;
@@ -106,7 +118,121 @@ final class SeasonTransitionContext extends BaseContext
         if (201 !== $created['status']) {
             throw new RuntimeException(\sprintf('la règle « toujours au %s » a répondu %d (201 attendu) : %s', $venue, $created['status'], json_encode($created['json'], \JSON_UNESCAPED_UNICODE)));
         }
-        $this->currentBefore = $this->structureOf($this->currentSeasonId);
+    }
+
+    /** Le geste « Réserver » de l'étape Créneaux, dans le planning de saison : une équipe, ou un créneau libre nommé. */
+    #[Given('/^une réservation (?:des « (?P<team>[^»]+) »|libre « (?P<label>[^»]+) ») le (?P<day>lundi|mardi|mercredi|jeudi) à (?P<start>\d\d:\d\d) au « (?P<venue>[^»]+) »$/u')]
+    public function uneReservation(string $team, string $label, string $day, string $start, string $venue): void
+    {
+        $reserved = $this->apiPost('reservations', [
+            'teamId' => '' === $team ? null : $this->smallClubTeamIds[$team],
+            'label' => '' === $label ? null : $label,
+            'venueId' => $this->smallClubVenueIds[$venue],
+            'dayOfWeek' => self::DAYS[$day],
+            'startTime' => $start,
+            'durationMinutes' => 90,
+            'schedulePlanId' => null,
+        ], $this->smallClubToken);
+        $this->expectStatus($reserved, [200, 201], \sprintf('la réservation %s du %s', '' === $team ? 'libre ' . $label : 'des ' . $team, $day));
+    }
+
+    #[Given('/^une passerelle entre les « (?P<a>[^»]+) » et les « (?P<b>[^»]+) »$/u')]
+    public function unePasserelle(string $a, string $b): void
+    {
+        $this->expectStatus($this->apiPost('team_links', [
+            'teamAId' => $this->smallClubTeamIds[$a], 'teamBId' => $this->smallClubTeamIds[$b],
+            'linkType' => 'NOT_SIMULTANEOUS', 'trainingIntensity' => 'PREFERRED',
+        ], $this->smallClubToken), [200, 201], \sprintf('la passerelle %s – %s', $a, $b));
+    }
+
+    #[Given('la règle de bien-être « Les jeunes avant les grands » éteinte')]
+    public function laRegleDeBienEtreEteinte(): void
+    {
+        $this->expectStatus($this->apiPut('implicit_rule_settings/ageAscending', ['intensity' => 'OFF'], $this->smallClubToken, ['X-Season-Id' => $this->currentSeasonId]), [200], 'éteindre « Les jeunes avant les grands »');
+    }
+
+    /** La composition du planning de saison : les séances par semaine d'une équipe (`PUT /api/teams/{id}`, comme l'étape Équipes). */
+    #[Given('/^les « (?P<team>[^»]+) » passés à (?P<sessions>\d+) séances par semaine$/u')]
+    public function lEquipePasseeASeances(string $team, string $sessions): void
+    {
+        $this->putTeam($team, ['sessionsPerWeek' => (int) $sessions]);
+    }
+
+    #[Given('/^les « (?P<a>[^»]+) » et les « (?P<b>[^»]+) » mutualisés$/u')]
+    public function lesEquipesMutualisees(string $a, string $b): void
+    {
+        $this->expectStatus($this->apiPost('shared_training_blocks', [
+            'teamIds' => [$this->smallClubTeamIds[$a], $this->smallClubTeamIds[$b]], 'commonSessions' => 1, 'schedulePlanId' => null,
+        ], $this->smallClubToken), [200, 201], \sprintf('le groupe %s + %s', $a, $b));
+    }
+
+    #[Given('/^les « (?P<team>[^»]+) » en entente avec « (?P<partner>[^»]+) »$/u')]
+    public function lEquipeEnEntente(string $team, string $partner): void
+    {
+        $this->putTeam($team, ['isCtc' => true, 'ctcPartner' => $partner]);
+        $this->ctcTeam = $team;
+    }
+
+    /** Le planning de saison généré par le moteur réel ; validé (en vigueur) ou laissé en version de travail. */
+    #[Given('/^le planning de saison (?P<state>généré sans être validé|généré puis validé)$/u')]
+    public function lePlanningDeSaison(string $state): void
+    {
+        $scheduleId = $this->generateSmallClubSeason();
+        if ('généré puis validé' === $state) {
+            $this->validateSmallClubSchedule($scheduleId);
+        }
+        $chosen = $this->smallClubSocleIsChosen($scheduleId);
+        if ($chosen !== ('généré puis validé' === $state)) {
+            throw new RuntimeException(\sprintf('témoin : le planning de saison devrait être %s', 'généré puis validé' === $state ? 'en vigueur' : 'sans version en vigueur'));
+        }
+    }
+
+    #[Then('/^la saison suivante porte (?P<count>\d+) réservations?$/u')]
+    public function laSaisonSuivantePorteReservations(string $count): void
+    {
+        $next = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM reservation WHERE season_id=\'%s\'', $this->nextSeasonId), admin: true);
+        if ((int) $count !== $next) {
+            throw new RuntimeException(\sprintf('la saison suivante porte %d réservation(s), %s attendue(s)', $next, $count));
+        }
+    }
+
+    /** Lu comme l'étape Équipes le lit : `GET /api/teams` dans la saison suivante (`X-Season-Id`). */
+    #[Then('/^les « (?P<team>[^»]+) » ont (?P<sessions>\d+) séances? par semaine dans la saison suivante$/u')]
+    public function lEquipeASeancesDansLaSaisonSuivante(string $team, string $sessions): void
+    {
+        $read = $this->teamOfSeason($team, $this->nextSeasonId);
+        if ((int) $sessions !== ($read['sessionsPerWeek'] ?? null)) {
+            throw new RuntimeException(\sprintf('dans la saison suivante, les %s ont %s séance(s) par semaine, %s attendue(s)', $team, json_encode($read['sessionsPerWeek'] ?? null), $sessions));
+        }
+    }
+
+    #[Then('la règle de bien-être « Les jeunes avant les grands » reste éteinte dans la saison suivante')]
+    public function laRegleDeBienEtreResteEteinte(): void
+    {
+        $read = $this->apiGet('implicit_rule_settings/ageAscending', $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
+        if (200 !== $read['status'] || 'OFF' !== ($read['json']['intensity'] ?? null)) {
+            throw new RuntimeException(\sprintf('dans la saison suivante, « Les jeunes avant les grands » se lit %d %s, éteinte attendue', $read['status'], json_encode($read['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('ni le groupe mutualisé ni l\'entente ne suivent la saison suivante')]
+    public function niLeGroupeNiLEntenteNeSuivent(): void
+    {
+        $blocks = fn (string $seasonId): int => (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE season_id=\'%s\'', $seasonId), admin: true);
+        if (1 !== $blocks($this->currentSeasonId)) {
+            throw new RuntimeException('témoin : la saison en cours devrait porter son groupe mutualisé');
+        }
+        if (0 !== $blocks($this->nextSeasonId)) {
+            throw new RuntimeException('le groupe mutualisé a suivi la saison suivante');
+        }
+        $current = $this->teamOfSeason($this->ctcTeam, $this->currentSeasonId);
+        if (true !== ($current['isCtc'] ?? null)) {
+            throw new RuntimeException(\sprintf('témoin : les %s devraient être en entente dans la saison en cours', $this->ctcTeam));
+        }
+        $next = $this->teamOfSeason($this->ctcTeam, $this->nextSeasonId);
+        if (false !== ($next['isCtc'] ?? null) || null !== ($next['ctcPartner'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'entente des %s a suivi la saison suivante : %s', $this->ctcTeam, json_encode([$next['isCtc'] ?? null, $next['ctcPartner'] ?? null], \JSON_UNESCAPED_UNICODE)));
+        }
     }
 
     /** Le geste « Associer à sa salle FFBB » de l'étape Gymnases : numéro fédéral, adresse et position (`VenuesStep.tsx::confirmAssociate`). */
@@ -178,6 +304,7 @@ final class SeasonTransitionContext extends BaseContext
     #[When('je prépare la saison suivante')]
     public function jePrepareLaSaisonSuivante(): void
     {
+        $this->currentBefore = $this->structureOf($this->currentSeasonId);
         $prepared = $this->apiPost(\sprintf('seasons/%s/transition', $this->currentSeasonId), [], $this->smallClubToken);
         $seasonId = $prepared['json']['seasonId'] ?? null;
         if (201 !== $prepared['status'] || !\is_string($seasonId) || '' === $seasonId) {
@@ -612,6 +739,48 @@ final class SeasonTransitionContext extends BaseContext
         }
 
         return $read['json'];
+    }
+
+    /**
+     * L'équipe d'une saison, lue comme l'étape Équipes la lit : `GET /api/teams` dans cette saison (`X-Season-Id`).
+     *
+     * @return array<mixed>
+     */
+    private function teamOfSeason(string $name, string $seasonId): array
+    {
+        $listed = $this->apiGet('teams', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
+        $members = \is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [];
+        foreach ($members as $member) {
+            if (\is_array($member) && ($member['name'] ?? null) === $name && \is_string($member['id'] ?? null)) {
+                return $member;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('aucune équipe « %s » dans la saison %s (HTTP %d)', $name, $seasonId, $listed['status']));
+    }
+
+    /**
+     * Modifie une équipe de la saison en cours comme l'étape Équipes : sa fiche relue, les champs changés, renvoyée.
+     *
+     * @param array<string, mixed> $changes
+     */
+    private function putTeam(string $team, array $changes): void
+    {
+        $id = $this->smallClubTeamIds[$team];
+        $current = $this->apiGet(\sprintf('teams/%s', $id), $this->smallClubToken);
+        $this->expectStatus($current, [200], \sprintf('la lecture des %s', $team));
+        $this->expectStatus($this->apiPut(\sprintf('teams/%s', $id), [...$current['json'], ...$changes], $this->smallClubToken), [200], \sprintf('la modification des %s', $team));
+    }
+
+    /**
+     * @param array{status: int, json: array<mixed>} $response
+     * @param list<int>                              $expected
+     */
+    private function expectStatus(array $response, array $expected, string $gesture): void
+    {
+        if (!\in_array($response['status'], $expected, true)) {
+            throw new RuntimeException(\sprintf('%s a répondu %d — corps : %s', $gesture, $response['status'], json_encode($response['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
+        }
     }
 
     /** @return array<string, int> libellé → nombre de lignes de la saison */

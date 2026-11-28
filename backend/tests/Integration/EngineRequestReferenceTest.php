@@ -437,7 +437,9 @@ final class EngineRequestReferenceTest extends KernelTestCase
 
     /**
      * Le socle de la saison suivante, née par le vrai geste depuis un socle complet en vigueur : aucune
-     * mutualisation ne suit la saison, les trajets si.
+     * mutualisation ne suit la saison, les trajets si, et la réservation d'équipe du socle en vigueur y part
+     * en séance verrouillée (lot 5, PR 7). La référence ne change que de ses réservations : tout autre écart
+     * la fait rougir.
      */
     public function testNextSeasonSocleAfterTheTransitionOfACompleteSocle(): void
     {
@@ -449,6 +451,11 @@ final class EngineRequestReferenceTest extends KernelTestCase
         self::assertSame([], $this->blockRows($run['body']), 'aucun groupe mutualisé ne suit la saison');
         self::assertNotSame([], $this->travelRows($run['body']), 'les temps de trajet suivent la saison');
         $this->assertReference('socle-20-saison-suivante-socle-complet', $run['body']);
+        $reserved = array_values(array_filter(
+            \is_array($run['body']['slotTemplates'] ?? null) ? $run['body']['slotTemplates'] : [],
+            static fn (mixed $slot): bool => \is_array($slot) && 'HARD' === ($slot['lockLevel'] ?? null),
+        ));
+        self::assertCount(1, $reserved, 'la réservation d\'équipe du socle en vigueur suit la saison, en séance verrouillée');
         $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
         $this->assertSnapshotMatchesPlanStructure($run['schedule']);
     }

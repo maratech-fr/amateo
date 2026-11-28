@@ -102,9 +102,13 @@ tranquille.
 
 **Livré :**
 - À partir du 1er mai et jusqu'à la fin de la saison en cours, « Préparer la saison suivante »
-  copie vos gymnases, vos équipes, vos coachs et vos règles permanentes dans une saison à part,
-  librement modifiable — la saison en cours n'est pas touchée, et le planning généré n'est pas
-  copié (il se génère dans la nouvelle saison) — `frontend/src/app/SeasonSelector.tsx:51-58,159`.
+  copie vos gymnases, vos équipes, vos coachs, vos règles (permanentes, de bien-être, de trajet),
+  vos passerelles et vos réservations dans une saison à part, librement modifiable — la saison en
+  cours n'est pas touchée, et le planning généré n'est pas copié (il se génère dans la nouvelle
+  saison) — `frontend/src/app/SeasonSelector.tsx:51-58,159`. La copie part du planning de saison
+  EN VIGUEUR : une modification qui attend la validation ne suit pas ; un club qui n'a jamais
+  validé part de son état de travail. Les groupes mutualisés et les ententes ne suivent pas
+  (`SeasonTransitionService::ROUTINES`, lue sur la déclaration des familles).
 - Le serveur tient la date : avant le 1er mai, la bascule est refusée 409 (« La saison suivante
   se prépare à partir du 1er mai. »), même à un appel direct, à l'horloge du club (simulée pour un
   club de démonstration) — `SeasonTransitionService::preparationOpensOn`. `GET /api/me` sert cette
