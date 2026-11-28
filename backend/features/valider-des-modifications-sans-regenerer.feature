@@ -25,14 +25,17 @@ Fonctionnalité: Valider des modifications sans régénérer
     Alors la copie de travail est à jour
 
   Plan du scénario: Le contrôle dit les incohérences avec le planning en vigueur, et laisse valider
+    L'annonce dit aussi qui tiendra les séances d'une équipe dont le coach principal change, ou que plus personne ne les tient.
     Étant donné un petit club dont le planning de saison est en vigueur, Eden coach principal des U13F1
     Et <modification>, sans valider
     Quand je demande ce que change « Valider ces modifications »
     Alors le contrôle annonce <annonce>
+    Et l'annonce <coach>
     Et la validation reste possible
 
     Exemples:
-      | modification                                         | annonce                                                                         |
-      | le coach principal des U13M1 confié à un coach libre | aucune incohérence                                                              |
-      | le coach principal des U13M1 confié à Eden           | une incohérence sur la séance des U13M1 au même moment qu'Eden, qui nomme sa règle |
-      | les U13M1 passés à 3 séances                         | 1 séance manquante pour les U13M1                                               |
+      | modification                                         | annonce                                                                            | coach                                                          |
+      | le coach principal des U13M1 confié à un coach libre | aucune incohérence                                                                 | dit que les séances des U13M1 seront tenues par le coach libre |
+      | le coach principal des U13M1 confié à Eden           | une incohérence sur la séance des U13M1 au même moment qu'Eden, qui nomme sa règle | dit que les séances des U13M1 seront tenues par Eden           |
+      | le coach principal des U13M1 retiré                  | aucune incohérence                                                                 | dit que les U13M1 n'auront plus de coach principal             |
+      | les U13M1 passés à 3 séances                         | 1 séance manquante pour les U13M1                                                  | ne nomme aucun changement de coach                             |

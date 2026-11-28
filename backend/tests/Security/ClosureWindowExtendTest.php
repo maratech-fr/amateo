@@ -429,8 +429,9 @@ final class ClosureWindowExtendTest extends WebTestCase
     }
 
     /**
-     * ⑤ inv. 14 : retravailler le socle ne balaie rien ; valider la copie de travail balaie les segments FUTURS nés du
-     * geste, le milieu commencé et l'entrée racine SURVIVENT (lot 5 : « Rouvrir » ne vaut plus pour le socle).
+     * ⑤ inv. 14 : retravailler le socle ne balaie rien ; valider une copie de travail dont le froid change (lot 5, PR 6 :
+     * seul le froid supprime) balaie les segments FUTURS nés du geste, le milieu commencé et l'entrée racine SURVIVENT
+     * (lot 5 : « Rouvrir » ne vaut plus pour le socle).
      */
     public function testValidatingAReworkedSocleSweepsFutureSegmentsButKeepsStartedAndEntry(): void
     {

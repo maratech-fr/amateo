@@ -18,7 +18,8 @@ use RuntimeException;
  * par le nouveau, que les conflits de personne du planning en vigueur comptent ; le froid changé supprime les plannings
  * de période pas commencés, annoncés avant ; rien n'attend plus ; « Retravailler » juste après donne une copie de
  * travail à jour. Avant confirmation, le contrôle d'incohérences dit ce que le changement casse sur le planning en
- * vigueur (règle cassée, séances manquantes) et laisse valider.
+ * vigueur (règle cassée, séances manquantes) et laisse valider ; l'annonce nomme le coach qui tiendra les séances d'une
+ * équipe dont le coach principal change, ou dit que plus personne ne les tient.
  *
  * Décor : `SmallClubFixtureTrait` (11 équipes, 3 gymnases, palier 60 s), plus un coach, Eden, principal des U13F1, et
  * deux réservations au même moment, lundi 18:00 : U13M1 au Gymnase Centre, U13F1 au Gymnase Nord. Le socle est généré
@@ -95,7 +96,7 @@ final class PendingChangesApplyContext extends BaseContext
         $this->openSmallClubPeriodPlan($this->futureEntryId);
     }
 
-    #[Given('/^(?P<modification>le coach principal des U13M1 confié à Eden|le coach principal des U13M1 confié à un coach libre|les U13M1 passés à 3 séances), sans valider$/u')]
+    #[Given('/^(?P<modification>le coach principal des U13M1 confié à Eden|le coach principal des U13M1 confié à un coach libre|le coach principal des U13M1 retiré|les U13M1 passés à 3 séances), sans valider$/u')]
     public function uneModificationSansValider(string $modification): void
     {
         if ('les U13M1 passés à 3 séances' === $modification) {
@@ -104,7 +105,9 @@ final class PendingChangesApplyContext extends BaseContext
             return;
         }
 
-        if ('le coach principal des U13M1 confié à Eden' === $modification) {
+        if ('le coach principal des U13M1 retiré' === $modification) {
+            $this->successorCoachId = '';
+        } elseif ('le coach principal des U13M1 confié à Eden' === $modification) {
             $this->successorCoachId = $this->smallClubCoachIds['Eden'];
         } else {
             $free = $this->apiPost('coaches', ['firstName' => 'Fred'], $this->smallClubToken);
@@ -124,6 +127,9 @@ final class PendingChangesApplyContext extends BaseContext
         $removed = $this->apiDelete(\sprintf('team_coaches/%s', $link), $this->smallClubToken);
         if (204 !== $removed['status']) {
             throw new RuntimeException(\sprintf('retirer le coach principal des U13M1 a répondu %d (204 attendu)', $removed['status']));
+        }
+        if ('' === $this->successorCoachId) {
+            return;
         }
         $posted = $this->apiPost('team_coaches', ['teamId' => $this->smallClubTeamIds['U13M1'], 'coachId' => $this->successorCoachId, 'role' => 'MAIN'], $this->smallClubToken);
         if (!\in_array($posted['status'], [200, 201], true)) {
@@ -250,6 +256,35 @@ final class PendingChangesApplyContext extends BaseContext
         };
         if (!$ok) {
             throw new RuntimeException(\sprintf('le contrôle devrait annoncer « %s » ; lu : %s', $annonce, $read));
+        }
+    }
+
+    /**
+     * L'équipe dont le coach principal change est annoncée avec le coach qui tiendra ses séances (`coachChanges`), ou
+     * `coachId` nul quand plus personne ne les tient — dans l'annonce, et dans le refus `changes_to_confirm` du geste
+     * sans jeton (même maison, `ValidationImpact::served`). Le libellé n'est pas lu.
+     */
+    #[Then('/^l\'annonce (?P<coach>dit que les séances des U13M1 seront tenues par Eden|dit que les séances des U13M1 seront tenues par le coach libre|dit que les U13M1 n\'auront plus de coach principal|ne nomme aucun changement de coach)$/u')]
+    public function lAnnonceDitQuiTiendraLesSeances(string $coach): void
+    {
+        $refused = $this->apiPost(\sprintf('schedule_plans/%s/apply-pending-changes', $this->planId), [], $this->smallClubToken);
+        if (409 !== $refused['status'] || 'changes_to_confirm' !== ($refused['json']['code'] ?? null)) {
+            throw new RuntimeException(\sprintf('valider ces modifications sans jeton devrait répondre 409 changes_to_confirm ; lu : %d', $refused['status']));
+        }
+        $u13m1 = $this->smallClubTeamIds['U13M1'];
+        $expected = match ($coach) {
+            'ne nomme aucun changement de coach' => [],
+            'dit que les U13M1 n\'auront plus de coach principal' => [[$u13m1, null]],
+            default => [[$u13m1, $this->successorCoachId]],
+        };
+        foreach (['l\'annonce' => $this->impact, 'le refus sans jeton' => $refused['json']] as $where => $body) {
+            $read = array_map(
+                static fn (mixed $change): array => \is_array($change) ? [$change['teamId'] ?? null, $change['coachId'] ?? null] : [],
+                \is_array($body['coachChanges'] ?? null) ? $body['coachChanges'] : ['absent'],
+            );
+            if ($expected !== $read) {
+                throw new RuntimeException(\sprintf('%s devrait %s ; lu : %s', $where, $coach, json_encode($body['coachChanges'] ?? null, \JSON_UNESCAPED_UNICODE)));
+            }
         }
     }
 

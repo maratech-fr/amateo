@@ -1310,8 +1310,8 @@ describe("PlanningPage (integration)", () => {
 
     // Toolbar « Valider » ouvre la modale d'impact ; elle nomme les plannings de période supprimés.
     await user.click(screen.getByRole("button", { name: /valider/i }));
-    expect(await screen.findByText(/2 plannings de période/i)).toBeInTheDocument();
-    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: "Valider et supprimer" });
+    expect(await screen.findByText(PLANNING_TEXTS.validateDeletesPeriodPlans(["Toussaint", "Noël"]))).toBeInTheDocument();
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", { name: PLANNING_TEXTS.validateAndDelete });
     await waitFor(() => expect(confirm).toBeEnabled());
     await user.click(confirm);
 
