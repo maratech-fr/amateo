@@ -12,6 +12,8 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
+use App\Entity\PlanTeam;
+use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -25,12 +27,14 @@ use App\Entity\VenueTravelRuleSetting;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Matches\FriendlyCompetitions;
+use App\Plans\InForce;
 use App\Plans\PlanComposition;
-use App\Plans\SoclePlan;
+use App\Structure\FamilyCatalog;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -47,9 +51,51 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  * N+1 starts with baseline/socle null → the existing cockpit gate forces the
  * baseline work. Its `status` is 'draft' (display metadata only — resolution
  * is calendar-derived, see SeasonResolver).
+ *
+ * Lot 5, PR 7 — ce qui est repris est la liste du catalogue (`#[Family(…, copiedToNextSeason: true)]`), une routine
+ * par famille ({@see self::ROUTINES}). La source est le socle EN VIGUEUR, lu par la porte {@see InForce} : la copie
+ * de la version validée (une modification qui attend la validation ne suit pas), ou l'état de travail si le planning
+ * de saison n'a jamais été validé. Ni les groupes mutualisés ni l'entente ne suivent.
+ *
+ * @phpstan-type Run array{
+ *     club: string,
+ *     source: string,
+ *     target: string,
+ *     plan: string,
+ *     venues: array<string, string>,
+ *     coaches: array<string, string>,
+ *     teams: array<string, string>,
+ *     counts: array{venueTrainingSlots: int, teamCoaches: int, coachPlayerMemberships: int, constraints: int},
+ *     socleValues: array<string, array{sessionsPerWeek: int, maxSessionsPerDay: int}>,
+ * }
  */
 final class SeasonTransitionService
 {
+    /**
+     * La routine de reprise de chaque famille que la saison suivante reprend (famille => méthode), dans l'ordre où
+     * elles s'enchaînent : un gymnase, un coach ou une équipe avant ce qui les désigne. Les familles sont exactement
+     * celles que le catalogue déclare reprises : la reprise lève sinon, et `FamilyDeclarationSweepTest` le garde.
+     */
+    public const array ROUTINES = [
+        Venue::class => 'copyVenues',
+        VenueTrainingSlot::class => 'copyTrainingSlots',
+        VenueOccupancy::class => 'copyOccupancies',
+        VenueMatchWindow::class => 'copyMatchWindows',
+        Coach::class => 'copyCoaches',
+        Team::class => 'copyTeams',
+        PlanTeam::class => 'copyTeamLines',
+        TeamCoach::class => 'copyTeamCoaches',
+        CoachPlayerMembership::class => 'copyMemberships',
+        TeamMatchHabit::class => 'copyMatchHabits',
+        TeamLink::class => 'copyTeamLinks',
+        ClubLeagueWindow::class => 'copyLeagueWindows',
+        MatchConstraint::class => 'copyMatchConstraints',
+        Constraint::class => 'copyConstraints',
+        ImplicitRuleSetting::class => 'copyImplicitRuleSettings',
+        VenueTravelRuleSetting::class => 'copyTravelRule',
+        Reservation::class => 'copyReservations',
+    ];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonResolver $seasonResolver,
@@ -61,9 +107,10 @@ final class SeasonTransitionService
         private readonly PersonDirectory $personDirectory,
         private readonly PlaceDirectory $placeDirectory,
         private readonly PlanEntitlements $planEntitlements,
-        private readonly SoclePlan $soclePlan,
         private readonly PlanComposition $planComposition,
         private readonly FriendlyCompetitions $friendlyCompetitions,
+        private readonly InForce $inForce,
+        private readonly FamilyCatalog $familyCatalog,
     ) {}
 
     /**
@@ -203,381 +250,41 @@ final class SeasonTransitionService
         // ADR-0002 Lot A: the copied season starts with its empty SEASON plan — lot 4 : il porte la
         // structure partagée reprise (grille, occupations, règles de bien-être), comme celui de la source.
         $targetPlanId = $this->schedulePlanProvisioner->ensureSeasonPlan($target)->getId();
-        $sourcePlanId = $this->soclePlan->idOf($sourceId);
         // Lot 7, PR 4a — « Amicaux », la compétition d'office, naît avec la saison suivante.
         $this->friendlyCompetitions->ensureDefault($clubId, $target->getId());
 
-        $venueMap = [];
-        foreach ($this->rows(Venue::class, $clubId, $sourceId) as $venue) {
-            // Le gymnase de la saison suivante est l'usage du même lieu : adresse et position ne se
-            // recopient pas, elles vivent une fois au club.
-            $copy = new Venue($this->placeDirectory->of($venue));
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setName($venue->getName());
-            $copy->setColor($venue->getColor());
-            $copy->setCanSplit($venue->getCanSplit());
-            $copy->setSource($venue->getSource());
-            $copy->setExternalRef($venue->getExternalRef());
-            // P4-187a — les alias de salle confirmés sont une convention permanente
-            // du gymnase (comme son nom) : ils suivent la copie N+1.
-            $copy->setExternalLabels($venue->getExternalLabels());
-            $copy->setIsActive($venue->getIsActive());
-            $this->entityManager->persist($copy);
-            $venueMap[$venue->getId()] = $copy->getId();
+        // La liste de ce qui est repris est celle du catalogue ; une famille déclarée reprise sans routine, ou une
+        // routine d'une famille qui ne l'est pas, ne passe jamais en silence.
+        $declared = $this->familyCatalog->copiedToNextSeason();
+        $gaps = [...array_diff($declared, array_keys(self::ROUTINES)), ...array_diff(array_keys(self::ROUTINES), $declared)];
+        if ([] !== $gaps) {
+            throw new LogicException(\sprintf('La reprise de la saison suivante ne suit pas la déclaration des familles : %s.', implode(', ', $gaps)));
         }
 
-        $slots = 0;
-        foreach ($this->rows(VenueTrainingSlot::class, $clubId, $sourceId) as $slot) {
-            // Seule la structure PARTAGÉE se transmet (le plan de saison, inv. 6). Un créneau
-            // PRÊTÉ appartient à un plan de période de la saison source — « la mairie me prête
-            // ce gymnase POUR cet ajustement d'octobre » n'a aucun sens en N+1 : copié sur le
-            // plan de saison, il deviendrait un créneau SAISONNIER PERMANENT du club. Planning
-            // plausible, et faux.
-            if ($slot->getSchedulePlanId() !== $sourcePlanId) {
-                continue;
-            }
-            $newVenueId = $venueMap[$slot->getVenueId()] ?? null;
-            if (null === $newVenueId) {
-                continue; // dangling venue reference — nothing to attach to.
-            }
-            $copy = new VenueTrainingSlot;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setVenueId($newVenueId);
-            $copy->setDayOfWeek($slot->getDayOfWeek());
-            $copy->setStartTime($slot->getStartTime());
-            $copy->setDurationMinutes($slot->getDurationMinutes());
-            $copy->setCapacity($slot->getCapacity());
-            $copy->setSchedulePlanId($targetPlanId);
-            $this->entityManager->persist($copy);
-            ++$slots;
-        }
-
-        // Les occupations de SAISON suivent les créneaux vers les gymnases copiés ; celles d'une
-        // période restent à leur plan, une dormante (gymnase non copié) est ignorée. Sans contrôle.
-        foreach ($this->rows(VenueOccupancy::class, $clubId, $sourceId) as $occupancy) {
-            if ($occupancy->getSchedulePlanId() !== $sourcePlanId) {
-                continue;
-            }
-            $newVenueId = $venueMap[$occupancy->getVenueId()] ?? null;
-            if (null === $newVenueId) {
-                continue;
-            }
-            $this->entityManager->persist(
-                (new VenueOccupancy)->setClubId($clubId)->setSeasonId($target->getId())->setVenueId($newVenueId)
-                    ->setDayOfWeek($occupancy->getDayOfWeek())->setStartTime($occupancy->getStartTime())
-                    ->setDurationMinutes($occupancy->getDurationMinutes())->setLabel($occupancy->getLabel())
-                    ->setSchedulePlanId($targetPlanId),
-            );
-        }
-
-        // P1-4 PR B — les fenêtres d'accès MATCH se recopient comme les créneaux :
-        // la convention mairie se renouvelle.
-        foreach ($this->rows(VenueMatchWindow::class, $clubId, $sourceId) as $window) {
-            // Une ouverture datée est un fait d'un jour, comme une indisponibilité : jamais recopiée.
-            if ($window->getOpeningDate() instanceof DateTimeImmutable) {
-                continue;
-            }
-            $newVenueId = $venueMap[$window->getVenueId()] ?? null;
-            if (null === $newVenueId) {
-                continue; // dangling venue reference — nothing to attach to.
-            }
-            $copy = new VenueMatchWindow;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setVenueId($newVenueId);
-            $copy->setDayOfWeek($window->getDayOfWeek());
-            // PR2 — la ligne « Jours fériés » (dayOfWeek nul + ce drapeau) se recopie comme les autres.
-            $copy->setAppliesOnPublicHolidays($window->isAppliesOnPublicHolidays());
-            $copy->setStartTime($window->getStartTime());
-            $copy->setEndTime($window->getEndTime());
-            $this->entityManager->persist($copy);
-        }
-
-        $coachMap = [];
-        foreach ($this->rows(Coach::class, $clubId, $sourceId) as $coach) {
-            // La saison suivante réutilise la fiche de la personne (nom, mail, téléphone, genre) :
-            // seul le rôle de la saison se recopie.
-            $copy = new Coach($this->personDirectory->personOf($coach));
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setMaxDaysOverride($coach->getMaxDaysOverride());
-            $copy->setIsActive($coach->getIsActive());
-            $copy->setIsEmployee($coach->isEmployee());
-            // La case « véhiculé » (le coach peut transporter) suit la copie N+1 comme les autres
-            // options du rôle.
-            $copy->setIsVehicled($coach->isVehicled());
-            $this->entityManager->persist($copy);
-            $coachMap[$coach->getId()] = $copy->getId();
-        }
-
-        $teamMap = [];
-        // Lot 4, PR 3a — les séances et le plafond de chaque équipe : sa ligne au socle de la source, reprise sur la ligne
-        // du socle de la nouvelle saison (posée à la fin, par la seule porte).
-        $sourceSocleValues = $this->planComposition->socleValuesOfSeason($sourceId);
-        $socleValues = [];
-        foreach ($this->rows(Team::class, $clubId, $sourceId) as $team) {
-            $copy = new Team;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            // Club-scoped referentials (category, tier) are shared across seasons.
-            $copy->setSportCategoryId($team->getSportCategoryId());
-            $copy->setPriorityTierId($team->getPriorityTierId());
-            $copy->setTierOrder($team->getTierOrder());
-            // Free label, copied as-is — NEVER auto-renamed (spec §6.7).
-            $copy->setName($team->getName());
-            $copy->setLevel($team->getLevel());
-            $copy->setGender($team->getGender());
-            $copy->setSize($team->getSize());
-            $copy->setMinSessionsOverride($team->getMinSessionsOverride());
-            $copy->setMatchDay($team->getMatchDay());
-            $forcedVenueId = $team->getForcedVenueId();
-            $copy->setForcedVenueId(null !== $forcedVenueId ? ($venueMap[$forcedVenueId] ?? null) : null);
-            $copy->setIsActive($team->getIsActive());
-            $this->entityManager->persist($copy);
-            $teamMap[$team->getId()] = $copy->getId();
-            if (isset($sourceSocleValues[$team->getId()])) {
-                $socleValues[$copy->getId()] = $sourceSocleValues[$team->getId()];
-            }
-        }
-
-        $teamCoaches = 0;
-        foreach ($this->rows(TeamCoach::class, $clubId, $sourceId) as $link) {
-            $teamId = $teamMap[$link->getTeamId()] ?? null;
-            $coachId = $coachMap[$link->getCoachId()] ?? null;
-            if (null === $teamId || null === $coachId) {
-                continue;
-            }
-            $copy = new TeamCoach;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setTeamId($teamId);
-            $copy->setCoachId($coachId);
-            $copy->setRole($link->getRole());
-            // Le premier lié reste le défaut, et le choix du gestionnaire reste retenu.
-            $copy->setCreatedAt($link->getCreatedAt());
-            $copy->setWishRecipient($link->isWishRecipient());
-            $this->entityManager->persist($copy);
-            ++$teamCoaches;
-        }
-
-        $memberships = 0;
-        foreach ($this->rows(CoachPlayerMembership::class, $clubId, $sourceId) as $membership) {
-            $teamId = $teamMap[$membership->getTeamId()] ?? null;
-            $coachId = $coachMap[$membership->getCoachId()] ?? null;
-            if (null === $teamId || null === $coachId) {
-                continue;
-            }
-            $copy = new CoachPlayerMembership;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setCoachId($coachId);
-            $copy->setTeamId($teamId);
-            $copy->setPosition($membership->getPosition());
-            $copy->setIsActive($membership->getIsActive());
-            $this->entityManager->persist($copy);
-            ++$memberships;
-        }
-
-        // P1-4 PR C — « nous sommes des êtres d'habitude » : habitudes ET
-        // passerelles suivent la saison (remap équipe + gymnase), même statut
-        // que les fenêtres d'accès mairie.
-        foreach ($this->rows(TeamMatchHabit::class, $clubId, $sourceId) as $habit) {
-            $teamId = $teamMap[$habit->getTeamId()] ?? null;
-            if (null === $teamId) {
-                continue;
-            }
-            $copy = new TeamMatchHabit;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setTeamId($teamId);
-            $copy->setDayOfWeek($habit->getDayOfWeek());
-            $copy->setKickoffTime($habit->getKickoffTime());
-            // A dangling venue reference degrades to a day+time habit — the
-            // habit survives, its venue anchor does not.
-            $copy->setVenueId(null !== $habit->getVenueId() ? ($venueMap[$habit->getVenueId()] ?? null) : null);
-            // P4-271 — le tag de semaine A/B se renouvelle avec la saison.
-            $copy->setWeek($habit->getWeek());
-            $this->entityManager->persist($copy);
-        }
-
-        foreach ($this->rows(TeamLink::class, $clubId, $sourceId) as $link) {
-            $teamAId = $teamMap[$link->getTeamAId()] ?? null;
-            $teamBId = $teamMap[$link->getTeamBId()] ?? null;
-            if (null === $teamAId || null === $teamBId) {
-                continue;
-            }
-            // The copies keep the normalized order invariant (teamAId < teamBId):
-            // the remapped uuids are new, so re-normalize.
-            if (strcasecmp($teamAId, $teamBId) > 0) {
-                [$teamAId, $teamBId] = [$teamBId, $teamAId];
-            }
-            $copy = new TeamLink;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setTeamAId($teamAId);
-            $copy->setTeamBId($teamBId);
-            $copy->setLinkType($link->getLinkType());
-            // Passerelles PR-1 : l'intensité côté entraînement se recopie en N+1 (l'oublier
-            // serait une régression silencieuse — gardé par le test de transition).
-            $copy->setTrainingIntensity($link->getTrainingIntensity());
-            $this->entityManager->persist($copy);
-        }
-
-        // P4-272 ① — la COPIE club de l'enveloppe ligue suit la saison : les
-        // corrections du gestionnaire (fenêtres éditées/ajoutées/supprimées) se
-        // renouvellent en N+1, comme les fenêtres d'accès mairie. Recopie verbatim
-        // (aucune référence gymnase/équipe à remapper). Si la source n'en a aucune
-        // (club antérieur au backfill), on retombe sur la recopie de la ligue
-        // effective pour ne jamais laisser N+1 sans envelope.
-        $leagueWindowCopies = 0;
-        foreach ($this->rows(ClubLeagueWindow::class, $clubId, $sourceId) as $window) {
-            $copy = new ClubLeagueWindow;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setLeague($window->getLeague());
-            $copy->setCategory($window->getCategory());
-            $copy->setLevel($window->getLevel());
-            $copy->setGender($window->getGender());
-            $copy->setDayOfWeek($window->getDayOfWeek());
-            $copy->setKickoffMin($window->getKickoffMin());
-            $copy->setKickoffMax($window->getKickoffMax());
-            $this->entityManager->persist($copy);
-            ++$leagueWindowCopies;
-        }
-        if (0 === $leagueWindowCopies) {
-            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
-            $this->clubLeagueWindowSeeder->seedForSeason($clubId, $target->getId(), $club?->getLeague());
-        }
-
-        // P4-272 ③+④+⑤ — les RÈGLES DE MATCH suivent la saison, comme les corrections du
-        // gestionnaire. CLUB (③) : recopie VERBATIM (ni gymnase ni équipe à remapper —
-        // scopeTargetId/venueId nuls). TEAM (④, interdiction de gymnase) : remap de
-        // l'équipe (teamMap) ET du gymnase (venueMap). COACH (⑤, indisponibilité) : remap
-        // du coach (coachMap), jours + fourchette conservés. Une référence PENDANTE (l'entité
-        // visée n'existe plus en N+1, comme une habitude à gymnase disparu) fait ABANDONNER
-        // la ligne — jamais un pointeur mort en base. FACILITY : pas encore émis.
-        foreach ($this->rows(MatchConstraint::class, $clubId, $sourceId) as $rule) {
-            $copy = new MatchConstraint;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setRuleType($rule->getRuleType());
-            $copy->setDaysOfWeek($rule->getDaysOfWeek());
-            $copy->setKickoffMin($rule->getKickoffMin());
-            $copy->setKickoffMax($rule->getKickoffMax());
-            if (ConstraintScope::CLUB === $rule->getScope()) {
-                $copy->setScope(ConstraintScope::CLUB);
-                $copy->setScopeTargetId(null);
-                $copy->setVenueId(null);
-            } elseif (ConstraintScope::TEAM === $rule->getScope()) {
-                $sourceTeamId = $rule->getScopeTargetId();
-                $sourceVenueId = $rule->getVenueId();
-                $teamId = null !== $sourceTeamId ? ($teamMap[$sourceTeamId] ?? null) : null;
-                $venueId = null !== $sourceVenueId ? ($venueMap[$sourceVenueId] ?? null) : null;
-                // Référence pendante des deux côtés obligatoires → ligne abandonnée.
-                if (null === $teamId || null === $venueId) {
-                    continue;
-                }
-                $copy->setScope(ConstraintScope::TEAM);
-                $copy->setScopeTargetId($teamId);
-                $copy->setVenueId($venueId);
-            } elseif (ConstraintScope::COACH === $rule->getScope()) {
-                $sourceCoachId = $rule->getScopeTargetId();
-                $coachId = null !== $sourceCoachId ? ($coachMap[$sourceCoachId] ?? null) : null;
-                // Coach pendant (supprimé en N) → ligne abandonnée.
-                if (null === $coachId) {
-                    continue;
-                }
-                $copy->setScope(ConstraintScope::COACH);
-                $copy->setScopeTargetId($coachId);
-                $copy->setVenueId(null);
-            } else {
-                // FACILITY : non émis aujourd'hui (le processeur le refuse) ; une ligne héritée
-                // d'un état antérieur ne se propage pas sans règle de remap.
-                continue;
-            }
-            $this->entityManager->persist($copy);
-        }
-
-        // Les temps de trajet vivent au club entre deux lieux (lot 3, PR 5) : les gymnases copiés
-        // pointent les mêmes lieux, la saison suivante lit les mêmes temps, rien n'est recopié.
-
-        $maps = ['venues' => $venueMap, 'coaches' => $coachMap, 'teams' => $teamMap];
-        $constraints = 0;
-        // Permanent constraints only: dated ones (calendarEntryId set) belong
-        // to season-N periods and die with them.
-        foreach ($this->entityManager->getRepository(Constraint::class)->findBy(['clubId' => $clubId, 'seasonId' => $sourceId, 'calendarEntryId' => null]) as $constraint) {
-            [$scopeTargetId, $scopeDangling] = $this->remapScopeTarget($constraint, $maps);
-            // A dangling scope target (referenced entity already gone in N) →
-            // the constraint is broken in N already; do NOT propagate an
-            // invalid row (it would fail validation and skip enforcement).
-            if ($scopeDangling) {
-                continue;
-            }
-            [$config, $configDangling] = $this->remapConfig($constraint->getConfig(), $maps);
-            if ($configDangling) {
-                continue;
-            }
-            $copy = new Constraint;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setName($constraint->getName());
-            $copy->setDescription($constraint->getDescription());
-            $copy->setScope($constraint->getScope());
-            $copy->setScopeTargetId($scopeTargetId);
-            $copy->setFamily($constraint->getFamily());
-            $copy->setRuleType($constraint->getRuleType());
-            $copy->setConfig($config);
-            $copy->setCreatedBy($constraint->getCreatedBy());
-            $copy->setSource($constraint->getSource());
-            $copy->setSourceOccurrenceId($constraint->getSourceOccurrenceId());
-            $copy->setIsActive($constraint->getIsActive());
-            $copy->setSortOrder($constraint->getSortOrder());
-            $this->entityManager->persist($copy);
-            ++$constraints;
-        }
-
-        // Réglages des règles implicites (bien-être) de la portée SAISON UNIQUEMENT (le plan de saison) :
-        // recopiés tels quels — aucune référence d'entité à remapper, une règle est un cran
-        // d'intensité + un seuil. Une saison N+1 hérite donc des assouplissements décidés en N
-        // (au lieu de repartir tout HARD). Les COPIES de période (plan non-NULL) sont exclues :
-        // leurs plans N n'existent pas en N+1 (les entrées de calendrier ne sont pas recopiées) —
-        // les copier sur le plan de saison en ferait de faux réglages de SAISON. La copie porte le
-        // plan de saison de la nouvelle saison. Pas comptabilisé dans `$counts`.
-        foreach ($this->entityManager->getRepository(ImplicitRuleSetting::class)->findBy(['clubId' => $clubId, 'seasonId' => $sourceId, 'schedulePlanId' => $sourcePlanId]) as $setting) {
-            $copy = new ImplicitRuleSetting;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setSchedulePlanId($targetPlanId);
-            $copy->setRuleKey($setting->getRuleKey());
-            $copy->setIntensity($setting->getIntensity());
-            $copy->setParams($setting->getParams());
-            $this->entityManager->persist($copy);
-        }
-
-        // P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (PREFERRED|MANDATORY)
-        // suit la saison, comme la matrice qu'il gouverne : un club qui a mis « Obligatoire » en N
-        // le retrouve en N+1 (sinon la copie de matrice reviendrait silencieusement à Préféré).
-        // Aucune référence à remapper (un cran d'intensité). Absence de ligne = défaut, rien à
-        // copier. Pas comptabilisé dans `$counts`.
-        $travelRule = $this->entityManager->getRepository(VenueTravelRuleSetting::class)->findOneBy(['clubId' => $clubId, 'seasonId' => $sourceId]);
-        if ($travelRule instanceof VenueTravelRuleSetting) {
-            $copy = new VenueTravelRuleSetting;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setIntensity($travelRule->getIntensity());
-            $this->entityManager->persist($copy);
+        /** @var Run $run */
+        $run = [
+            'club' => $clubId,
+            'source' => $sourceId,
+            'target' => $target->getId(),
+            'plan' => $targetPlanId,
+            'venues' => [],
+            'coaches' => [],
+            'teams' => [],
+            'counts' => ['venueTrainingSlots' => 0, 'teamCoaches' => 0, 'coachPlayerMemberships' => 0, 'constraints' => 0],
+            'socleValues' => [],
+        ];
+        foreach (self::ROUTINES as $routine) {
+            $this->{$routine}($run);
         }
 
         $counts = [
-            'venues' => \count($venueMap),
-            'venueTrainingSlots' => $slots,
-            'coaches' => \count($coachMap),
-            'teams' => \count($teamMap),
-            'teamCoaches' => $teamCoaches,
-            'coachPlayerMemberships' => $memberships,
-            'constraints' => $constraints,
+            'venues' => \count($run['venues']),
+            'venueTrainingSlots' => $run['counts']['venueTrainingSlots'],
+            'coaches' => \count($run['coaches']),
+            'teams' => \count($run['teams']),
+            'teamCoaches' => $run['counts']['teamCoaches'],
+            'coachPlayerMemberships' => $run['counts']['coachPlayerMemberships'],
+            'constraints' => $run['counts']['constraints'],
         ];
 
         $target->setTransitionData([
@@ -594,21 +301,483 @@ final class SeasonTransitionService
         // Nothing stores them, and the closed catalogue has no custom tag.
 
         $this->entityManager->flush();
-        $this->planComposition->ensureLines($target->getId(), $socleValues);
+        $this->planComposition->ensureLines($target->getId(), $run['socleValues']);
 
         return $target;
     }
 
     /**
+     * Les lignes en vigueur d'une famille dans la saison source : la copie de la version validée du socle, ou les
+     * lignes de travail si rien n'a été validé ({@see InForce::rows}). Une famille de niveau plan y est lue sur le
+     * plan de saison seul : un créneau PRÊTÉ, une occupation ou un réglage d'un plan de période appartiennent à la
+     * période (« la mairie me prête ce gymnase POUR cet ajustement d'octobre » n'a aucun sens en N+1 : copié sur le
+     * plan de saison, il deviendrait un créneau SAISONNIER PERMANENT du club).
+     *
      * @template T of object
      *
-     * @param class-string<T> $entityClass
+     * @param Run             $run
+     * @param class-string<T> $familyClass
      *
      * @return list<T>
      */
-    private function rows(string $entityClass, string $clubId, string $seasonId): array
+    private function sourceRows(array $run, string $familyClass): array
     {
-        return $this->entityManager->getRepository($entityClass)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
+        return $this->inForce->rows($run['source'], $familyClass);
+    }
+
+    /** @param Run $run */
+    private function copyVenues(array &$run): void
+    {
+        foreach ($this->sourceRows($run, Venue::class) as $venue) {
+            // Le gymnase de la saison suivante est l'usage du même lieu : adresse et position ne se
+            // recopient pas, elles vivent une fois au club.
+            $copy = new Venue($this->placeDirectory->of($venue));
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setName($venue->getName());
+            $copy->setColor($venue->getColor());
+            $copy->setCanSplit($venue->getCanSplit());
+            $copy->setSource($venue->getSource());
+            $copy->setExternalRef($venue->getExternalRef());
+            // P4-187a — les alias de salle confirmés sont une convention permanente
+            // du gymnase (comme son nom) : ils suivent la copie N+1.
+            $copy->setExternalLabels($venue->getExternalLabels());
+            $copy->setIsActive($venue->getIsActive());
+            $this->entityManager->persist($copy);
+            $run['venues'][$venue->getId()] = $copy->getId();
+        }
+    }
+
+    /** @param Run $run */
+    private function copyTrainingSlots(array &$run): void
+    {
+        // Seule la structure PARTAGÉE se transmet (le plan de saison, inv. 6).
+        foreach ($this->sourceRows($run, VenueTrainingSlot::class) as $slot) {
+            $newVenueId = $run['venues'][$slot->getVenueId()] ?? null;
+            if (null === $newVenueId) {
+                continue; // dangling venue reference — nothing to attach to.
+            }
+            $copy = new VenueTrainingSlot;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setVenueId($newVenueId);
+            $copy->setDayOfWeek($slot->getDayOfWeek());
+            $copy->setStartTime($slot->getStartTime());
+            $copy->setDurationMinutes($slot->getDurationMinutes());
+            $copy->setCapacity($slot->getCapacity());
+            $copy->setSchedulePlanId($run['plan']);
+            $this->entityManager->persist($copy);
+            ++$run['counts']['venueTrainingSlots'];
+        }
+    }
+
+    /** @param Run $run */
+    private function copyOccupancies(array &$run): void
+    {
+        // Les occupations de SAISON suivent les créneaux vers les gymnases copiés ; celles d'une
+        // période restent à leur plan, une dormante (gymnase non copié) est ignorée. Sans contrôle.
+        foreach ($this->sourceRows($run, VenueOccupancy::class) as $occupancy) {
+            $newVenueId = $run['venues'][$occupancy->getVenueId()] ?? null;
+            if (null === $newVenueId) {
+                continue;
+            }
+            $this->entityManager->persist(
+                (new VenueOccupancy)->setClubId($run['club'])->setSeasonId($run['target'])->setVenueId($newVenueId)
+                    ->setDayOfWeek($occupancy->getDayOfWeek())->setStartTime($occupancy->getStartTime())
+                    ->setDurationMinutes($occupancy->getDurationMinutes())->setLabel($occupancy->getLabel())
+                    ->setSchedulePlanId($run['plan']),
+            );
+        }
+    }
+
+    /** @param Run $run */
+    private function copyMatchWindows(array &$run): void
+    {
+        // P1-4 PR B — les fenêtres d'accès MATCH se recopient comme les créneaux :
+        // la convention mairie se renouvelle.
+        foreach ($this->sourceRows($run, VenueMatchWindow::class) as $window) {
+            // Une ouverture datée est un fait d'un jour, comme une indisponibilité : jamais recopiée.
+            if ($window->getOpeningDate() instanceof DateTimeImmutable) {
+                continue;
+            }
+            $newVenueId = $run['venues'][$window->getVenueId()] ?? null;
+            if (null === $newVenueId) {
+                continue; // dangling venue reference — nothing to attach to.
+            }
+            $copy = new VenueMatchWindow;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setVenueId($newVenueId);
+            $copy->setDayOfWeek($window->getDayOfWeek());
+            // PR2 — la ligne « Jours fériés » (dayOfWeek nul + ce drapeau) se recopie comme les autres.
+            $copy->setAppliesOnPublicHolidays($window->isAppliesOnPublicHolidays());
+            $copy->setStartTime($window->getStartTime());
+            $copy->setEndTime($window->getEndTime());
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /** @param Run $run */
+    private function copyCoaches(array &$run): void
+    {
+        foreach ($this->sourceRows($run, Coach::class) as $coach) {
+            // La saison suivante réutilise la fiche de la personne (nom, mail, téléphone, genre) :
+            // seul le rôle de la saison se recopie.
+            $copy = new Coach($this->personDirectory->personOf($coach));
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setMaxDaysOverride($coach->getMaxDaysOverride());
+            $copy->setIsActive($coach->getIsActive());
+            $copy->setIsEmployee($coach->isEmployee());
+            // La case « véhiculé » (le coach peut transporter) suit la copie N+1 comme les autres
+            // options du rôle.
+            $copy->setIsVehicled($coach->isVehicled());
+            $this->entityManager->persist($copy);
+            $run['coaches'][$coach->getId()] = $copy->getId();
+        }
+    }
+
+    /**
+     * L'entente (`isCtc`, `ctcPartner`) ne suit pas : la saison suivante la redit, ou non.
+     *
+     * @param Run $run
+     */
+    private function copyTeams(array &$run): void
+    {
+        foreach ($this->sourceRows($run, Team::class) as $team) {
+            $copy = new Team;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            // Club-scoped referentials (category, tier) are shared across seasons.
+            $copy->setSportCategoryId($team->getSportCategoryId());
+            $copy->setPriorityTierId($team->getPriorityTierId());
+            $copy->setTierOrder($team->getTierOrder());
+            // Free label, copied as-is — NEVER auto-renamed (spec §6.7).
+            $copy->setName($team->getName());
+            $copy->setLevel($team->getLevel());
+            $copy->setGender($team->getGender());
+            $copy->setSize($team->getSize());
+            $copy->setMinSessionsOverride($team->getMinSessionsOverride());
+            $copy->setMatchDay($team->getMatchDay());
+            $forcedVenueId = $team->getForcedVenueId();
+            $copy->setForcedVenueId(null !== $forcedVenueId ? ($run['venues'][$forcedVenueId] ?? null) : null);
+            $copy->setIsActive($team->getIsActive());
+            $this->entityManager->persist($copy);
+            $run['teams'][$team->getId()] = $copy->getId();
+        }
+    }
+
+    /**
+     * Lot 4, PR 3a — les séances et le plafond de chaque équipe : sa ligne au socle de la source, reprise sur la ligne
+     * du socle de la nouvelle saison (posée à la fin, par la seule porte).
+     *
+     * @param Run $run
+     */
+    private function copyTeamLines(array &$run): void
+    {
+        foreach ($this->sourceRows($run, PlanTeam::class) as $line) {
+            $teamId = $run['teams'][$line->getTeamId()] ?? null;
+            if (null !== $teamId) {
+                $run['socleValues'][$teamId] = ['sessionsPerWeek' => $line->getSessionsPerWeek(), 'maxSessionsPerDay' => $line->getMaxSessionsPerDay()];
+            }
+        }
+    }
+
+    /** @param Run $run */
+    private function copyTeamCoaches(array &$run): void
+    {
+        foreach ($this->sourceRows($run, TeamCoach::class) as $link) {
+            $teamId = $run['teams'][$link->getTeamId()] ?? null;
+            $coachId = $run['coaches'][$link->getCoachId()] ?? null;
+            if (null === $teamId || null === $coachId) {
+                continue;
+            }
+            $copy = new TeamCoach;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setTeamId($teamId);
+            $copy->setCoachId($coachId);
+            $copy->setRole($link->getRole());
+            // Le premier lié reste le défaut, et le choix du gestionnaire reste retenu.
+            $copy->setCreatedAt($link->getCreatedAt());
+            $copy->setWishRecipient($link->isWishRecipient());
+            $this->entityManager->persist($copy);
+            ++$run['counts']['teamCoaches'];
+        }
+    }
+
+    /** @param Run $run */
+    private function copyMemberships(array &$run): void
+    {
+        foreach ($this->sourceRows($run, CoachPlayerMembership::class) as $membership) {
+            $teamId = $run['teams'][$membership->getTeamId()] ?? null;
+            $coachId = $run['coaches'][$membership->getCoachId()] ?? null;
+            if (null === $teamId || null === $coachId) {
+                continue;
+            }
+            $copy = new CoachPlayerMembership;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setCoachId($coachId);
+            $copy->setTeamId($teamId);
+            $copy->setPosition($membership->getPosition());
+            $copy->setIsActive($membership->getIsActive());
+            $this->entityManager->persist($copy);
+            ++$run['counts']['coachPlayerMemberships'];
+        }
+    }
+
+    /**
+     * P1-4 PR C — « nous sommes des êtres d'habitude » : habitudes ET passerelles suivent la saison (remap équipe +
+     * gymnase), même statut que les fenêtres d'accès mairie.
+     *
+     * @param Run $run
+     */
+    private function copyMatchHabits(array &$run): void
+    {
+        foreach ($this->sourceRows($run, TeamMatchHabit::class) as $habit) {
+            $teamId = $run['teams'][$habit->getTeamId()] ?? null;
+            if (null === $teamId) {
+                continue;
+            }
+            $copy = new TeamMatchHabit;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setTeamId($teamId);
+            $copy->setDayOfWeek($habit->getDayOfWeek());
+            $copy->setKickoffTime($habit->getKickoffTime());
+            // A dangling venue reference degrades to a day+time habit — the
+            // habit survives, its venue anchor does not.
+            $copy->setVenueId(null !== $habit->getVenueId() ? ($run['venues'][$habit->getVenueId()] ?? null) : null);
+            // P4-271 — le tag de semaine A/B se renouvelle avec la saison.
+            $copy->setWeek($habit->getWeek());
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /** @param Run $run */
+    private function copyTeamLinks(array &$run): void
+    {
+        foreach ($this->sourceRows($run, TeamLink::class) as $link) {
+            $teamAId = $run['teams'][$link->getTeamAId()] ?? null;
+            $teamBId = $run['teams'][$link->getTeamBId()] ?? null;
+            if (null === $teamAId || null === $teamBId) {
+                continue;
+            }
+            // The copies keep the normalized order invariant (teamAId < teamBId):
+            // the remapped uuids are new, so re-normalize.
+            if (strcasecmp($teamAId, $teamBId) > 0) {
+                [$teamAId, $teamBId] = [$teamBId, $teamAId];
+            }
+            $copy = new TeamLink;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setTeamAId($teamAId);
+            $copy->setTeamBId($teamBId);
+            $copy->setLinkType($link->getLinkType());
+            // Passerelles PR-1 : l'intensité côté entraînement se recopie en N+1 (l'oublier
+            // serait une régression silencieuse — gardé par le test de transition).
+            $copy->setTrainingIntensity($link->getTrainingIntensity());
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /**
+     * P4-272 ① — la COPIE club de l'enveloppe ligue suit la saison : les corrections du gestionnaire (fenêtres
+     * éditées/ajoutées/supprimées) se renouvellent en N+1, comme les fenêtres d'accès mairie. Recopie verbatim (aucune
+     * référence gymnase/équipe à remapper). Si la source n'en a aucune (club antérieur au backfill), on retombe sur la
+     * recopie de la ligue effective pour ne jamais laisser N+1 sans envelope.
+     *
+     * @param Run $run
+     */
+    private function copyLeagueWindows(array &$run): void
+    {
+        $leagueWindowCopies = 0;
+        foreach ($this->sourceRows($run, ClubLeagueWindow::class) as $window) {
+            $copy = new ClubLeagueWindow;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setLeague($window->getLeague());
+            $copy->setCategory($window->getCategory());
+            $copy->setLevel($window->getLevel());
+            $copy->setGender($window->getGender());
+            $copy->setDayOfWeek($window->getDayOfWeek());
+            $copy->setKickoffMin($window->getKickoffMin());
+            $copy->setKickoffMax($window->getKickoffMax());
+            $this->entityManager->persist($copy);
+            ++$leagueWindowCopies;
+        }
+        if (0 === $leagueWindowCopies) {
+            $club = $this->entityManager->getRepository(Club::class)->find($run['club']);
+            $this->clubLeagueWindowSeeder->seedForSeason($run['club'], $run['target'], $club?->getLeague());
+        }
+    }
+
+    /**
+     * P4-272 ③+④+⑤ — les RÈGLES DE MATCH suivent la saison, comme les corrections du gestionnaire. CLUB (③) : recopie
+     * VERBATIM (ni gymnase ni équipe à remapper — scopeTargetId/venueId nuls). TEAM (④, interdiction de gymnase) :
+     * remap de l'équipe ET du gymnase. COACH (⑤, indisponibilité) : remap du coach, jours + fourchette conservés. Une
+     * référence PENDANTE (l'entité visée n'existe plus en N+1, comme une habitude à gymnase disparu) fait ABANDONNER la
+     * ligne — jamais un pointeur mort en base. FACILITY : pas encore émis.
+     *
+     * @param Run $run
+     */
+    private function copyMatchConstraints(array &$run): void
+    {
+        foreach ($this->sourceRows($run, MatchConstraint::class) as $rule) {
+            $copy = new MatchConstraint;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setRuleType($rule->getRuleType());
+            $copy->setDaysOfWeek($rule->getDaysOfWeek());
+            $copy->setKickoffMin($rule->getKickoffMin());
+            $copy->setKickoffMax($rule->getKickoffMax());
+            if (ConstraintScope::CLUB === $rule->getScope()) {
+                $copy->setScope(ConstraintScope::CLUB);
+                $copy->setScopeTargetId(null);
+                $copy->setVenueId(null);
+            } elseif (ConstraintScope::TEAM === $rule->getScope()) {
+                $sourceTeamId = $rule->getScopeTargetId();
+                $sourceVenueId = $rule->getVenueId();
+                $teamId = null !== $sourceTeamId ? ($run['teams'][$sourceTeamId] ?? null) : null;
+                $venueId = null !== $sourceVenueId ? ($run['venues'][$sourceVenueId] ?? null) : null;
+                // Référence pendante des deux côtés obligatoires → ligne abandonnée.
+                if (null === $teamId || null === $venueId) {
+                    continue;
+                }
+                $copy->setScope(ConstraintScope::TEAM);
+                $copy->setScopeTargetId($teamId);
+                $copy->setVenueId($venueId);
+            } elseif (ConstraintScope::COACH === $rule->getScope()) {
+                $sourceCoachId = $rule->getScopeTargetId();
+                $coachId = null !== $sourceCoachId ? ($run['coaches'][$sourceCoachId] ?? null) : null;
+                // Coach pendant (supprimé en N) → ligne abandonnée.
+                if (null === $coachId) {
+                    continue;
+                }
+                $copy->setScope(ConstraintScope::COACH);
+                $copy->setScopeTargetId($coachId);
+                $copy->setVenueId(null);
+            } else {
+                // FACILITY : non émis aujourd'hui (le processeur le refuse) ; une ligne héritée
+                // d'un état antérieur ne se propage pas sans règle de remap.
+                continue;
+            }
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /**
+     * Permanent constraints only: dated ones (calendarEntryId set) belong to season-N periods and die with them. Les
+     * temps de trajet vivent au club entre deux lieux (lot 3, PR 5) : les gymnases copiés pointent les mêmes lieux, la
+     * saison suivante lit les mêmes temps, rien n'est recopié.
+     *
+     * @param Run $run
+     */
+    private function copyConstraints(array &$run): void
+    {
+        $maps = ['venues' => $run['venues'], 'coaches' => $run['coaches'], 'teams' => $run['teams']];
+        foreach ($this->sourceRows($run, Constraint::class) as $constraint) {
+            if (null !== $constraint->getCalendarEntryId()) {
+                continue;
+            }
+            [$scopeTargetId, $scopeDangling] = $this->remapScopeTarget($constraint, $maps);
+            // A dangling scope target (referenced entity already gone in N) →
+            // the constraint is broken in N already; do NOT propagate an
+            // invalid row (it would fail validation and skip enforcement).
+            if ($scopeDangling) {
+                continue;
+            }
+            [$config, $configDangling] = $this->remapConfig($constraint->getConfig(), $maps);
+            if ($configDangling) {
+                continue;
+            }
+            $copy = new Constraint;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setName($constraint->getName());
+            $copy->setDescription($constraint->getDescription());
+            $copy->setScope($constraint->getScope());
+            $copy->setScopeTargetId($scopeTargetId);
+            $copy->setFamily($constraint->getFamily());
+            $copy->setRuleType($constraint->getRuleType());
+            $copy->setConfig($config);
+            $copy->setCreatedBy($constraint->getCreatedBy());
+            $copy->setSource($constraint->getSource());
+            $copy->setSourceOccurrenceId($constraint->getSourceOccurrenceId());
+            $copy->setIsActive($constraint->getIsActive());
+            $copy->setSortOrder($constraint->getSortOrder());
+            $this->entityManager->persist($copy);
+            ++$run['counts']['constraints'];
+        }
+    }
+
+    /**
+     * Réglages des règles implicites (bien-être) du plan de saison : recopiés tels quels — aucune référence d'entité à
+     * remapper, une règle est un cran d'intensité + un seuil. Une saison N+1 hérite donc des assouplissements décidés
+     * en N (au lieu de repartir tout HARD). Les COPIES de période ne suivent pas : leurs plans N n'existent pas en N+1.
+     * La copie porte le plan de saison de la nouvelle saison. Pas comptabilisé dans `counts`.
+     *
+     * @param Run $run
+     */
+    private function copyImplicitRuleSettings(array &$run): void
+    {
+        foreach ($this->sourceRows($run, ImplicitRuleSetting::class) as $setting) {
+            $copy = new ImplicitRuleSetting;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setSchedulePlanId($run['plan']);
+            $copy->setRuleKey($setting->getRuleKey());
+            $copy->setIntensity($setting->getIntensity());
+            $copy->setParams($setting->getParams());
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /**
+     * P2-53 RMM-8 PR-4 — le levier d'intensité de la règle de trajet (PREFERRED|MANDATORY) suit la saison, comme la
+     * matrice qu'il gouverne : un club qui a mis « Obligatoire » en N le retrouve en N+1. Seul le cran suit : battement
+     * et temps par défaut repartent à leurs défauts. Absence de ligne = défaut, rien à copier. Pas comptabilisé dans
+     * `counts`.
+     *
+     * @param Run $run
+     */
+    private function copyTravelRule(array &$run): void
+    {
+        $travelRule = $this->sourceRows($run, VenueTravelRuleSetting::class)[0] ?? null;
+        if ($travelRule instanceof VenueTravelRuleSetting) {
+            $copy = new VenueTravelRuleSetting;
+            $copy->setClubId($run['club']);
+            $copy->setSeasonId($run['target']);
+            $copy->setIntensity($travelRule->getIntensity());
+            $this->entityManager->persist($copy);
+        }
+    }
+
+    /**
+     * Lot 5, PR 7 — les réservations du planning de saison suivent : celle d'une équipe vers l'équipe copiée, un créneau
+     * libre avec son libellé, au gymnase copié, sur le plan de saison de la nouvelle saison. Une référence pendante
+     * (équipe ou gymnase non copié) fait abandonner la ligne. Pas comptabilisé dans `counts`.
+     *
+     * @param Run $run
+     */
+    private function copyReservations(array &$run): void
+    {
+        foreach ($this->sourceRows($run, Reservation::class) as $reservation) {
+            $venueId = $run['venues'][$reservation->getVenueId()] ?? null;
+            $sourceTeamId = $reservation->getTeamId();
+            $teamId = null !== $sourceTeamId ? ($run['teams'][$sourceTeamId] ?? null) : null;
+            if (null === $venueId || (null !== $sourceTeamId && null === $teamId)) {
+                continue;
+            }
+            $this->entityManager->persist(
+                (new Reservation)->setClubId($run['club'])->setSeasonId($run['target'])->setSchedulePlanId($run['plan'])
+                    ->setTeamId($teamId)->setLabel($reservation->getLabel())->setVenueId($venueId)
+                    ->setDayOfWeek($reservation->getDayOfWeek())->setStartTime($reservation->getStartTime())
+                    ->setDurationMinutes($reservation->getDurationMinutes())
+                    ->setCoachLateToleranceMinutes($reservation->getCoachLateToleranceMinutes()),
+            );
+        }
     }
 
     /**

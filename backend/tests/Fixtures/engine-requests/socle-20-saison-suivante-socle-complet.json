@@ -37,7 +37,7 @@
                     "dayOfWeek": 1,
                     "startTime": "19:30",
                     "durationMinutes": 90,
-                    "capacity": 2
+                    "capacity": 1
                 },
                 {
                     "dayOfWeek": 3,
@@ -218,7 +218,20 @@
             "isActive": true
         }
     ],
-    "slotTemplates": [],
+    "slotTemplates": [
+        {
+            "id": "b0200000-0000-4000-8000-000000000053",
+            "teamId": "b0200000-0000-4000-8000-000000000038",
+            "venueId": "b0200000-0000-4000-8000-000000000027",
+            "coachId": null,
+            "dayOfWeek": 2,
+            "startTime": "18:00:00",
+            "durationMinutes": 90,
+            "lockLevel": "HARD",
+            "coachLateToleranceMinutes": 0,
+            "pendingConstraintSuggestion": null
+        }
+    ],
     "implicitRules": {
         "coachRestDay": {
             "intensity": "HARD",

@@ -28,7 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * créneau supprimé si 0). Il compte dans la CAPACITÉ (règle (e)), mais est ignoré du budget solo,
  * de la case bloc-complète, du double-booking coach, des doléances et des matchs.
  */
-#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: ['teamId', 'venueId', 'dayOfWeek', 'startTime', 'durationMinutes', 'coachLateToleranceMinutes'], copiedToNextSeason: false)]
+#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: ['teamId', 'venueId', 'dayOfWeek', 'startTime', 'durationMinutes', 'coachLateToleranceMinutes'], copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: ReservationRepository::class)]
 #[ORM\Table(name: 'reservation')]
 #[ORM\Index(name: 'idx_reservation_club_season', columns: ['club_id', 'season_id'])]
