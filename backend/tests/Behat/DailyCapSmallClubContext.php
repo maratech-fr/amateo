@@ -176,18 +176,19 @@ final class DailyCapSmallClubContext extends BaseContext
         $this->writeSm1MaxSessionsPerDay(1);
     }
 
-    #[Then('c\'est refusé : « Rouvrez le planning de saison pour modifier le nombre de séances. »')]
-    public function cEstRefuseSousSocle(): void
+    /** Lot 5, PR 5 (ligne 35 du plan) : sous planning de saison en vigueur, le plafond par jour se modifie et attend la validation. */
+    #[Then('c\'est accepté sans rouvrir : SM1 est à 1 séance par jour, et le planning de saison reste en vigueur')]
+    public function cEstAccepteSousSocle(): void
     {
-        $sentence = 'Rouvrez le planning de saison pour modifier le nombre de séances.';
-        if (422 !== $this->teamWriteStatus) {
-            throw new RuntimeException(\sprintf('sous planning de saison en vigueur, changer le plafond doit être refusé (422) — reçu %d', $this->teamWriteStatus));
+        if ($this->teamWriteStatus < 200 || $this->teamWriteStatus >= 300) {
+            throw new RuntimeException(\sprintf('sous planning de saison en vigueur, changer le plafond est accepté — reçu %d, corps : %s', $this->teamWriteStatus, $this->encoded($this->teamWriteJson)));
         }
-        if (!str_contains($this->encoded($this->teamWriteJson), $sentence)) {
-            throw new RuntimeException(\sprintf('le refus doit dire « %s » — corps : %s', $sentence, $this->encoded($this->teamWriteJson)));
+        if (1 !== $this->sm1SeasonMaxSessionsPerDay()) {
+            throw new RuntimeException('SM1 devrait être à 1 séance par jour dans le planning de travail');
         }
-        if (2 !== $this->sm1SeasonMaxSessionsPerDay()) {
-            throw new RuntimeException('un refus n\'écrit rien : SM1 doit rester à 2 séances par jour');
+        $chosen = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND chosen_schedule_id IS NOT NULL', $this->smallClubId), admin: true);
+        if ('1' !== $chosen) {
+            throw new RuntimeException('le planning de saison devrait rester en vigueur');
         }
     }
 
@@ -225,7 +226,7 @@ final class DailyCapSmallClubContext extends BaseContext
         }
     }
 
-    #[Then('la période porte 3 séances par jour pour SM1, la saison reste à 2')]
+    #[Then('la période porte 3 séances par jour pour SM1, la saison reste à 1')]
     public function laPeriodePorteTrois(): void
     {
         $response = $this->apiGet(\sprintf('team_period_overrides?schedulePlanId=%s&teamId=%s', $this->periodPlanId, $this->smallClubTeamIds['SM1']), $this->smallClubToken);
@@ -234,8 +235,8 @@ final class DailyCapSmallClubContext extends BaseContext
         if (3 !== $periodValue) {
             throw new RuntimeException(\sprintf('la période devrait porter 3 séances par jour pour SM1 — obtenu : %s', $this->encoded($rows)));
         }
-        if (2 !== $this->sm1SeasonMaxSessionsPerDay()) {
-            throw new RuntimeException('le réglage de période ne touche jamais la saison : SM1 doit rester à 2 en saison');
+        if (1 !== $this->sm1SeasonMaxSessionsPerDay()) {
+            throw new RuntimeException('le réglage de période ne touche jamais la saison : SM1 doit rester à 1 en saison');
         }
     }
 

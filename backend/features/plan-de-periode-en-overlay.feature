@@ -53,9 +53,11 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Et je génère une version de la fermeture
     Alors la génération de la fermeture respecte « pas le vendredi »
 
-  Plan du scénario: Une règle de saison s'applique à une période selon sa nature et ma coche
-    Une fermeture applique toute règle de saison, des vacances seulement celles de tout le club ; ma décoche
-    l'emporte sur ce défaut. Le plan de la période est né avant la règle.
+  Plan du scénario: Une règle de saison ajoutée après la naissance d'une période attend la validation, ma coche l'emporte
+    Le plan de la période est né avant la règle. Tant que le planning de saison n'est pas validé de nouveau, la règle
+    n'entre pas dans la période, même posée pour tout le club ; ma décoche l'emporte sur tout défaut. À la validation,
+    des vacances prennent une règle de tout le club, pas une règle d'équipe : prouvé par
+    tests/Api/ConstraintScopeChangeTest.php, bloquant.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et <période>
     Quand j'ajoute la règle de saison « pas le vendredi » <portée>
@@ -67,7 +69,7 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
       | période                  | portée                        | geste                                            | verdict  |
       | une fermeture déjà créée | pour une équipe de la période | je décoche « pas le vendredi » pour la période   | ignore   |
       | des vacances déjà créées | pour une équipe de la période | je laisse les règles de la période à leur défaut | ignore   |
-      | des vacances déjà créées | pour tout le club             | je laisse les règles de la période à leur défaut | respecte |
+      | des vacances déjà créées | pour tout le club             | je laisse les règles de la période à leur défaut | ignore   |
 
   Scénario: Le trajet entre gymnases réglé depuis des vacances règle toute la saison
     Aujourd'hui la règle de trajet est un réglage de la saison : l'encart des vacances règle celui du planning de saison.

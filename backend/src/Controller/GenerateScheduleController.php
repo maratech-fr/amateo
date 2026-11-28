@@ -145,20 +145,16 @@ final class GenerateScheduleController extends AbstractController implements Sea
         // regardless of whether the solve ends up feasible.
         $club = $this->entityManager->getRepository(Club::class)->find($schedule->getClubId());
 
-        // P2-9bis (planning lifecycle) : défense en profondeur du socle en vigueur. Ce
-        // contrôleur n'avait NI transaction NI verrou : on enveloppe le passage en PENDING
-        // et le flush dans une transaction qui prend d'abord le verrou de plan-scope de la
-        // saison — sans lui la garde ne serait qu'un TOCTOU. On N'ARME l'assertion QUE pour
-        // une version de saison ; un overlay a déjà passé assertSeasonPlanChosen plus haut,
-        // qui exige l'INVERSE (les deux ne s'appliquent jamais au même appel). Le dispatch
-        // reste APRÈS le commit : le worker ne doit jamais consommer avant que la ligne soit
-        // visible.
+        // Le passage en PENDING et le flush vivent dans une transaction qui prend d'abord le
+        // verrou de plan-scope de la saison, pour une version de saison. Un socle en vigueur
+        // ne refuse plus rien (lot 5) : générer prépare une version de travail, le pointeur ne
+        // bouge pas. Le dispatch reste APRÈS le commit : le worker ne doit jamais consommer
+        // avant que la ligne soit visible.
         $isSeasonSchedule = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);
         $seasonId = $schedule->getSeasonId();
         $this->entityManager->wrapInTransaction(function () use ($schedule, $club, $isSeasonSchedule, $seasonId): void {
             if ($isSeasonSchedule) {
                 $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
-                $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
                 // Une version de saison TERMINÉE ne se réécrit pas : c'est le rail du brouillon et de la
                 // reprise après échec. Passer par ici écraserait une version en place, chargée ou non ;
                 // « Régénérer » en crée une nouvelle.

@@ -204,14 +204,11 @@ export const WIZARD_TEXTS = {
   splitVenueHelp: "Un gymnase divisible peut accueillir 2 équipes en même temps (terrain coupé en deux).",
   splitVenueLabel: "Terrain divisible",
   deleteVenueLabel: "Supprimer ce gymnase",
-  slotsReadOnlyNotice: "Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de saison pour les modifier.",
   toPlaceLabel: "À poser :",
   durationToPlaceLabel: "Durée à poser",
   clickGridHint: "— cliquez la grille pour ajouter un créneau d'entraînement",
 
   // ─────────── Occupations de gymnase : un moment où le gymnase n'est pas au club ───────────
-  /** Bandeau « planning validé », vu du gestionnaire : les occupations restent modifiables. */
-  slotsReadOnlyNoticeManager: "Les créneaux d'entraînement sont une contrainte du planning : rouvrez le planning de saison pour les modifier. Les occupations restent modifiables.",
   placementKindGroup: "Ce que le clic pose",
   placementKindSlot: "Créneau",
   placementKindOccupancy: "Occupation",

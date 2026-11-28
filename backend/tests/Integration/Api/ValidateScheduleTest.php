@@ -106,10 +106,11 @@ final class ValidateScheduleTest extends WebTestCase
 
     /**
      * NR SA2-stats — `first_chosen_at` = la PREMIÈRE validation, posée une fois et
-     * STABLE : rouvrir puis revalider (même une autre version) ne la déplace pas.
+     * STABLE : valider ensuite une autre version ne la déplace pas (le socle ne se rouvre
+     * plus depuis le lot 5 : on valide la version suivante par-dessus l'en vigueur).
      * C'est la stat « temps de clôture » (création → 1re validation).
      */
-    public function testFirstChosenAtIsSetOnceAndSurvivesReopenRevalidate(): void
+    public function testFirstChosenAtIsSetOnceAndSurvivesARevalidation(): void
     {
         [$user, $club, $season] = $this->seed('VAL12');
         $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
@@ -126,12 +127,11 @@ final class ValidateScheduleTest extends WebTestCase
         );
         self::assertIsString($firstChosenAt, 'la 1re validation pose first_chosen_at');
 
-        // Rouvrir puis revalider une AUTRE version : le pointeur bouge, PAS first_chosen_at.
-        $this->client->request('POST', "/api/schedules/{$v1->getId()}/reopen", [], [], $auth);
-        self::assertResponseIsSuccessful();
+        // Valider une AUTRE version : le pointeur bouge, PAS first_chosen_at.
         $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
         $this->client->request('POST', "/api/schedules/{$v2->getId()}/validate", [], [], $auth);
         self::assertResponseIsSuccessful();
+        self::assertSame($v2->getId(), $this->em->getConnection()->fetchOne('SELECT chosen_schedule_id FROM schedule_plan WHERE id = :pid', ['pid' => $v2->getSchedulePlanId()]), 'témoin : le pointeur a bougé');
 
         $after = $this->em->getConnection()->fetchOne(
             'SELECT first_chosen_at FROM schedule_plan WHERE id = :pid',
@@ -305,6 +305,8 @@ final class ValidateScheduleTest extends WebTestCase
         $this->em->persist($entry);
         $this->em->flush();
 
+        // Le socle en vigueur du décor porte l'état du décor (lot 5, la période naît de la copie en vigueur).
+        SeasonPlanOf::keepTheSeasonInForce(self::getContainer(), $season->getId());
         // Le geste « Adapter » : le plan naît AVEC sa grille, sans aucune version.
         $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         self::assertNotNull($planId);

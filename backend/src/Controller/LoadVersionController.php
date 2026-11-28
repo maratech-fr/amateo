@@ -17,7 +17,6 @@ use App\Plans\PlanStates;
 use App\Service\AuditTrail;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\SocleGuard;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -35,10 +34,10 @@ use Throwable;
  * (★) — sans rien générer. La prochaine « Régénérer » repart d'elle, ses verrous compris.
  *
  * Refus nommés, tous avant la moindre écriture : version inconnue ou d'un autre club (le même 404) ; version non
- * terminée ; génération en cours dans la saison ; plan validé (la version en vigueur du socle, ou d'un plan de période,
- * se rouvre d'abord) ; version qui ne se charge pas ({@see LoadFeasibility} : sans copie, ou niveau d'une équipe
- * engagée), `{code: 'load_blocked', error}` — le même texte que la capacité `loadBlockedReason`. Écrit une trace
- * `lock.changed` agrégée (le nombre de verrous de la version, jamais une ligne par verrou).
+ * terminée ; génération en cours dans la saison ; plan de période validé (il se rouvre d'abord) ; version qui ne se
+ * charge pas ({@see LoadFeasibility} : sans copie, ou niveau d'une équipe engagée), `{code: 'load_blocked', error}`
+ * — le même texte que la capacité `loadBlockedReason`. Écrit une trace `lock.changed` agrégée (le nombre de verrous
+ * de la version, jamais une ligne par verrou).
  */
 #[AsController]
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
@@ -50,7 +49,6 @@ final class LoadVersionController extends AbstractController implements SeasonSc
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly SocleGuard $socleGuard,
         private readonly ScheduleCapabilityResolver $capabilityResolver,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly PlanStates $planStates,
@@ -90,11 +88,10 @@ final class LoadVersionController extends AbstractController implements SeasonSc
             return $this->json(['code' => 'generation_in_progress', 'error' => 'Une génération est en cours — attendez sa fin avant de charger une autre version.'], Response::HTTP_CONFLICT);
         }
 
+        // Un socle en vigueur se charge comme tout plan (lot 5) : sa version en vigueur comprise (« Revenir au
+        // planning en vigueur »), le pointeur ne bouge pas. Un plan de période validé se rouvre d'abord.
         $isSeason = $this->schedulePlanProvisioner->isSeasonSchedule($version);
-        if ($isSeason) {
-            // Jusqu'à « Retravailler » : le socle en vigueur se rouvre avant qu'on en charge une version.
-            $this->socleGuard->assertSeasonPlanNotChosen($version->getSeasonId());
-        } elseif (null !== $this->schedulePlanProvisioner->chosenScheduleIdOfPlan($version->getSchedulePlanId())) {
+        if (!$isSeason && null !== $this->schedulePlanProvisioner->chosenScheduleIdOfPlan($version->getSchedulePlanId())) {
             return $this->json(['error' => 'Ce planning de période est validé. Rouvrez-le avant de charger une autre version.'], Response::HTTP_CONFLICT);
         }
 
@@ -107,12 +104,9 @@ final class LoadVersionController extends AbstractController implements SeasonSc
         $planId = $version->getSchedulePlanId();
         $seasonId = $version->getSeasonId();
         $state = $this->planStates->of($versionId);
-        $this->entityManager->wrapInTransaction(function () use ($isSeason, $versionId, $planId, $seasonId, $state): void {
-            // Sous le verrou de la saison : la garde du socle relue (une garde lue hors verrou n'est qu'un TOCTOU).
+        $this->entityManager->wrapInTransaction(function () use ($versionId, $planId, $seasonId, $state): void {
+            // Sous le verrou de la saison : deux chargements concurrents ne s'entremêlent pas.
             $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
-            if ($isSeason) {
-                $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
-            }
             $this->planStates->restore($planId, $state);
             $this->schedulePlanProvisioner->pointLockSource($planId, $versionId);
         });

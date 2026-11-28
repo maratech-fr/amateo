@@ -234,23 +234,19 @@ describe("TeamsStep", () => {
     expect(screen.queryByText(/Engagée en compétition/)).not.toBeInTheDocument();
   });
 
-  // ── Décision fondateur 2026-09-28 : « Modifier les données du club » (socle en vigueur) ──
-  // Le nombre de séances par semaine d'une équipe EXISTANTE est une contrainte du planning en
-  // vigueur : visible mais verrouillé, comme les créneaux. La priorité (rang) et le niveau restent
-  // éditables (le niveau garde sa garde « équipe engagée »).
+  // ── Lot 5, PR 5 : « Modifier les données du club » (socle en vigueur) ──
+  // Le planning validé reste en vigueur pendant qu'on modifie : le nombre de séances par semaine
+  // d'une équipe EXISTANTE se modifie (il attend la validation), comme le rang et le niveau (qui
+  // garde sa garde « équipe engagée »). Jumeau serveur, cité : `TeamSessionsUnderValidatedSocleTest`.
 
-  it("verrouille (lecture seule) le nombre de séances d'une équipe existante quand le socle est en vigueur", () => {
+  it("laisse modifier le nombre de séances d'une équipe existante quand le socle est en vigueur", () => {
     socleState.validated = true;
     renderWithProviders(<TeamsStep />);
     const row = teamRow();
 
-    // La valeur reste VISIBLE (readOnly, pas disabled — le champ ne sort pas de l'ordre de tabulation).
     const sessions = within(row).getByRole("spinbutton", { name: "Séances/sem" });
-    expect(sessions).toHaveAttribute("readonly");
-    expect((sessions as HTMLInputElement).value).toBe("1"); // valeur de la fixture, toujours lisible
-    // Une explication, UNE fois pour la liste, cohérente avec le bandeau d'en-tête.
-    expect(screen.getByText(/séances par semaine fait partie du planning de saison en vigueur/i)).toBeInTheDocument();
-    // Ce qui reste libre le reste : le rang (flèches) et le niveau ne sont pas des créneaux.
+    expect(sessions).not.toHaveAttribute("readonly");
+    expect(sessions).toBeEnabled();
     expect(within(row).getByRole("combobox", { name: "Niveau de jeu" })).toBeEnabled();
     expect(within(row).getByRole("button", { name: /Descendre SM3/ })).toBeInTheDocument();
   });

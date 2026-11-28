@@ -219,7 +219,9 @@ trait EngineRequestPlanSettingsDecorTrait
         $em->persist((new Team)->setId($teamId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId(2)->setName($name)->setIsActive(true));
         $em->flush();
-        // Comme une saisie : la porte pose ses lignes, 2 séances au socle, cochée dans chaque plan de période.
+        // Comme une saisie : la porte pose ses lignes, 2 séances au socle, cochée dans chaque plan de période. Le socle
+        // en vigueur du décor porte l'état du décor (lot 5).
+        SeasonPlanOf::keepTheDecorInForce(static::getContainer(), $this->erSeasonPlanId());
         static::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
     }
 }

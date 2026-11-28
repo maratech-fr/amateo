@@ -22,7 +22,7 @@ use RuntimeException;
  * isolée.
  *
  * Les règles isolées sont déjà prouvées plus bas :
- *  - socle EN VIGUEUR → 409 sans rien écrire : {@see ParcImportExecuteTest::testImportRefusedWhenSeasonPlanChosen} ;
+ *  - socle EN VIGUEUR → l'import passe, le planning validé reste en vigueur (lot 5, PR 5) : {@see ParcImportExecuteTest::testImportAcceptedWhileTheSeasonPlanIsInForce} ;
  *  - idempotence « aucun doublon » : {@see ParcImportExecuteTest::testReplayingTheSameImportCreatesNoDuplicate} ;
  *  - case parc-v2 → réservation dérivée HONORÉE par le VRAI moteur /generate :
  *    {@see ParcImportReservationSemanticsGateTest} (NR bloquant) ;
@@ -61,6 +61,9 @@ final class ParcImportContext extends BaseContext
     /** Version que le socle pointait à l'entrée du scénario (à restaurer « en vigueur »). */
     private string $chosenAtEntry = '';
 
+    /** La version en vigueur posée par le décor « planning de saison en vigueur » (lot 5, PR 5 : l'import ne la touche pas). */
+    private string $inForceAtImport = '';
+
     /** @var array<mixed> */
     private array $analyzeJson = [];
 
@@ -92,6 +95,7 @@ final class ParcImportContext extends BaseContext
             throw new RuntimeException('aucun planning de saison COMPLETED — la base est-elle seedée ?');
         }
         $this->pointSocleTo($target);
+        $this->inForceAtImport = $target;
     }
 
     #[Given('mon parc déjà importé une fois')]
@@ -191,24 +195,15 @@ final class ParcImportContext extends BaseContext
         }
     }
 
-    #[Then('l\'import est refusé faute de planning rouvert')]
-    public function lImportEstRefuse(): void
+    #[Then('le planning de saison en vigueur n\'a pas changé')]
+    public function lePlanningEnVigueurNaPasChange(): void
     {
-        if (409 !== $this->importStatus) {
-            throw new RuntimeException(\sprintf('socle en vigueur → l\'import doit être refusé (409), reçu %d', $this->importStatus));
-        }
-    }
-
-    #[Then('rien du parc n\'a été écrit')]
-    public function rienDuParcNaEteEcrit(): void
-    {
-        foreach ([self::TEAM_A, self::TEAM_B] as $name) {
-            if (0 !== $this->teamCount($name)) {
-                throw new RuntimeException(\sprintf('un refus 409 n\'écrit rien : « %s » ne doit pas exister', $name));
-            }
-        }
-        if (0 !== $this->venueCount() || 0 !== $this->socleReservationCount() || 0 !== $this->namedBlockCount()) {
-            throw new RuntimeException('un refus 409 n\'écrit rien : aucun gymnase, bloc ni réservation jetable ne doit exister');
+        $chosen = $this->dbalScalar(
+            \sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND chosen_schedule_id IS NOT NULL LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        if ($chosen !== $this->inForceAtImport) {
+            throw new RuntimeException(\sprintf('importer le parc ne touche pas au planning en vigueur : %s attendu, %s lu', $this->inForceAtImport, $chosen));
         }
     }
 

@@ -194,8 +194,9 @@ test("visual reference — écrans authentifiés (clair)", async ({ page }) => {
     await expect(page).toHaveScreenshot("wizard-coachs.png", authShot);
 
     // ── Wizard · étape Contraintes ───────────────────────────────────────────────────────────────
-    // Deep-link `?step=constraints`. Socle en vigueur → l'étape affiche son bandeau de verrouillage
-    // (décision fondateur 2026-09-28) au-dessus du constructeur. La famille par défaut est « Horaires »
+    // Deep-link `?step=constraints`. Socle en vigueur → l'étape affiche, au-dessus du constructeur, un
+    // bandeau d'une ligne disant que le planning validé reste en vigueur (sans cadenas : l'étape reste
+    // modifiable). La famille par défaut est « Horaires »
     // (`useState("TIME")`), peuplée par le seed (Groupe Adulte/Jeune/Senior…). Témoins : le titre d'étape
     // + l'en-tête de colonne « Cible » du tableau de contraintes (rendu dès qu'il y a ≥1 règle chargée ;
     // affiché « CIBLE » par `uppercase` CSS, mais le texte DOM est « Cible » — d'où le rôle columnheader).

@@ -15,8 +15,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 /**
  * Promesse (lot conception 5, PR 3, lignes 17 et 19 du plan) : « Charger » a une seule porte,
  * `POST /api/schedules/{id}/load`, pour tout plan, et ses refus sont nommés. La version d'un autre club répond le
- * même 404 qu'une version inconnue ; une version non terminée, sans copie, ou pendant une génération répond 409 ; la
- * version en vigueur et une version d'un plan de période validé restent refusées jusqu'à la PR 5. La capacité
+ * même 404 qu'une version inconnue ; une version non terminée, sans copie, ou pendant une génération répond 409 ; une
+ * version d'un plan de période validé reste refusée ; sous un socle en vigueur, une autre version se charge (PR 5). La capacité
  * `canLoad` vaut le verdict. Les deux anciennes routes, `regenerate-from` et `load-locks`, n'existent plus.
  *
  * Le Membre (403) est joué par `Security/MemberWriteSweepTest`, la saison archivée par `Security/SeasonReadonlyTest` ;
@@ -102,15 +102,28 @@ final class LoadVersionGuardsTest extends WebTestCase
         $this->assertRefusedAndAnnounced($v1->getId(), 'charger pendant une génération');
     }
 
-    /** Jusqu'à la PR 5 : la version en vigueur d'un plan de saison reste refusée (on la rouvre d'abord). */
-    public function testTheVersionInForceIsStillRefused(): void
+    /**
+     * Depuis la PR 5 (ligne 31) : sous un socle en vigueur, une autre version s'offre et se charge ; l'en vigueur ne
+     * bouge pas. Le 200 seul est aussi joué par `Security/SeasonPlanInForceTest::testLoadingASiblingWhileTheSocleIsInForceIsAccepted` ;
+     * ici, la capacité dit le même verdict que le geste.
+     */
+    public function testUnderASocleInForceAnotherVersionIsOfferedAndLoads(): void
     {
         $this->loadTeam('SM1');
         $inForce = $this->loadVersionOf($this->soclePlanId);
         $this->choosePlanVersion($inForce);
+        // L'état réel après validation : l'étoile reste sur la version en vigueur (sans pointeur, le repli prendrait
+        // la dernière terminée, la sœur, qui passerait pour déjà chargée).
+        $this->makeLoaded($inForce);
         $sibling = $this->loadVersionOf($this->soclePlanId);
+        self::assertSame($inForce->getId(), $this->loadedOf($this->soclePlanId), 'témoin : l\'étoile est sur la version en vigueur');
 
-        $this->assertRefusedAndAnnounced($sibling->getId(), 'charger une autre version sous un socle en vigueur');
+        self::assertTrue($this->capabilitiesOf($sibling->getId())['canLoad'] ?? null, 'la capacité offre « Charger » sous un socle en vigueur');
+        $this->loadVersion($sibling->getId());
+
+        $this->assertLoadAccepted('charger une autre version sous un socle en vigueur');
+        self::assertSame($sibling->getId(), $this->loadedOf($this->soclePlanId), 'l\'étoile passe sur la version chargée');
+        self::assertSame($inForce->getId(), $this->loadScalar('SELECT chosen_schedule_id FROM schedule_plan WHERE id = ?', [$this->soclePlanId]), 'la version en vigueur le reste');
     }
 
     /** Jusqu'à la PR 5 : une version d'un plan de période validé reste refusée. */

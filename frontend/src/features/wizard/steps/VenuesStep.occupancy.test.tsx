@@ -251,24 +251,25 @@ describe("Gymnases de saison — le clic pose un créneau, ou une occupation si 
   });
 });
 
-describe("Gymnases de saison — planning validé (Q1 = oui) : les créneaux sont verrouillés, les occupations non", () => {
-  it("gestionnaire : la case pose une occupation, sans sélecteur, et le créneau reste inerte", async () => {
+describe("Gymnases de saison — planning validé (lot 5, PR 5) : la grille se modifie, la modification attend la validation", () => {
+  /**
+   * Le planning validé reste en vigueur pendant qu'on retravaille : le gestionnaire pose et ouvre un créneau comme
+   * avant la validation. Jumeau Behat, cité : `le-socle-commande-les-plans.feature`, « Le planning de saison et les
+   * vacances ont chacun leur grille » (un créneau ajouté sans valider, des vacances nées sur la grille en vigueur).
+   */
+  it("gestionnaire : « Créneau » est offert, la case pose un créneau, et le créneau existant s'ouvre", async () => {
     h.socleValidated = true;
     h.seasonSlots = [trainingSlot({ id: "s1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 })];
     const user = userEvent.setup();
     renderWithProviders(<Harness />);
     await screen.findAllByText("08:00");
 
-    // Barre sans sélecteur : le mot « Occupation » remplace le choix ; le motif reste à saisir.
-    expect(screen.queryByRole("button", { name: WIZARD_TEXTS.placementKindSlot })).not.toBeInTheDocument();
-    await user.type(screen.getByRole("textbox", { name: WIZARD_TEXTS.occupancyLabelField }), "École");
+    expect(screen.getByRole("button", { name: WIZARD_TEXTS.placementKindSlot })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Mar 14:00" }));
 
-    await waitFor(() => expect(h.createVenueOccupancy).toHaveBeenCalledWith(expect.objectContaining({ venueId: "v1", dayOfWeek: 2, startTime: "14:00", label: "École" })));
-    expect(h.createSlot).not.toHaveBeenCalled();
-    // Le créneau du mardi 18:00 se voit mais ne s'ouvre pas.
-    expect(screen.queryByRole("button", { name: /18:00 – 19:30/ })).not.toBeInTheDocument();
-    expect(screen.getByText("18:00 – 19:30")).toBeInTheDocument();
+    await waitFor(() => expect(h.createSlot).toHaveBeenCalledWith(expect.objectContaining({ venueId: "v1", dayOfWeek: 2, startTime: "14:00" })));
+    expect(h.createVenueOccupancy).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /18:00 – 19:30/ })).toBeInTheDocument();
   });
 
   it("Membre : ni barre de pose, ni champ « Motif », ni case cliquable", async () => {

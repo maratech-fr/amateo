@@ -75,20 +75,6 @@ final class SchedulePlanLifecycleTest extends WebTestCase
         self::assertSame(ScheduleStatus::COMPLETED, $this->em->getRepository(Schedule::class)->find($v1->getId())?->getStatus(), 'aucun statut ne redit « choisi »');
     }
 
-    /** inv. 2 : rouvrir relâche le pointeur (espace de travail). */
-    public function testReopeningReleasesThePointer(): void
-    {
-        [$user, , $season] = $this->seed('LCY2');
-        $v1 = $this->version($season, ScheduleStatus::COMPLETED);
-
-        $this->post($user, "/api/schedules/{$v1->getId()}/validate");
-        self::assertResponseIsSuccessful();
-        $this->post($user, "/api/schedules/{$v1->getId()}/reopen");
-        self::assertResponseIsSuccessful();
-
-        self::assertFalse($this->chosenOfSeason($season), 'rouvrir dépointe : le plan redevient un espace de travail');
-    }
-
     /** inv. 2 : aucun pointage automatique — seul le gestionnaire pointe. */
     public function testCreatingVersionsNeverPointsThePlanAutomatically(): void
     {

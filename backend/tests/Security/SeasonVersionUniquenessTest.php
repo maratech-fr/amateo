@@ -22,26 +22,17 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * NR — P2-7, axe *planning lifecycle* : LE SOCLE EN VIGUEUR EST UNIQUE.
+ * NR — axe *planning lifecycle* (lot 5, PR 5, ligne 31 du plan ; avant : P2-7) : LE SOCLE EN VIGUEUR RESTE UNIQUE
+ * PENDANT QU'ON EN PRÉPARE UNE AUTRE VERSION.
  *
- * Décision fondateur (P2-7) : tant que le plan SEASON POINTE une version choisie
- * (`chosen_schedule_id` non-null = « le planning de la saison est en vigueur »), on
- * refuse d'en préparer une autre. Le seul geste qui rouvre l'espace de travail est la
- * RÉOUVERTURE (dépointer). Sans cette garde, un POST /api/schedules — direct ou via
- * une régénération naïve — empilerait une seconde version « de saison » à côté du socle
- * arrêté, brouillant « quel est le planning de la saison ».
+ * Avec le plan SEASON qui pointe une version (« le planning de la saison est en vigueur »), un POST /api/schedules de
+ * saison — sans plan (→ plan SEASON par défaut) ou en nommant le plan SEASON — prépare une version de travail (201) ;
+ * le pointeur ne bouge pas : « quel est le planning de la saison » a toujours une seule réponse, la version en
+ * vigueur, jusqu'à la prochaine validation. Un overlay de période se crée comme avant ; sans socle pointé, le
+ * versionnage normal survit.
  *
- * La garde vit dans {@see ScheduleStateProcessor::processPost},
- * SOUS le verrou de plan-scope de la saison et DANS la transaction de création (un
- * `pg_advisory_xact_lock` pris hors transaction se relâcherait au statement suivant).
- * Elle ne s'arme QUE pour un POST « de saison » : pas de plan (→ plan SEASON par défaut)
- * OU un plan explicitement de type SEASON — jamais pour un overlay de période.
- *
- * PREUVE DE CHUTE (obligatoire, faite le 2026-07-30) : la garde
- * (bloc `if ($isSeasonPost) { … chosenOfSeasonPlan … ConflictHttpException }`) a été
- * COMMENTÉE, puis ce test relancé — les cas 1 et 2 rougissent (201 au lieu de 409 :
- * une seconde version de saison est acceptée). Garde remise, les quatre cas repassent
- * au vert. Un test qui ne peut pas échouer ne prouve rien.
+ * Le traitement vit dans {@see ScheduleStateProcessor::processPost}. Jumeau, cité : `SeasonPlanInForceTest` (les
+ * autres guichets — générer, régénérer, charger, rouvrir — avec un socle en vigueur).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -54,25 +45,25 @@ final class SeasonVersionUniquenessTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    /** Cas 1 — socle pointé, POST SANS schedulePlanId (branche « plan SEASON par défaut ») → 409. */
-    public function testPostingASeasonVersionWhileTheSocleIsInForceIsRefused(): void
+    /** Cas 1 — socle pointé, POST SANS schedulePlanId (branche « plan SEASON par défaut ») → 201, l'en vigueur ne bouge pas. */
+    public function testPostingASeasonVersionWhileTheSocleIsInForceIsAccepted(): void
     {
         [$user, , $season] = $this->seed();
-        $this->settleSeasonPlan($season); // le plan SEASON pointe une version = en vigueur
+        $inForce = $this->settleSeasonPlan($season); // le plan SEASON pointe une version = en vigueur
 
         $this->client->request('POST', '/api/schedules', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'name' => 'V2 saison', 'status' => 'DRAFT',
         ], \JSON_THROW_ON_ERROR));
 
-        self::assertResponseStatusCodeSame(409, 'un socle en vigueur refuse une nouvelle version de saison');
-        self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        self::assertSame($inForce->getId(), $this->chosenPlanVersion($season), 'la version en vigueur reste la seule réponse');
     }
 
-    /** Cas 2 — socle pointé, POST AVEC le schedulePlanId du plan SEASON → 409 (même garde). */
-    public function testPostingUnderTheSeasonPlanWhileTheSocleIsInForceIsRefused(): void
+    /** Cas 2 — socle pointé, POST AVEC le schedulePlanId du plan SEASON → 201, même traitement. */
+    public function testPostingUnderTheSeasonPlanWhileTheSocleIsInForceIsAccepted(): void
     {
         [$user, , $season] = $this->seed();
-        $this->settleSeasonPlan($season);
+        $inForce = $this->settleSeasonPlan($season);
 
         $seasonPlanId = self::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlanId($season->getId());
         self::assertIsString($seasonPlanId);
@@ -81,8 +72,8 @@ final class SeasonVersionUniquenessTest extends WebTestCase
             'name' => 'V2 saison', 'status' => 'DRAFT', 'schedulePlanId' => $seasonPlanId,
         ], \JSON_THROW_ON_ERROR));
 
-        self::assertResponseStatusCodeSame(409, 'nommer explicitement le plan SEASON ne contourne pas la garde');
-        self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        self::assertSame($inForce->getId(), $this->chosenPlanVersion($season), 'la version en vigueur reste la seule réponse');
     }
 
     /** Cas 3 — socle NON pointé (espace de travail) : le versionnage normal survit → 201. */

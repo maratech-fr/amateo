@@ -134,6 +134,35 @@ final class ConflictTruthContext extends BaseContext
 
     private string $matchAdjointLinkId = '';
 
+    /**
+     * Lot 5, PR 5 — un coach principal et des équipes de la copie EN VIGUEUR (pas des jetables, qui naissent après la
+     * validation et se lisent en direct) ; ce que le scénario y change sans valider est défait au nettoyage.
+     */
+    private string $inForceSeasonId = '';
+
+    private string $inForceCoachId = '';
+
+    private string $inForceTeamAId = '';
+
+    private string $inForceTeamBId = '';
+
+    private string $inForceMatchAId = '';
+
+    private string $inForceMatchBId = '';
+
+    /** Le lien retiré : id|équipe|coach|saison|créé le — remis sous son identifiant, la copie en vigueur le cite. */
+    private string $inForceOriginalLink = '';
+
+    private string $inForceReplacingLinkId = '';
+
+    private string $inForceMembershipId = '';
+
+    private string $inForceUnavailabilityId = '';
+
+    private string $inForceAdjointCoachId = '';
+
+    private string $inForceAdjointLinkId = '';
+
     /** Décor du statut de traitement « joue/coache » (empreinte écrite + code HTTP obtenu). */
     private string $resolvedFingerprint = '';
 
@@ -728,6 +757,168 @@ final class ConflictTruthContext extends BaseContext
         throw new RuntimeException('aucun VENUE_TRAINING_OVERLAP ne porte ce match');
     }
 
+    // ── Lot 5, PR 5 : le radar lit le coach principal et le coach-joueur EN VIGUEUR (la copie de la validation) ──
+
+    #[Given('un coach principal du planning en vigueur entraîne deux équipes dont les matchs à l\'extérieur se chevauchent')]
+    public function unCoachEnVigueurSurDeuxEquipes(): void
+    {
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT tc1.coach_id || \'|\' || tc1.team_id || \'|\' || tc2.team_id || \'|\' || tc1.id || \'|\' || tc1.season_id || \'|\' || tc1.created_at::text AS behatval'
+                . ' FROM team_coach tc1 JOIN team_coach tc2 ON tc2.coach_id = tc1.coach_id AND tc2.team_id <> tc1.team_id AND tc2.role = \'MAIN\''
+                . ' %s WHERE tc1.club_id = \'%s\' AND tc1.season_id = \'%s\' AND tc1.role = \'MAIN\''
+                . ' AND jsonb_exists(ss.data::jsonb -> \'TeamCoach\', tc1.id::text) AND jsonb_exists(ss.data::jsonb -> \'TeamCoach\', tc2.id::text)'
+                . ' ORDER BY tc1.id, tc2.team_id LIMIT 1',
+                $this->inForceCopyJoin('tc1'),
+                $this->clubId,
+                $this->disposableSeasonId(),
+            ),
+            admin: true,
+        );
+        $parts = explode('|', $row);
+        if (6 !== \count($parts)) {
+            throw new RuntimeException('aucun coach principal de la copie en vigueur sur deux équipes — la base est-elle seedée ?');
+        }
+        [$this->inForceCoachId, $this->inForceTeamAId, $this->inForceTeamBId] = $parts;
+        $this->inForceOriginalLink = implode('|', [$parts[3], $parts[1], $parts[0], $parts[4], $parts[5]]);
+        $this->poserLesDeuxMatchsEnVigueur();
+        // Témoin : avant tout geste, le radar porte bien le conflit de ce coach en double.
+        $this->jeDemandeLesConflits();
+        if (null === $this->conflictBetween($this->inForceMatchAId, $this->inForceMatchBId)) {
+            throw new RuntimeException('témoin : le coach principal sur les deux équipes devrait mettre leurs deux matchs en conflit avant tout geste');
+        }
+    }
+
+    #[Given('un coach principal du planning en vigueur entraîne une équipe dont le match chevauche celui d\'une autre équipe')]
+    public function unCoachEnVigueurEtUneAutreEquipe(): void
+    {
+        $links = '(SELECT coach_id, team_id FROM team_coach UNION SELECT coach_id, team_id FROM coach_player_membership)';
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT tc.coach_id || \'|\' || tc.team_id || \'|\' || b.id AS behatval FROM team_coach tc %s'
+                . ' JOIN team b ON b.club_id = tc.club_id AND b.season_id = tc.season_id AND b.id <> tc.team_id AND jsonb_exists(ss.data::jsonb -> \'Team\', b.id::text)'
+                . ' WHERE tc.club_id = \'%s\' AND tc.season_id = \'%s\' AND tc.role = \'MAIN\' AND jsonb_exists(ss.data::jsonb -> \'TeamCoach\', tc.id::text)'
+                . ' AND NOT EXISTS (SELECT 1 FROM %s l1 JOIN %s l2 ON l2.coach_id = l1.coach_id WHERE l1.team_id = tc.team_id AND l2.team_id = b.id)'
+                . ' ORDER BY tc.id, b.id LIMIT 1',
+                $this->inForceCopyJoin('tc'),
+                $this->clubId,
+                $this->disposableSeasonId(),
+                $links,
+                $links,
+            ),
+            admin: true,
+        );
+        $parts = explode('|', $row);
+        if (3 !== \count($parts)) {
+            throw new RuntimeException('aucun coach principal de la copie en vigueur et aucune équipe sans personne commune — la base est-elle seedée ?');
+        }
+        [$this->inForceCoachId, $this->inForceTeamAId, $this->inForceTeamBId] = $parts;
+        $this->poserLesDeuxMatchsEnVigueur();
+    }
+
+    #[Given('le coach principal d\'une équipe du planning en vigueur est indisponible au coup d\'envoi de son match à domicile ce samedi')]
+    public function leCoachEnVigueurIndisponible(): void
+    {
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT tc.coach_id || \'|\' || tc.team_id AS behatval FROM team_coach tc %s'
+                . ' WHERE tc.club_id = \'%s\' AND tc.season_id = \'%s\' AND tc.role = \'MAIN\' AND jsonb_exists(ss.data::jsonb -> \'TeamCoach\', tc.id::text)'
+                . ' AND (SELECT COUNT(*) FROM team_coach o WHERE o.team_id = tc.team_id) = 1 ORDER BY tc.id LIMIT 1',
+                $this->inForceCopyJoin('tc'),
+                $this->clubId,
+                $this->disposableSeasonId(),
+            ),
+            admin: true,
+        );
+        $parts = explode('|', $row);
+        if (2 !== \count($parts)) {
+            throw new RuntimeException('aucune équipe de la copie en vigueur tenue par un seul coach principal, sans adjoint — la base est-elle seedée ?');
+        }
+        [$this->inForceCoachId, $this->inForceTeamAId] = $parts;
+        // Samedi 2026-12-05 (après l'horloge épinglée) : domicile à 15:00 ; indisponibilité du module Matchs 14:00-16:00.
+        $this->inForceMatchAId = $this->idOf($this->apiPost('fixtures', [
+            'teamId' => $this->inForceTeamAId,
+            'matchDate' => '2026-12-05',
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Adversaire (coach en vigueur)',
+            'kickoffTime' => '15:00',
+            'venueId' => $this->venueId,
+        ], $this->token), 'match à domicile');
+        $this->inForceUnavailabilityId = $this->idOf($this->apiPost('match_constraints', [
+            'scope' => 'COACH',
+            'scopeTargetId' => $this->inForceCoachId,
+            'ruleType' => 'PREFERRED',
+            'daysOfWeek' => [6],
+            'kickoffMin' => '14:00',
+            'kickoffMax' => '16:00',
+        ], $this->token), 'indisponibilité du coach (module Matchs)');
+    }
+
+    #[When('je confie la première équipe à un autre coach principal, sans valider le planning de saison')]
+    public function jeConfieLaPremiereEquipeAUnAutreCoach(): void
+    {
+        $other = $this->dbalScalar(
+            \sprintf(
+                'SELECT c.id AS behatval FROM coach c WHERE c.club_id = \'%s\' AND c.season_id = \'%s\' AND c.id <> \'%s\' AND NOT EXISTS (SELECT 1 FROM team_coach x WHERE x.coach_id = c.id AND x.team_id IN (\'%s\', \'%s\')) AND NOT EXISTS (SELECT 1 FROM coach_player_membership m WHERE m.coach_id = c.id AND m.team_id IN (\'%s\', \'%s\')) ORDER BY c.id LIMIT 1',
+                $this->clubId,
+                $this->disposableSeasonId(),
+                $this->inForceCoachId,
+                $this->inForceTeamAId,
+                $this->inForceTeamBId,
+                $this->inForceTeamAId,
+                $this->inForceTeamBId,
+            ),
+            admin: true,
+        );
+        if ('' === $other) {
+            throw new RuntimeException('aucun autre coach du club pour reprendre l\'équipe');
+        }
+        [$linkId] = explode('|', $this->inForceOriginalLink);
+        $removed = $this->apiDelete(\sprintf('team_coaches/%s', $linkId), $this->token);
+        if (204 !== $removed['status']) {
+            throw new RuntimeException(\sprintf('retirer le coach principal a répondu %d (204 attendu)', $removed['status']));
+        }
+        $this->inForceReplacingLinkId = $this->idOf($this->apiPost('team_coaches', ['teamId' => $this->inForceTeamAId, 'coachId' => $other, 'role' => 'MAIN'], $this->token), 'nouveau coach principal');
+    }
+
+    #[When('j\'inscris ce coach comme joueur de l\'autre équipe, sans valider le planning de saison')]
+    public function jInscrisCeCoachCommeJoueur(): void
+    {
+        $this->inForceMembershipId = $this->idOf(
+            $this->apiPost('coach_player_memberships', ['coachId' => $this->inForceCoachId, 'teamId' => $this->inForceTeamBId, 'isActive' => true], $this->token),
+            'coach-joueur',
+        );
+    }
+
+    #[When('j\'ajoute à cette équipe un adjoint disponible ce samedi, sans valider le planning de saison')]
+    public function jAjouteUnAdjointDisponible(): void
+    {
+        $this->inForceAdjointCoachId = $this->idOf($this->apiPost('coaches', ['firstName' => 'Lou', 'lastName' => 'Adjointe'], $this->token), 'adjoint');
+        $this->inForceAdjointLinkId = $this->idOf($this->apiPost('team_coaches', ['teamId' => $this->inForceTeamAId, 'coachId' => $this->inForceAdjointCoachId, 'role' => 'ASSISTANT'], $this->token), 'lien adjoint');
+    }
+
+    #[Then('le radar porte toujours le conflit de ce coach en double')]
+    public function leRadarPorteToujoursLeConflitEnDouble(): void
+    {
+        if (null === $this->conflictBetween($this->inForceMatchAId, $this->inForceMatchBId)) {
+            throw new RuntimeException('le coach principal en vigueur est toujours sur les deux équipes tant que rien n\'est validé : le conflit MATCH_MATCH de ces deux matchs devrait rester');
+        }
+    }
+
+    #[Then('le radar ne porte aucun conflit entre ces deux matchs')]
+    public function leRadarNePorteAucunConflitEntreCesDeuxMatchs(): void
+    {
+        if (null !== $this->conflictBetween($this->inForceMatchAId, $this->inForceMatchBId)) {
+            throw new RuntimeException('un coach-joueur ajouté sans valider ne vaut pas pour les matchs : aucun conflit MATCH_MATCH ne devrait porter ces deux matchs');
+        }
+    }
+
+    #[Then('le radar signale ce coach principal indisponible, en orange')]
+    public function leRadarSignaleCeCoachEnOrange(): void
+    {
+        $this->assertCoachUnavailableSeverity(4, 'orange', $this->inForceCoachId);
+    }
+
     #[When('je demande les conflits des matchs')]
     public function jeDemandeLesConflits(): void
     {
@@ -897,10 +1088,40 @@ final class ConflictTruthContext extends BaseContext
             $this->apiDelete($this->resolutionPath($this->resolvedFingerprint), $this->token);
         }
 
-        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->holidayCupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId, $this->matchCoachFixtureId] as $id) {
+        foreach ([$this->fixtureId, $this->friendlyId, $this->championshipFixtureId, $this->cupFixtureId, $this->holidayCupFixtureId, $this->gymFixtureAId, $this->gymFixtureBId, $this->coachedMatchId, $this->playedMatchId, $this->personGymMatchAId, $this->personGymMatchBId, $this->matchCoachFixtureId, $this->inForceMatchAId, $this->inForceMatchBId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
+        }
+        // Lot 5, PR 5 : ce qui a été changé sur des équipes en vigueur, défait ; le lien d'origine revient sous son identifiant.
+        if ('' !== $this->inForceUnavailabilityId) {
+            $this->apiDelete(\sprintf('match_constraints/%s', $this->inForceUnavailabilityId), $this->token);
+        }
+        if ('' !== $this->inForceMembershipId) {
+            $this->apiDelete(\sprintf('coach_player_memberships/%s', $this->inForceMembershipId), $this->token);
+        }
+        foreach ([$this->inForceAdjointLinkId, $this->inForceReplacingLinkId] as $id) {
+            if ('' !== $id) {
+                $this->apiDelete(\sprintf('team_coaches/%s', $id), $this->token);
+            }
+        }
+        if ('' !== $this->inForceAdjointCoachId) {
+            $this->apiDelete(\sprintf('coaches/%s', $this->inForceAdjointCoachId), $this->token);
+        }
+        if ('' !== $this->inForceReplacingLinkId && '' !== $this->inForceOriginalLink) {
+            [$linkId, $teamId, $coachId, $seasonId, $createdAt] = explode('|', $this->inForceOriginalLink);
+            $this->dbalExec(
+                \sprintf(
+                    'INSERT INTO team_coach (id, version, created_at, updated_at, club_id, season_id, team_id, coach_id, role, wish_recipient) VALUES (\'%s\', 1, \'%s\', now(), \'%s\', \'%s\', \'%s\', \'%s\', \'MAIN\', false) ON CONFLICT (id) DO NOTHING',
+                    $linkId,
+                    $createdAt,
+                    $this->clubId,
+                    $seasonId,
+                    $teamId,
+                    $coachId,
+                ),
+                admin: true,
+            );
         }
         // Chantier H : l'indispo déclarée (contrainte du module Matchs) + le lien adjoint (avant
         // l'équipe/le coach qu'ils référencent).
@@ -992,12 +1213,61 @@ final class ConflictTruthContext extends BaseContext
         return $found;
     }
 
-    private function assertCoachUnavailableSeverity(int $expected, string $colour): void
+    /**
+     * La jointure qui donne la copie de la version en vigueur (`ss.data`) de la saison des lignes `$alias` (lot 5).
+     */
+    private function inForceCopyJoin(string $alias): string
+    {
+        return \sprintf(
+            'JOIN schedule_plan p ON p.club_id = %1$s.club_id AND p.season_id = %1$s.season_id AND p.type = \'SEASON\' JOIN schedule_state ss ON ss.schedule_id = p.chosen_schedule_id',
+            $alias,
+        );
+    }
+
+    /** La saison des équipes jetables (la saison active du gestionnaire). */
+    private function disposableSeasonId(): string
+    {
+        if ('' === $this->inForceSeasonId) {
+            $this->inForceSeasonId = $this->dbalScalar(\sprintf('SELECT season_id AS behatval FROM team WHERE id=\'%s\'', $this->teamId), admin: true);
+        }
+
+        return $this->inForceSeasonId;
+    }
+
+    /** Deux matchs à l'extérieur, un samedi à venir, qui se chevauchent : 15:30 pour la première équipe, 16:00 pour l'autre. */
+    private function poserLesDeuxMatchsEnVigueur(): void
+    {
+        $saturday = new DateTimeImmutable(self::PINNED_NOW)->modify('next saturday')->format('Y-m-d');
+        $this->inForceMatchAId = $this->poserMatchExterieur($this->inForceTeamAId, $saturday, '15:30');
+        $this->inForceMatchBId = $this->poserMatchExterieur($this->inForceTeamBId, $saturday, '16:00');
+    }
+
+    /**
+     * Le conflit de personne (MATCH_MATCH) qui porte ces deux matchs, ou null.
+     *
+     * @return array<mixed>|null
+     */
+    private function conflictBetween(string $matchA, string $matchB): ?array
+    {
+        foreach ($this->conflicts as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null)) {
+                continue;
+            }
+            $ids = [\is_array($conflict['left'] ?? null) ? ($conflict['left']['fixtureId'] ?? null) : null, \is_array($conflict['right'] ?? null) ? ($conflict['right']['fixtureId'] ?? null) : null];
+            if (\in_array($matchA, $ids, true) && \in_array($matchB, $ids, true)) {
+                return $conflict;
+            }
+        }
+
+        return null;
+    }
+
+    private function assertCoachUnavailableSeverity(int $expected, string $colour, ?string $coachId = null): void
     {
         foreach ($this->conflicts as $conflict) {
             if (\is_array($conflict)
                 && 'MATCH_COACH_UNAVAILABLE' === ($conflict['type'] ?? null)
-                && ($conflict['coachId'] ?? null) === $this->coachId
+                && ($conflict['coachId'] ?? null) === ($coachId ?? $this->coachId)
             ) {
                 if ((int) ($conflict['severity'] ?? 0) !== $expected) {
                     throw new RuntimeException(\sprintf('conflit « coach indisponible » attendu en %s (gravité %d), obtenu gravité %s', $colour, $expected, var_export($conflict['severity'] ?? null, true)));

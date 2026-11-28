@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPendingChanges, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, reworkSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -118,6 +118,7 @@ vi.mock("./api", () => {
   EngineVerificationInterruptedError,
   VerdictAbandonedError,
   reopenSchedule: vi.fn(),
+  reworkSchedule: vi.fn(() => Promise.resolve({ id: "work-1" })),
   fillSchedule: vi.fn(() => Promise.resolve({ id: "sched-fill" })),
   listSchedules: vi.fn(() => Promise.resolve([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan" }])),
   getSlots: vi.fn(() =>
@@ -131,6 +132,8 @@ vi.mock("./api", () => {
   // P4-266 — l'empreinte de structure servie par plan. Par défaut `null` : aucune cause de
   // péremption dérivée, « Régénérer » non grisé. Les cas dédiés surchargent.
   getStructureHash: vi.fn(() => Promise.resolve({ currentStructureHash: null })),
+  // Lot 5, PR 5 : ce qui attend la validation du planning de saison. Par défaut rien ; les cas dédiés surchargent.
+  getPendingChanges: vi.fn(() => Promise.resolve({ pending: false, hasWorkVersion: false, changes: [] })),
   // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
   // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
   getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0 })),
@@ -332,6 +335,8 @@ beforeEach(() => {
   vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", window: { startDate: "2026-09-07", endDate: "2026-09-13" }, moved: [], unplaced: [], changedSlotIds: [], teams: [], ranks: [] });
   // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
   vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, absences: [], conflicts: [] });
+  // Lot 5, PR 5 : ré-armement — défaut « rien n'attend la validation », les cas dédiés surchargent.
+  vi.mocked(getPendingChanges).mockResolvedValue({ pending: false, hasWorkVersion: false, changes: [] });
   navigate.mockClear();
   seasonState.isReadonly = false;
   usePlanningStore.setState({ viewMode: "gymnase", selectedScheduleId: null, selectedSlotId: null, resourceFilter: [] });
@@ -810,8 +815,30 @@ describe("PlanningPage (integration)", () => {
     expect(await screen.findByText("U11")).toBeInTheDocument();
     // Being pointed at IS being validated: the only way forward is « Rouvrir ».
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /rouvrir/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retravailler" })).toBeInTheDocument();
     expect(screen.getByText("Terminé")).toBeInTheDocument();
+  });
+
+  /**
+   * Lot 5, PR 5, ligne 33 du plan : l'écran dit quand des modifications attendent la validation du planning de saison
+   * (servi par `GET /api/schedule_plans/{id}/pending-changes`), et ne dit rien quand rien n'attend. Jumeau Behat, cité :
+   * `le-socle-commande-les-plans.feature`, « L'écran sait quand des modifications attendent la validation ».
+   */
+  it("lot 5 — sur la version EN VIGUEUR, annonce les modifications qui attendent la validation", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    vi.mocked(getPendingChanges).mockResolvedValue({ pending: true, hasWorkVersion: false, changes: [{ family: "TeamCoach", count: 1, destroys: true }] });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText(PLANNING_TEXTS.pendingChangesBanner)).toBeInTheDocument();
+  });
+
+  it("lot 5 — rien n'attend la validation : aucune annonce", async () => {
+    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    await waitFor(() => expect(getPendingChanges).toHaveBeenCalled());
+    expect(screen.queryByText(PLANNING_TEXTS.pendingChangesBanner)).not.toBeInTheDocument();
   });
 
   it("embarqué (wizard) : sur la version EN VIGUEUR, n'offre PLUS « Rouvrir » (déplacé sur /planning) ni « Valider »", async () => {
@@ -1186,83 +1213,39 @@ describe("PlanningPage (integration)", () => {
     expect(closed.getAttribute("title")).toMatch(/mardi est fermé/);
   });
 
-  // planning lifecycle (§7.1): reopening the version the plan POINTS at, when the
-  // season has period overlays, 409s; the UI escalates to a proportional confirm,
-  // then re-sends with the flag.
-  describe("reopen escalation (the plan in force, with overlays)", () => {
+  // planning lifecycle (§7.1) — lot 5 : le planning de saison en vigueur ne se rouvre plus, il se
+  // RETRAVAILLE (son refus serveur : `Security/SeasonPlanInForceTest::testReopeningTheSeasonPlanIsRefused`).
+  // Une période validée se rouvre toujours (dernier cas du bloc).
+  describe("retravailler le socle, rouvrir une période (le plan en vigueur)", () => {
     const validated: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }];
 
     beforeEach(() => {
       vi.mocked(reopenSchedule).mockReset(); // per-test call count + queued once-values
+      vi.mocked(reworkSchedule).mockReset();
     });
 
-    it("409 → confirm naming the overlay count → re-sends confirmDeleteOverlays", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockRejectedValueOnce(new OverlaysExistError(2, [])).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      // First reopen (no flag) → 409 → proportional confirm dialog.
-      // D5 « nom unique » : le dialogue compte des « plannings de période » (clé), jamais « secondaires ».
-      const reopenDialog = await screen.findByRole("dialog");
-      expect(reopenDialog).toHaveTextContent(PLANNING_TEXTS.reopenDeletesPeriodPlans("Planning A", 2));
-      expect(reopenDialog).not.toHaveTextContent(/secondaire/i);
-
-      // P2-7 : le geste lourd exige de taper la phrase — le bouton reste grisé sans elle.
-      const confirmButton = screen.getByRole("button", { name: "Rouvrir et supprimer" });
-      expect(confirmButton).toBeDisabled();
-      await user.type(within(screen.getByRole("dialog")).getByRole("textbox"), "modifier mon planning de saison");
-      expect(confirmButton).toBeEnabled();
-
-      await user.click(confirmButton);
-      expect(vi.mocked(reopenSchedule)).toHaveBeenCalledTimes(2);
-      expect(vi.mocked(reopenSchedule).mock.calls[1]).toEqual([SID, { confirmDeleteOverlays: true }]);
-      // Reopened → back to the wizard's generation step.
-      expect(navigate).toHaveBeenCalledWith("/wizard");
-    });
-
-    // Q8bis (P2-63) — le confirm annonce AUSSI les doléances des vacances à venir qui partiront.
-    it("409 avec doléances → le confirm annonce les doléances emportées (relancer la collecte)", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockRejectedValueOnce(new OverlaysExistError(1, [], 25)).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />);
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      expect(await screen.findByText(/25 doléances déjà reçues pour les vacances à venir partiront aussi/i)).toBeInTheDocument();
-      expect(screen.getByText(/il faudra relancer la collecte/i)).toBeInTheDocument();
-    });
-
-    it("« Rouvrir » (no overlays) → wizard generation step", async () => {
-      const user = userEvent.setup();
-      vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
-      await screen.findByText("U11");
-
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
-      expect(vi.mocked(reopenSchedule)).toHaveBeenCalledTimes(1);
-      expect(navigate).toHaveBeenCalledWith("/wizard");
-    });
-
-    // NR (défaut 3, axe planning lifecycle — LE bloquant) : toute navigation vers /wizard
-    // DÉCLARE son mode ; aucun héritage du localStorage. Rouvrir la SAISON repasse en mode
-    // saison même si un mode période traînait. Falsification : sans exitPeriodMode, la
-    // période persistée resterait et le wizard s'ouvrirait sur la mauvaise portée.
-    it("Rouvrir le SOCLE (SEASON) déclare le mode SAISON — une période persistée ne survit pas", async () => {
+    // NR (défaut 3, axe planning lifecycle) : toute navigation vers /wizard DÉCLARE son mode ;
+    // aucun héritage du localStorage. Retravailler la SAISON repasse en mode saison même si un
+    // mode période traînait. Falsification : sans exitPeriodMode, la période persistée resterait
+    // et le wizard s'ouvrirait sur la mauvaise portée.
+    it("« Retravailler » le SOCLE confirme, crée la copie, puis déclare le mode SAISON — une période persistée ne survit pas", async () => {
       const user = userEvent.setup();
       // Un mode période traîne du localStorage/écran précédent : le piège exact.
       useWizardStore.getState().startPeriodMode("stale-entry");
       vi.mocked(listSchedules).mockResolvedValue(validated);
-      vi.mocked(reopenSchedule).mockResolvedValueOnce({});
-      renderWithProviders(<PlanningPage />); // Nouveau contrat (2026-08-20) : Rouvrir vit sur /planning autonome
+      vi.mocked(reworkSchedule).mockResolvedValueOnce({ id: "work-1" });
+      renderWithProviders(<PlanningPage />);
       await screen.findByText("U11");
 
-      await user.click(screen.getByRole("button", { name: /rouvrir/i }));
+      await user.click(screen.getByRole("button", { name: PLANNING_TEXTS.rework }));
+      const dialog = await screen.findByRole("dialog");
+      expect(vi.mocked(reworkSchedule)).not.toHaveBeenCalled();
+      await user.click(within(dialog).getByRole("button", { name: PLANNING_TEXTS.rework }));
+
       await waitFor(() => expect(navigate).toHaveBeenCalledWith("/wizard"));
+      expect(vi.mocked(reworkSchedule)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(reworkSchedule).mock.calls[0]?.[0]).toBe(SID);
+      expect(vi.mocked(reopenSchedule)).not.toHaveBeenCalled();
       expect(useWizardStore.getState().mode).toBe("season");
       expect(useWizardStore.getState().calendarEntryId).toBeNull();
       expect(useWizardStore.getState().stepId).toBe("generate");

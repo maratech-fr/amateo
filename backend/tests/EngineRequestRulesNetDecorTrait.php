@@ -63,7 +63,9 @@ trait EngineRequestRulesNetDecorTrait
         Assert::assertInstanceOf(Constraint::class, $off);
         $off->setIsActive(false);
         $em->flush();
-        // Comme une saisie : la porte pose la ligne de la règle dans chaque plan de période, au défaut de sa nature.
+        // Comme une saisie : la porte pose la ligne de la règle dans chaque plan de période, au défaut de sa nature. Le
+        // socle en vigueur du décor porte l'état du décor (lot 5).
+        SeasonPlanOf::keepTheDecorInForce(static::getContainer(), $this->erSeasonPlanId());
         static::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
         $this->erEngineRequestTravelTime(23, 14, 35);
     }

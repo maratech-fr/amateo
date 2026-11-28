@@ -9,7 +9,6 @@ use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Repository\ClubUserRepository;
 use App\Service\SeasonAccessGuard;
-use App\Service\SocleGuard;
 use App\Service\TeamImportGate;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\SecurityBundle\Security;
@@ -27,16 +26,15 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  *      l'existence du club) ;
  *   2. membre non-gestionnaire → 403 `{"error":"Forbidden."}` ;
  *   3. saison archivée → 409 ({@see SeasonAccessGuard::assertWritable}) ;
- *   4. socle EN VIGUEUR → 409 ({@see SocleGuard::assertSeasonPlanNotChosen}) — l'import de parc
- *      est un geste d'ONBOARDING, AVANT qu'un plan de saison soit pointé. C'est l'inverse de
- *      {@see TeamImportGate}, qui ne lance PAS le SocleGuard ;
+ *   4. un socle EN VIGUEUR ne refuse rien (lot 5) : ce que l'import écrit attend la validation,
+ *      le planning validé reste en vigueur ;
  *   5. limiteur `parc_import` PAR UTILISATEUR → 429 (consommé APRÈS l'auth pour que 403/404/409
  *      gagnent d'abord) ;
  *   6/7. les bornes OCTETS (413) et DÉNOMBREMENT (422) vivent dans le contrôleur, après la gate :
  *      le corps n'est lu qu'une fois l'appelant autorisé et non throttlé.
  *
  * Rend le Club du tenant en succès, ou la JsonResponse de refus à relayer (404/403/429) ; les
- * 409 (saison/socle) sont levés en ConflictHttpException, comme dans TeamImportGate.
+ * 409 (saison archivée) sont levés en ConflictHttpException, comme dans TeamImportGate.
  */
 final class ParcImportGate
 {
@@ -44,7 +42,6 @@ final class ParcImportGate
         private readonly EntityManagerInterface $entityManager,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly Security $security,
         private readonly RateLimiterFactory $parcImportLimiter,
     ) {}
@@ -67,11 +64,6 @@ final class ParcImportGate
 
         // Saison archivée (409) — APRÈS l'auth pour que 403 gagne d'abord.
         $this->seasonAccessGuard->assertWritable($request);
-
-        // Socle EN VIGUEUR (409) : importer un parc est un geste d'onboarding, interdit tant que
-        // le plan de saison pointe une version (rouvrir d'abord).
-        $seasonId = $request->attributes->get('_season_id');
-        $this->socleGuard->assertSeasonPlanNotChosen(\is_string($seasonId) ? $seasonId : null);
 
         $club = $this->entityManager->getRepository(Club::class)->find($id);
         if (!$club instanceof Club) {

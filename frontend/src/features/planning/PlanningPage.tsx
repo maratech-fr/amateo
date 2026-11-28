@@ -53,7 +53,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadVersion, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadVersion, useMutualizeSlot, usePendingChanges, usePlacedConflicts, useRegenerate, useRegenerateOverlay, useReworkSchedule, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -318,9 +318,33 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Validation et réouverture (le cœur du lifecycle — ADR-0002) : états, mutations, impact de
   // dépointage, validate()/reopen(). `actionBusy` est recomposé plus bas depuis les mutations
   // retournées (deleteMutation et regenerateFromMutation restent en page).
-  const { validateOpen, setValidateOpen, reopenOverlayCount, setReopenOverlayCount, reopenWishCount, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
+  const { validateOpen, setValidateOpen, validateOverlayCount, setValidateOverlayCount, validateWishCount, validateMutation, reopenMutation, orphanImpact, validate, reopen } = useValidateReopen(validScheduleId, displayed, allSchedulePlans, navigate);
 
   const selectedSchedule = displayed;
+  // Lot 5 — « Retravailler » le planning de saison en vigueur (à la place de « Rouvrir ») et ce qui attend sa
+  // validation, sur l'écran de la version en vigueur (page autonome, hors portée période) : le serveur calcule,
+  // l'écran annonce. « Revenir au planning en vigueur » charge la version en vigueur.
+  const reworkMutation = useReworkSchedule();
+  const [reworkOpen, setReworkOpen] = useState(false);
+  const [backToInForceOpen, setBackToInForceOpen] = useState(false);
+  const pendingChanges = usePendingChanges(!embedded && !scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? selectedSchedule.schedulePlanId : null);
+  const seasonInForce = schedules.find((s) => true === s.isChosen && isSeasonPlanType(s.planType)) ?? null;
+  const rework = () => {
+    if (null === validScheduleId) {
+      return;
+    }
+    reworkMutation.mutate(validScheduleId, {
+      onSuccess: (created) => {
+        setReworkOpen(false);
+        // L'écran s'ouvre sur la version de travail (l'étoile), au Wizard comme sur /planning (décision fondateur).
+        setSelectedScheduleId(created.id);
+        // Même sortie que « Rouvrir » : le wizard, étape Génération, en mode SAISON déclaré.
+        useWizardStore.getState().exitPeriodMode();
+        useWizardStore.getState().jumpTo("generate");
+        navigate("/wizard");
+      },
+    });
+  };
   // Identité du plan affiché et renommage (ADR-0002 inv. 12) : nom en édition, mutation de
   // renommage, entrée de suppression d'overlay, plan affiché et son nom.
   const { editingPlanningName, setEditingPlanningName, renamePlanning, overlayDeleteEntryId, displayedPlan, displayedPlanName } = usePlanHeader(selectedSchedule, landingScheduleId, schedules, scoped, scopePlanId, allSchedulePlans, me);
@@ -378,6 +402,11 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // par une sélection LOCALE. Aucune écriture, aucune redirection : la version en vigueur (isChosen)
   // reste le calendrier. Même borne de plan que `scopeInFlight` (cf. lib/versions).
   const laterVersionId = useMemo(() => laterCompletedVersionId(displayed, schedules), [displayed, schedules]);
+  // Lot 5 — on regarde le planning de saison EN VIGUEUR alors qu'une version de travail est chargée (★) : la version à
+  // ouvrir est celle de travail. Null hors de ce cas.
+  const openWorkVersionId = true === displayed?.isChosen && isSeasonPlanType(displayed.planType)
+    ? (schedules.find((s) => isSeasonPlanType(s.planType) && true === s.isLiveContext && true !== s.isChosen)?.id ?? null)
+    : null;
   // P4-266 — l'empreinte de structure COURANTE du plan de la version affichée (SEASON ou période),
   // servie par le backend. On la COMPARE au snapshotHash figé de la version (le backend dit, le
   // front affiche) : égale ⇒ structure inchangée (« Régénérer » grisé) ; différente ⇒ la structure
@@ -397,7 +426,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const unsavedSettingsLost = null !== currentStructureHash && undefined !== loadedVersion && loadedVersion.snapshotHash !== currentStructureHash;
   // loadMutation.isPending: "Charger cette version" creates no PENDING schedule (nothing sets
   // isGenerating), so its own call must disable the action here — else a second click double-runs it.
-  const actionBusy = validateMutation.isPending || reopenMutation.isPending || deleteMutation.isPending || loadMutation.isPending;
+  const actionBusy = validateMutation.isPending || reopenMutation.isPending || reworkMutation.isPending || deleteMutation.isPending || loadMutation.isPending;
 
   // When a running generation finishes, pull the fresh slots + diagnostics.
   const prevStatus = useRef<string | null>(null);
@@ -922,6 +951,18 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         return null === stale ? null : <NoticeBanner tone="warning" className="mb-4" message={stale} />;
       })()}
 
+      {/* Lot 5 — des modifications attendent la validation du planning de saison (réglages froids changés depuis
+          la version en vigueur, ou une version de travail chargée) : annoncé sur l'écran de la version en vigueur. */}
+      {!showGenerationWaiting && true === pendingChanges.data?.pending ? (
+        <NoticeBanner tone="warning" role="status" className="mb-4" message={PLANNING_TEXTS.pendingChangesBanner}>
+          {canManage && null !== seasonInForce ? (
+            <Button size="sm" variant="outline" className="border-foreground/40 bg-card" disabled={actionBusy} onClick={() => setBackToInForceOpen(true)}>
+              {PLANNING_TEXTS.backToInForce}
+            </Button>
+          ) : null}
+        </NoticeBanner>
+      ) : null}
+
       {/* Fermetures de gymnase (C5) — une fermeture DÉCLARÉE qui touche ce plan de période le rend
           périmé : bandeau distinct de `stalenessMessage`, armé depuis l'entrée du plan affiché. */}
       {showGenerationWaiting ? null : <ClosureStalePlanBanners
@@ -949,18 +990,20 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         </NoticeBanner>
       ) : null}
 
-      {/* « Ouvrir la dernière version » n'a pas de sens sur la version chargée : c'est là qu'on travaille. */}
-      {!showGenerationWaiting && null !== laterVersionId && !showNotLoadedBanner && true !== displayed?.isLiveContext && true !== displayed?.isLockSource ? (
-        <NoticeBanner tone="muted" role="status" className="mb-4" message={PLANNING_TEXTS.earlierVersionNotice}>
+      {/* « Ouvrir la dernière version » n'a pas de sens sur la version chargée : c'est là qu'on travaille. Lot 5 : sur le
+          planning de saison EN VIGUEUR alors qu'une version de travail est chargée, le bandeau le dit et ouvre la version
+          de travail (l'étoile). */}
+      {!showGenerationWaiting && (null !== laterVersionId || null !== openWorkVersionId) && !showNotLoadedBanner && true !== displayed?.isLiveContext && true !== displayed?.isLockSource ? (
+        <NoticeBanner tone="muted" role="status" className="mb-4" message={null !== openWorkVersionId ? PLANNING_TEXTS.inForceWithWorkVersionNotice : PLANNING_TEXTS.earlierVersionNotice}>
           <Button
             size="sm"
             variant="outline"
             onClick={() => {
               armNavTransition(); // GESTE (ouverture d'une version) arme le voile de changement de page
-              setSelectedScheduleId(laterVersionId);
+              setSelectedScheduleId(openWorkVersionId ?? laterVersionId);
             }}
           >
-            {PLANNING_TEXTS.openLatestVersion}
+            {null !== openWorkVersionId ? PLANNING_TEXTS.openWorkVersion : PLANNING_TEXTS.openLatestVersion}
           </Button>
         </NoticeBanner>
       ) : null}
@@ -1056,6 +1099,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               }}
               onValidate={() => setValidateOpen(true)}
               onReopen={() => reopen()}
+              onRework={() => setReworkOpen(true)}
               onDelete={() => validScheduleId && deleteMutation.mutate(validScheduleId)}
               onLoad={() => setLoadConfirmOpen(true)}
               embedded={embedded}
@@ -1531,17 +1575,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       ) : null}
 
       <ConfirmDialog
-        open={reopenOverlayCount !== null}
-        destructive
-        title={PLANNING_TEXTS.reopenTitle(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback)}
-        description={`${PLANNING_TEXTS.reopenDeletesPeriodPlans(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback, reopenOverlayCount ?? 0)}${coachWishPurgeClause(reopenWishCount)}`}
-        confirmLabel={PLANNING_TEXTS.reopenAndDelete}
-        confirmPhrase={PLANNING_TEXTS.reopenConfirmPhrase}
-        onConfirm={() => reopen(true)}
-        onCancel={() => setReopenOverlayCount(null)}
-      />
-
-      <ConfirmDialog
         open={null !== pendingUnlockSlotId}
         title={PLANNING_TEXTS.unlockReservedTitle}
         description={PLANNING_TEXTS.unlockReservedDescription}
@@ -1661,6 +1694,37 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         destructive
         onConfirm={() => validate(true)}
         onCancel={() => setValidateOverlayCount(null)}
+      />
+
+      {/* Lot 5 — « Retravailler » : une copie de travail naît de la version en vigueur, qui le reste. */}
+      <ConfirmDialog
+        open={reworkOpen}
+        destructive={false}
+        title={PLANNING_TEXTS.reworkTitle(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback)}
+        description={
+          <>
+            <p>{PLANNING_TEXTS.reworkDescription}</p>
+            {true === pendingChanges.data?.pending ? <p className="mt-2">{PLANNING_TEXTS.reworkKeepsPending}</p> : null}
+          </>
+        }
+        confirmLabel={PLANNING_TEXTS.rework}
+        onConfirm={rework}
+        onCancel={() => setReworkOpen(false)}
+      />
+
+      {/* Lot 5 — « Revenir au planning en vigueur » : les réglages reviennent à ceux de la version en vigueur. */}
+      <ConfirmDialog
+        open={backToInForceOpen}
+        title={PLANNING_TEXTS.backToInForceTitle}
+        description={PLANNING_TEXTS.backToInForceDescription}
+        confirmLabel={PLANNING_TEXTS.backToInForce}
+        onConfirm={() => {
+          if (null !== seasonInForce) {
+            loadMutation.mutate(seasonInForce.id, { onSuccess: (loaded) => setSelectedScheduleId(loaded.id) });
+          }
+          setBackToInForceOpen(false);
+        }}
+        onCancel={() => setBackToInForceOpen(false)}
       />
 
       {/* « Charger cette version », tout plan : les réglages du plan reviennent à ceux de la version. Il ne

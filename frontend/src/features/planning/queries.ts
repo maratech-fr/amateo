@@ -161,6 +161,20 @@ export function useStructureHash(planId: string | null) {
   });
 }
 
+/**
+ * Lot 5 — ce qui attend la validation du planning de saison (`GET /schedule_plans/{id}/pending-changes`). `planId` nul
+ * désarme la query. Rafraîchie après « Retravailler », « Charger » et « Valider » (invalidation `pending-changes`) ;
+ * une saisie du Wizard se voit au retour sur l'écran (`staleTime` court).
+ */
+export function usePendingChanges(planId: string | null) {
+  return useQuery({
+    queryKey: ["pending-changes", planId],
+    queryFn: () => planningApi.getPendingChanges(planId as string),
+    enabled: null !== planId,
+    staleTime: 5_000,
+  });
+}
+
 export function useDiagnostics(scheduleId: string | null) {
   return useQuery({
     queryKey: ["diagnostics", scheduleId],
@@ -617,6 +631,8 @@ export function useValidateSchedule() {
       // Validating moves the plan's pointer (surfaced on /me.seasonPlan), which
       // unlocks matches + secondary plans — refresh it so the home screen follows.
       void queryClient.invalidateQueries({ queryKey: ["me"] });
+      // Lot 5 : la version validée devient la référence de ce qui attend la validation.
+      void queryClient.invalidateQueries({ queryKey: ["pending-changes"] });
     },
   });
 }
@@ -650,6 +666,25 @@ export function useReopenSchedule() {
   });
 }
 
+/**
+ * Lot 5 — « Retravailler » le planning de saison : une version de travail naît de la version en vigueur et devient la
+ * chargée ; le pointeur ne bouge pas. Le refus du serveur est dit tel quel.
+ */
+export function useReworkSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => planningApi.reworkSchedule(id),
+    // La liste des versions est RELUE avant de rendre la main : l'appelant sélectionne la version de travail née du
+    // geste, et une liste périmée (sans elle) ferait retomber l'atterrissage sur la version en vigueur. TanStack attend
+    // la promesse de ce `onSuccess` avant les rappels du `mutate`.
+    onSuccess: async () => {
+      void queryClient.invalidateQueries({ queryKey: ["pending-changes"] });
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] });
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
 /** planning-versions: delete a work version (guards live server-side). */
 export function useDeleteSchedule() {
   const queryClient = useQueryClient();
@@ -673,6 +708,7 @@ export function useLoadVersion() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
       void queryClient.invalidateQueries({ queryKey: ["wizard"] });
+      void queryClient.invalidateQueries({ queryKey: ["pending-changes"] });
       for (const key of ["teams", "venues", "coaches", "categories", "priority_tiers"]) {
         void queryClient.invalidateQueries({ queryKey: [key] });
       }

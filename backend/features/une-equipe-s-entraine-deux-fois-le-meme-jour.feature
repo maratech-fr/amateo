@@ -3,7 +3,8 @@ Fonctionnalité: Une équipe peut s'entraîner deux fois le même jour
   Le gestionnaire règle, équipe par équipe, le nombre maximum de séances le même jour (1 par
   défaut, jusqu'à 4). Le récapitulatif s'y aligne : il laisse passer deux réservations le même jour
   quand l'équipe y est autorisée, et il arrête toujours deux séances qui se chevauchent. Une fois
-  le planning de saison en vigueur, ce réglage ne bouge plus ; une période garde le sien. En
+  le planning de saison en vigueur, ce réglage se modifie encore et attend la validation ; une
+  période garde le sien. En
   période, une équipe qui garde ses créneaux de saison garde aussi deux créneaux qui se suivent,
   et le planning le signale sans les séparer. Sur un petit club réaliste (palier 60 s).
 
@@ -21,8 +22,8 @@ Fonctionnalité: Une équipe peut s'entraîner deux fois le même jour
     Quand je génère et valide le planning de saison du petit club
     Alors les deux séances de SM1 tiennent le lundi, et le planning ne signale aucun écart pour SM1
     Quand j'essaie de remettre SM1 à 1 séance par jour
-    Alors c'est refusé : « Rouvrez le planning de saison pour modifier le nombre de séances. »
+    Alors c'est accepté sans rouvrir : SM1 est à 1 séance par jour, et le planning de saison reste en vigueur
     Quand j'ouvre une période où SM1 garde ses créneaux de saison, et j'y autorise 3 séances par jour pour SM1
-    Alors la période porte 3 séances par jour pour SM1, la saison reste à 2
+    Alors la période porte 3 séances par jour pour SM1, la saison reste à 1
     Quand je génère le planning de cette période
     Alors SM1 garde ses deux créneaux du lundi et le planning signale « gardées du planning de saison »

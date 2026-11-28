@@ -26,6 +26,8 @@ vi.mock("@/features/planning/queries", () => ({
   useDeleteSchedule: () => ({ mutateAsync: vi.fn(), isPending: false }),
   // P4-269 — SeasonPlanBanner lit le radar « personne à deux endroits » du planning en vigueur.
   usePlacedConflicts: () => ({ data: { conflicts: [] } }),
+  // Lot 5 — SeasonPlanBanner lit aussi ce qui attend la validation du planning de saison.
+  usePendingChanges: () => ({ data: undefined }),
 }));
 
 const publicHolidayWindows: [string, string][] = [];

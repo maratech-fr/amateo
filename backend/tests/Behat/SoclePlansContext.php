@@ -14,10 +14,13 @@ use RuntimeException;
 /**
  * Le planning de saison commande les plannings de période (ADR-0002), sur la stack qui tourne.
  *
- * Prouve la souveraineté du socle : le valider ou le rouvrir efface les plannings de période
- * ENTIÈREMENT à venir (critère `findWithPlanNotStarted` : date de début > aujourd'hui) et épargne
- * ceux déjà commencés ; et qu'aucun planning de période ne peut naître sans socle en vigueur
- * (`SocleGuard::assertSeasonPlanChosen`).
+ * Prouve la souveraineté du socle : le valider efface les plannings de période ENTIÈREMENT à venir
+ * (critère `findWithPlanNotStarted` : date de début > aujourd'hui) et épargne ceux déjà commencés ;
+ * le retravailler (lot 5, PR 5) ne détruit rien, garde ce qui attend la validation, et l'état « en
+ * attente » (`GET /api/schedule_plans/{id}/pending-changes`) le dit ; revenir au planning en vigueur
+ * (« Charger » la version en vigueur) abandonne les modifications ; des vacances nées pendant des
+ * modifications prennent la grille en vigueur ; aucun planning de période ne naît sans socle jamais
+ * validé (`SocleGuard::assertSeasonPlanChosen`, décor : un petit club neuf).
  *
  * Décor : club de démonstration. Chaque scénario forge SES deux plannings de période — un à venir
  * (par le vrai geste « Adapter », POST /schedule_plans) et un déjà commencé (semé en base : l'API
@@ -28,6 +31,8 @@ use RuntimeException;
  */
 final class SoclePlansContext extends BaseContext
 {
+    use SmallClubFixtureTrait;
+
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
 
     private string $token = '';
@@ -70,6 +75,24 @@ final class SoclePlansContext extends BaseContext
     private int $refusedStatus = 0;
 
     private string $refusedError = '';
+
+    /** La copie de travail née de « Retravailler ». */
+    private string $workCopyId = '';
+
+    /** Créneau ajouté à la grille du socle sans valider (scénario des deux grilles), retiré en fin. */
+    private string $pendingSocleSlotId = '';
+
+    private string $pendingSocleSlot = '';
+
+    /**
+     * Le lien de coach principal changé sans valider : la ligne d'origine (id|équipe|coach|saison|créée le), et le lien
+     * posé à sa place. Le nettoyage remet la ligne d'origine, sous son identifiant : la copie en vigueur la cite.
+     */
+    private string $originalMainLink = '';
+
+    private string $replacingMainLinkId = '';
+
+    private string $replacingCoachId = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -234,16 +257,225 @@ final class SoclePlansContext extends BaseContext
         }
     }
 
-    #[When('je rouvre le planning de saison')]
-    public function jeRouvreLePlanningDeSaison(): void
+    #[When('je retravaille le planning de saison')]
+    public function jeRetravailleLePlanningDeSaison(): void
     {
-        $reopened = $this->apiPost(
-            \sprintf('schedules/%s/reopen', $this->chosenAtEntry),
-            ['confirmDeleteOverlays' => true],
-            $this->token,
+        $reworked = $this->apiPost(\sprintf('schedules/%s/rework', $this->chosenAtEntry), [], $this->token);
+        if (201 !== $reworked['status']) {
+            throw new RuntimeException(\sprintf('retravailler le planning de saison a répondu %d (201 attendu) — corps : %s', $reworked['status'], json_encode($reworked['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->workCopyId = $this->idOf($reworked, 'copie de travail');
+    }
+
+    #[Then('les plannings de période subsistent et les matchs restent ouverts')]
+    public function lesPlanningsDePeriodeSubsistentEtLesMatchsRestentOuverts(): void
+    {
+        $plans = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_plan WHERE calendar_entry_id=\'%s\' OR id=\'%s\'', $this->futureEntryId, $this->startedPlanId),
+            admin: true,
         );
-        if (200 !== $reopened['status']) {
-            throw new RuntimeException(\sprintf('la réouverture du planning de saison a répondu %d (200 attendu)', $reopened['status']));
+        if ('2' !== $plans) {
+            throw new RuntimeException(\sprintf('retravailler ne détruit rien : les deux plannings de période (à venir, commencé) devraient subsister, %s trouvé(s)', $plans));
+        }
+        // Un geste du module des matchs qui bâtit sur le planning de saison en vigueur (SocleGuard) : jamais refusé.
+        $matches = $this->apiGet('fixtures/league-validation', $this->token);
+        if (409 === $matches['status']) {
+            throw new RuntimeException('les matchs devraient rester ouverts pendant qu\'on retravaille le planning de saison (409 obtenu)');
+        }
+    }
+
+    #[Then('la collecte et ses doléances des vacances à venir subsistent')]
+    public function laCollecteSubsiste(): void
+    {
+        $campaign = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM coach_wish_campaign WHERE id=\'%s\'', $this->collecteCampaignId), admin: true);
+        $wish = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM coach_wish WHERE id=\'%s\'', $this->collecteWishId), admin: true);
+        if ('1' !== $campaign || '1' !== $wish) {
+            throw new RuntimeException(\sprintf('retravailler ne détruit rien : la collecte (%s) et sa doléance (%s) devraient subsister', $campaign, $wish));
+        }
+    }
+
+    #[Then('le planning de saison en vigueur reste le même, et la copie de travail est la version chargée')]
+    public function lEnVigueurResteLeMeme(): void
+    {
+        $pointers = $this->dbalScalar(
+            \sprintf('SELECT COALESCE(chosen_schedule_id::text, \'-\') || \'|\' || COALESCE(lock_source_schedule_id::text, \'-\') AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND season_id=\'%s\'', $this->clubId, $this->seasonId),
+            admin: true,
+        );
+        if ($pointers !== $this->chosenAtEntry . '|' . $this->workCopyId) {
+            throw new RuntimeException(\sprintf('attendu : en vigueur %s, chargée %s (la copie de travail) ; lu : %s', $this->chosenAtEntry, $this->workCopyId, $pointers));
+        }
+    }
+
+    #[Then('la copie de travail est à jour')]
+    public function laCopieDeTravailEstAJour(): void
+    {
+        $version = $this->apiGet(\sprintf('schedules/%s', $this->workCopyId), $this->token);
+        $snapshotHash = $version['json']['snapshotHash'] ?? null;
+        $current = $this->apiGet(\sprintf('schedule_plans/%s/structure-hash', $this->soclePlanId()), $this->token);
+        $currentHash = $current['json']['currentStructureHash'] ?? null;
+        if (!\is_string($snapshotHash) || !\is_string($currentHash)) {
+            throw new RuntimeException(\sprintf('empreintes illisibles : copie de travail (HTTP %d), plan (HTTP %d)', $version['status'], $current['status']));
+        }
+        if ($snapshotHash !== $currentHash) {
+            throw new RuntimeException('la copie de travail, née sans rien en attente, devrait être à jour (son empreinte = celle du plan)');
+        }
+    }
+
+    #[Given('le coach principal d\'une équipe est changé, sans valider')]
+    public function leCoachPrincipalDUneEquipeEstChange(): void
+    {
+        // Une équipe tenue par UN coach principal, dont le lien est dans la copie de la version en vigueur, et un autre
+        // coach du club qui ne l'entraîne pas. Le geste du Wizard : retirer le lien, poser le nouveau.
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT tc.id || \'|\' || tc.team_id || \'|\' || tc.coach_id || \'|\' || tc.season_id || \'|\' || tc.created_at::text AS behatval FROM team_coach tc'
+                . ' JOIN schedule_state ss ON ss.schedule_id = \'%s\''
+                . ' WHERE tc.club_id = \'%s\' AND tc.season_id = \'%s\' AND tc.role = \'MAIN\' AND jsonb_exists(ss.data::jsonb -> \'TeamCoach\', tc.id::text)'
+                . ' AND (SELECT COUNT(*) FROM team_coach o WHERE o.team_id = tc.team_id AND o.role = \'MAIN\') = 1 ORDER BY tc.id LIMIT 1',
+                $this->chosenAtEntry,
+                $this->clubId,
+                $this->seasonId,
+            ),
+            admin: true,
+        );
+        $parts = explode('|', $row);
+        if (5 !== \count($parts)) {
+            throw new RuntimeException('aucun coach principal de la copie en vigueur à changer — la base est-elle seedée ?');
+        }
+        [$linkId, $teamId, $coachId] = $parts;
+        $this->replacingCoachId = $this->dbalScalar(
+            \sprintf(
+                'SELECT c.id AS behatval FROM coach c WHERE c.club_id = \'%s\' AND c.season_id = \'%s\' AND c.id <> \'%s\' AND NOT EXISTS (SELECT 1 FROM team_coach x WHERE x.team_id = \'%s\' AND x.coach_id = c.id) ORDER BY c.id LIMIT 1',
+                $this->clubId,
+                $this->seasonId,
+                $coachId,
+                $teamId,
+            ),
+            admin: true,
+        );
+        if ('' === $this->replacingCoachId) {
+            throw new RuntimeException('aucun autre coach du club pour reprendre l\'équipe');
+        }
+
+        $removed = $this->apiDelete(\sprintf('team_coaches/%s', $linkId), $this->token);
+        if (204 !== $removed['status']) {
+            throw new RuntimeException(\sprintf('retirer le coach principal a répondu %d (204 attendu)', $removed['status']));
+        }
+        $this->originalMainLink = $row;
+        $this->replacingMainLinkId = $this->idOf($this->apiPost('team_coaches', ['teamId' => $teamId, 'coachId' => $this->replacingCoachId, 'role' => 'MAIN'], $this->token), 'nouveau coach principal');
+    }
+
+    #[Then('le changement de coach est toujours en attente')]
+    public function leChangementDeCoachEstToujoursEnAttente(): void
+    {
+        $pending = $this->pendingChanges();
+        if (true !== ($pending['pending'] ?? null) || !\in_array('TeamCoach', $this->changedFamilies($pending), true)) {
+            throw new RuntimeException(\sprintf('le changement de coach principal devrait toujours attendre la validation ; lu : %s', json_encode($pending, \JSON_UNESCAPED_UNICODE)));
+        }
+        [, $teamId] = explode('|', $this->originalMainLink);
+        $live = $this->dbalScalar(\sprintf('SELECT coach_id AS behatval FROM team_coach WHERE team_id = \'%s\' AND role = \'MAIN\'', $teamId), admin: true);
+        if ($live !== $this->replacingCoachId) {
+            throw new RuntimeException('retravailler ne remet pas l\'état de travail : le nouveau coach principal devrait rester posé');
+        }
+    }
+
+    #[Then('rien n\'attend la validation')]
+    public function rienNAttendLaValidation(): void
+    {
+        $pending = $this->pendingChanges();
+        if (false !== ($pending['pending'] ?? null) || false !== ($pending['hasWorkVersion'] ?? null) || [] !== ($pending['changes'] ?? null)) {
+            throw new RuntimeException(\sprintf('rien ne devrait attendre la validation ; lu : %s', json_encode($pending, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('des modifications attendent la validation')]
+    public function desModificationsAttendent(): void
+    {
+        $pending = $this->pendingChanges();
+        if (true !== ($pending['pending'] ?? null) || false !== ($pending['hasWorkVersion'] ?? null) || !\in_array('TeamCoach', $this->changedFamilies($pending), true)) {
+            throw new RuntimeException(\sprintf('le coach principal changé devrait attendre la validation, sans copie de travail ; lu : %s', json_encode($pending, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('des modifications attendent la validation, sur une copie de travail')]
+    public function desModificationsAttendentSurUneCopie(): void
+    {
+        $pending = $this->pendingChanges();
+        if (true !== ($pending['pending'] ?? null) || true !== ($pending['hasWorkVersion'] ?? null)) {
+            throw new RuntimeException(\sprintf('une copie de travail devrait attendre la validation ; lu : %s', json_encode($pending, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[When('je reviens au planning en vigueur')]
+    public function jeReviensAuPlanningEnVigueur(): void
+    {
+        $loaded = $this->apiPost(\sprintf('schedules/%s/load', $this->chosenAtEntry), [], $this->token);
+        if (200 !== $loaded['status']) {
+            throw new RuntimeException(\sprintf('revenir au planning en vigueur a répondu %d (200 attendu) — corps : %s', $loaded['status'], json_encode($loaded['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('l\'équipe a retrouvé son coach principal')]
+    public function lEquipeARetrouveSonCoachPrincipal(): void
+    {
+        [, $teamId, $coachId] = explode('|', $this->originalMainLink);
+        $live = $this->dbalScalar(\sprintf('SELECT string_agg(coach_id::text, \',\') AS behatval FROM team_coach WHERE team_id = \'%s\' AND role = \'MAIN\'', $teamId), admin: true);
+        if ($live !== $coachId) {
+            throw new RuntimeException(\sprintf('revenir au planning en vigueur remet le coach principal validé (%s) ; lu : %s', $coachId, $live));
+        }
+    }
+
+    #[When('je valide la copie de travail')]
+    public function jeValideLaCopieDeTravail(): void
+    {
+        $validated = $this->apiPost(\sprintf('schedules/%s/validate', $this->workCopyId), ['confirmDeleteOverlays' => true], $this->token);
+        if (200 !== $validated['status']) {
+            throw new RuntimeException(\sprintf('valider la copie de travail a répondu %d (200 attendu)', $validated['status']));
+        }
+    }
+
+    #[Given('un créneau ajouté à la grille du planning de saison, sans valider')]
+    public function unCreneauAjouteSansValider(): void
+    {
+        $venueId = $this->dbalScalar(
+            \sprintf('SELECT venue_id AS behatval FROM venue_training_slot WHERE schedule_plan_id = \'%s\' ORDER BY id LIMIT 1', $this->soclePlanId()),
+            admin: true,
+        );
+        if ('' === $venueId) {
+            throw new RuntimeException('la grille du planning de saison est vide — la base est-elle seedée ?');
+        }
+        // Le dimanche à 8 h : hors de toute grille seedée, et distinct du créneau de l'étape suivante (7 h).
+        $slot = $this->apiPost('venue_training_slots', ['venueId' => $venueId, 'dayOfWeek' => 7, 'startTime' => '08:00', 'durationMinutes' => 60, 'capacity' => 1], $this->token);
+        if (201 !== $slot['status']) {
+            throw new RuntimeException(\sprintf('ajouter un créneau à la grille du planning de saison a répondu %d (201 attendu)', $slot['status']));
+        }
+        $this->pendingSocleSlotId = $this->idOf($slot, 'créneau de saison en attente');
+        $this->pendingSocleSlot = \sprintf('%s|7|08:00|60|1', $venueId);
+    }
+
+    #[Then('la grille des vacances est celle du planning de saison en vigueur, sans le créneau ajouté depuis')]
+    public function laGrilleDesVacancesEstCelleEnVigueur(): void
+    {
+        $socle = $this->gridOf('');
+        if (!\in_array($this->pendingSocleSlot, $socle, true)) {
+            throw new RuntimeException('témoin : le créneau ajouté sans valider devrait figurer dans la grille de travail du planning de saison');
+        }
+        $inForce = array_values(array_filter($socle, fn (string $slot): bool => $slot !== $this->pendingSocleSlot));
+        $holiday = $this->gridOf($this->holidayPlanId);
+        if ($inForce !== $holiday) {
+            throw new RuntimeException(\sprintf('la grille des vacances (%d créneaux) devrait être celle du planning de saison en vigueur (%d créneaux), sans le créneau ajouté depuis', \count($holiday), \count($inForce)));
+        }
+    }
+
+    #[Given('un petit club neuf, dont le planning de saison n\'a jamais été validé')]
+    public function unPetitClubNeufJamaisValide(): void
+    {
+        $this->registerSmallClub();
+        $this->token = $this->smallClubToken;
+        $this->clubId = $this->smallClubId;
+        $chosen = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND chosen_schedule_id IS NOT NULL', $this->clubId), admin: true);
+        if ('0' !== $chosen) {
+            throw new RuntimeException('témoin : le planning de saison d\'un club neuf n\'a jamais été validé');
         }
     }
 
@@ -306,19 +538,6 @@ final class SoclePlansContext extends BaseContext
         $this->holidayPlanId = $this->idOf($plan, 'planning des vacances à venir');
     }
 
-    #[Then('la grille des vacances est celle du planning de saison')]
-    public function laGrilleDesVacancesEstCelleDuSocle(): void
-    {
-        $socle = $this->gridOf('');
-        if ([] === $socle) {
-            throw new RuntimeException('la grille du planning de saison est vide — la base est-elle seedée ?');
-        }
-        $holiday = $this->gridOf($this->holidayPlanId);
-        if ($socle !== $holiday) {
-            throw new RuntimeException(\sprintf('la grille des vacances (%d créneaux) devrait être la copie de celle du planning de saison (%d créneaux)', \count($holiday), \count($socle)));
-        }
-    }
-
     #[Then('modifier la grille du planning de saison ne change pas la grille des vacances')]
     public function modifierLaGrilleDuSocleNeChangePasLesVacances(): void
     {
@@ -346,13 +565,6 @@ final class SoclePlansContext extends BaseContext
         if ($holidayBefore !== $this->gridOf($this->holidayPlanId)) {
             throw new RuntimeException('ajouter un créneau au planning de saison a changé la grille des vacances — chacun devrait garder la sienne');
         }
-    }
-
-    #[Given('le planning de saison n\'est plus en vigueur')]
-    public function leSocleNestPlusEnVigueur(): void
-    {
-        // Dépointage silencieux (pas le geste « Rouvrir » : on veut isoler la garde de création).
-        $this->pointSocleTo('');
     }
 
     #[When('je tente d\'ouvrir le planning d\'une période à venir')]
@@ -421,6 +633,40 @@ final class SoclePlansContext extends BaseContext
         if ('' !== $this->addedSocleSlotId) {
             $this->apiDelete(\sprintf('venue_training_slots/%s', $this->addedSocleSlotId), $this->token);
         }
+        if ('' !== $this->pendingSocleSlotId) {
+            $this->apiDelete(\sprintf('venue_training_slots/%s', $this->pendingSocleSlotId), $this->token);
+        }
+
+        // Le coach principal changé sans valider : le lien posé part, la ligne d'origine revient sous son identifiant
+        // (la copie en vigueur la cite) — si « Revenir au planning en vigueur » ne l'a pas déjà remise.
+        if ('' !== $this->replacingMainLinkId) {
+            $this->dbalExec(\sprintf('DELETE FROM team_coach WHERE id=\'%s\'', $this->replacingMainLinkId), admin: true);
+        }
+        if ('' !== $this->originalMainLink) {
+            [$linkId, $teamId, $coachId, $seasonId, $createdAt] = explode('|', $this->originalMainLink);
+            $this->dbalExec(
+                \sprintf(
+                    'INSERT INTO team_coach (id, version, created_at, updated_at, club_id, season_id, team_id, coach_id, role, wish_recipient) VALUES (\'%s\', 1, \'%s\', now(), \'%s\', \'%s\', \'%s\', \'%s\', \'MAIN\', false) ON CONFLICT (id) DO NOTHING',
+                    $linkId,
+                    $createdAt,
+                    $this->clubId,
+                    $seasonId,
+                    $teamId,
+                    $coachId,
+                ),
+                admin: true,
+            );
+        }
+
+        // La copie de travail jamais validée part ; l'étoile revient sur la version en vigueur.
+        if ('' !== $this->workCopyId && '' !== $this->clubId) {
+            $chosen = $this->dbalScalar(\sprintf('SELECT chosen_schedule_id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND season_id=\'%s\'', $this->clubId, $this->seasonId), admin: true);
+            if ($chosen !== $this->workCopyId) {
+                $this->dbalExec(\sprintf('UPDATE schedule_plan SET lock_source_schedule_id=chosen_schedule_id WHERE club_id=\'%s\' AND type=\'SEASON\' AND season_id=\'%s\'', $this->clubId, $this->seasonId), admin: true);
+                $this->dbalExec(\sprintf('DELETE FROM schedule_slot_template WHERE schedule_id=\'%s\'', $this->workCopyId), admin: true);
+                $this->dbalExec(\sprintf('DELETE FROM schedule WHERE id=\'%s\'', $this->workCopyId), admin: true);
+            }
+        }
 
         // La collecte des vacances à venir : purgée par la bascule en cas de succès, retirée
         // ici défensivement si le scénario s'est arrêté avant (DELETE tolérant).
@@ -446,6 +692,42 @@ final class SoclePlansContext extends BaseContext
         if ('' !== $this->startedEntryId) {
             $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE id=\'%s\'', $this->startedEntryId), admin: true);
         }
+
+        $this->teardownSmallClub();
+    }
+
+    /**
+     * L'état « en attente » du planning de saison, tel que l'écran le lit.
+     *
+     * @return array<mixed>
+     */
+    private function pendingChanges(): array
+    {
+        $pending = $this->apiGet(\sprintf('schedule_plans/%s/pending-changes', $this->soclePlanId()), $this->token);
+        if (200 !== $pending['status']) {
+            throw new RuntimeException(\sprintf('lire ce qui attend la validation a répondu %d (200 attendu)', $pending['status']));
+        }
+
+        return $pending['json'];
+    }
+
+    /**
+     * Les familles nommées par la liste de ce qui attend.
+     *
+     * @param array<mixed> $pending
+     *
+     * @return list<string>
+     */
+    private function changedFamilies(array $pending): array
+    {
+        $changes = \is_array($pending['changes'] ?? null) ? $pending['changes'] : [];
+
+        return array_values(array_filter(array_map(static fn (mixed $line): mixed => \is_array($line) ? ($line['family'] ?? null) : null, $changes), 'is_string'));
+    }
+
+    private function soclePlanId(): string
+    {
+        return $this->dbalScalar(\sprintf('SELECT id AS behatval FROM schedule_plan WHERE club_id=\'%s\' AND type=\'SEASON\' AND season_id=\'%s\'', $this->clubId, $this->seasonId), admin: true);
     }
 
     /**

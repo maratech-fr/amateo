@@ -239,6 +239,8 @@ final class ConflictRadarPeriodHoldingTest extends WebTestCase
         self::assertInstanceOf(SchedulePlan::class, $plan);
         $plan->setChosenScheduleId($scheduleId);
         $this->em->flush();
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheDecorInForce(self::getContainer(), $planId);
     }
 
     private function link(string $coachId, string $teamId): void

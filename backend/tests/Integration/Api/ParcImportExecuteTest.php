@@ -137,17 +137,22 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame($before, $this->rowCount('team'), 'un refus 403 n\'écrit rien');
     }
 
-    public function testImportRefusedWhenSeasonPlanChosen(): void
+    /**
+     * Planning lifecycle (lot 5, PR 5, ligne 31 du plan) : socle EN VIGUEUR → l'import est permis, ce qu'il écrit attend
+     * la validation, le planning validé reste en vigueur. Jumeau Behat, cité : `l-import-du-parc-en-un-geste.feature`,
+     * « Un parc s'importe aussi quand le planning de saison est en vigueur, qui le reste ».
+     */
+    public function testImportAcceptedWhileTheSeasonPlanIsInForce(): void
     {
-        // Planning lifecycle (ADR-0002) : socle EN VIGUEUR → l'import d'onboarding est refusé 409.
-        $this->settleSeasonPlan($this->season);
+        $inForce = $this->settleSeasonPlan($this->season);
         $this->scopeGucToClub($this->club->getId());
         $before = $this->rowCount('team');
 
         [$status] = $this->import($this->oneTeamCaseParc(), [['section' => 'equipes', 'index' => 0, 'coche' => true]]);
 
-        self::assertSame(409, $status, 'socle en vigueur → 409');
-        self::assertSame($before, $this->rowCount('team'), 'un refus 409 n\'écrit rien');
+        self::assertSame(200, $status, 'socle en vigueur → l\'import passe');
+        self::assertSame($before + 1, $this->rowCount('team'), 'l\'équipe du parc est créée');
+        self::assertSame($inForce->getId(), $this->chosenPlanVersion($this->season), 'le planning de saison en vigueur n\'a pas bougé');
     }
 
     // ───────────────────────── Dérivation d'une case → entités (promesse centrale) ─────────────────────────

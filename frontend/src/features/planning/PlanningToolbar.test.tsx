@@ -58,6 +58,7 @@ function renderToolbar(
       onRegenerate={noop}
       onValidate={noop}
       onReopen={noop}
+      onRework={noop}
       onDelete={noop}
       onLoad={noop}
       disableRegenerate={disableRegenerate}
@@ -112,6 +113,7 @@ describe("PlanningToolbar — 4e vue « Par jour » (P2-33)", () => {
         onRegenerate={noop}
         onValidate={noop}
         onReopen={noop}
+        onRework={noop}
         onDelete={noop}
         onLoad={noop}
         isGenerating={false}
@@ -251,6 +253,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onRegenerate={noop}
         onValidate={noop}
         onReopen={noop}
+        onRework={noop}
         onDelete={noop}
         onLoad={noop}
         isGenerating={false}
@@ -299,6 +302,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onRegenerate={noop}
         onValidate={noop}
         onReopen={noop}
+        onRework={noop}
         onDelete={noop}
         onLoad={onLoad}
         isGenerating={false}
@@ -357,7 +361,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     // La sortie symétrique de Valider : /planning porte Rouvrir, qui mène au wizard étape
     // Génération. Falsification : en embedded, ce même isChosen ne montre PLUS Rouvrir.
     renderToolbar(schedule("COMPLETED", { isChosen: true }), { embedded: false });
-    expect(screen.getByRole("button", { name: /rouvrir/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retravailler" })).toBeInTheDocument();
   });
 
   it("n'affiche le score du solveur NULLE PART, embedded compris (P4-39)", () => {

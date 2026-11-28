@@ -427,8 +427,11 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertSame($copyCountBefore, $this->slotCount($club, $copyChosen), 'la copie est FIGÉE : muter la source ne la touche pas');
     }
 
-    /** ⑤ inv. 14 : rouvrir le socle balaie les segments FUTURS nés du geste, l'entrée racine SURVIT. */
-    public function testReopeningSocleSweepsFutureSegmentsButKeepsStartedAndEntry(): void
+    /**
+     * ⑤ inv. 14 : retravailler le socle ne balaie rien ; valider la copie de travail balaie les segments FUTURS nés du
+     * geste, le milieu commencé et l'entrée racine SURVIVENT (lot 5 : « Rouvrir » ne vaut plus pour le socle).
+     */
+    public function testValidatingAReworkedSocleSweepsFutureSegmentsButKeepsStartedAndEntry(): void
     {
         [$user, $club, $season] = $this->createClubWithSeason();
         $socle = $this->settleSeasonPlan($season); // le socle est en vigueur (pointé).
@@ -449,13 +452,21 @@ final class ClosureWindowExtendTest extends WebTestCase
         self::assertNotNull($futurePlan);
         self::assertNotNull($milieuChild);
 
-        // Rouvrir le socle (dépointer) — avec confirmation : les plans FUTURS sont balayés.
-        $this->client->request('POST', '/api/schedules/' . $socle->getId() . '/reopen', [], [], $this->authHeaders($user) + [
+        // Retravailler le socle ne balaie rien (lot 5) : la copie de travail n'a aucun effet tant qu'elle n'est pas validée.
+        $this->client->request('POST', '/api/schedules/' . $socle->getId() . '/rework', [], [], $this->authHeaders($user) + [
+            'CONTENT_TYPE' => 'application/json',
+        ], '{}');
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        self::assertTrue($this->planExists($club, $futurePlan), 'retravailler le socle laisse le segment FUTUR en place');
+        $work = json_decode((string) $this->client->getResponse()->getContent(), true, flags: \JSON_THROW_ON_ERROR)['id'];
+
+        // Valider la copie de travail — avec confirmation : les plans FUTURS sont balayés.
+        $this->client->request('POST', '/api/schedules/' . $work . '/validate', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
 
-        self::assertFalse($this->planExists($club, $futurePlan), 'le segment FUTUR né du geste est balayé par la réouverture du socle');
+        self::assertFalse($this->planExists($club, $futurePlan), 'le segment FUTUR né du geste est balayé par la validation d\'un autre socle');
         self::assertSame($srcPlanId, $this->planOf($club, $milieuChild), 'le milieu DÉJÀ commencé survit (le passé reste joué)');
         self::assertNotNull($this->rowWindow($club, $rootId), 'l’entrée de calendrier de l’incident SURVIT (à refaire)');
     }

@@ -1085,6 +1085,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertInstanceOf(Season::class, $seasonB);
         $em->flush();
         $em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [self::B_SOCLE, $seasonB->getId()]);
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon).
+        SeasonPlanOf::keepTheDecorInForce(self::getContainer(), $planId);
 
         $competitionB = (new Competition)->setId(self::erId('c0e9', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setName('Championnat B')->setCompetitionType(CompetitionType::CHAMPIONSHIP);

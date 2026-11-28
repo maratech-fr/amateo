@@ -113,8 +113,6 @@ export const TEAMS_TEXTS = {
   engagedListRest:
     " Leur niveau de jeu et leur suppression sont verrouillés ; le reste (nom, rang, créneaux, gymnase) se modifie librement. Pour (re)poser le niveau d'une équipe jeune depuis sa division, passez par Matchs › Importer › « Engagements FFBB ».",
   sessionsLockHint: "Rouvrez le planning de saison pour modifier le nombre de séances.",
-  sessionsLockedNoticeLead:
-    "Le nombre de séances par semaine fait partie du planning de saison en vigueur : il reste visible mais verrouillé. ",
 
   // ── Modale d'annonce de l'import automatique FFBB ──
   importNoticeTitle: "Équipes importées depuis la FFBB",

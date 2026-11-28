@@ -1182,6 +1182,27 @@ export const deleteSchedule = (id: string): Promise<void> => api.delete(`schedul
  * qui ne se charge pas ; 404 : autre club) remonte tel quel.
  */
 export const loadVersion = (id: string): Promise<{ id: string; status: string }> => api.post(`schedules/${id}/load`).json();
+
+/**
+ * « Retravailler » le planning de saison (lot 5) : le serveur copie la version EN VIGUEUR en une version de travail,
+ * chargée. Le planning validé reste en vigueur tant que la copie n'est pas validée ; ce qui attendait déjà la
+ * validation est gardé. Un refus (409 : pas la version en vigueur d'un plan de saison, génération en cours) remonte
+ * tel quel.
+ */
+export const reworkSchedule = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/rework`).json();
+
+/** Ce qui attend la validation du planning de saison (lot 5), une ligne par famille de réglages modifiée. */
+export interface PendingChanges {
+  pending: boolean;
+  hasWorkVersion: boolean;
+  changes: { family: string; count: number; destroys: boolean }[];
+}
+
+/**
+ * Ce qui attend la validation du planning de saison : calculé serveur (l'état de travail comparé à la copie de la
+ * version en vigueur, et la présence d'une version de travail) ; toujours faux pour une période.
+ */
+export const getPendingChanges = (planId: string): Promise<PendingChanges> => api.get(`schedule_plans/${planId}/pending-changes`).json<PendingChanges>();
 /** planning-versions: the plain "Régénérer" creates a NEW linear version (V2…)
  *  from the current structure, carrying the version's HARD-locked slots. */
 export const regenerate = (id: string): Promise<{ id: string; status: string; sourceScheduleId: string | null }> => api.post(`schedules/${id}/regenerate`).json();

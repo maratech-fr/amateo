@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\ImplicitRuleSetting;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
+use App\Plans\InForce;
 use App\Plans\SoclePlan;
 use App\Repository\ImplicitRuleSettingRepository;
 
@@ -28,6 +29,7 @@ final class ImplicitRuleResolver
     public function __construct(
         private readonly ImplicitRuleSettingRepository $repository,
         private readonly SoclePlan $soclePlan,
+        private readonly InForce $inForce,
     ) {}
 
     /**
@@ -112,9 +114,9 @@ final class ImplicitRuleResolver
      * portée saison.
      *
      * Un plan né après la fonctionnalité porte ses 4 lignes (copie prise à la naissance) : on
-     * les résout. Un plan LEGACY (aucune ligne) retombe sur la portée SAISON — repli VIVANT,
-     * byte-identique au comportement d'avant la fonctionnalité (décisif : rien ne change sous
-     * les pieds d'une reprise déjà en cours de travail).
+     * les résout. Un plan de période LEGACY (aucune ligne) retombe sur les règles du planning de
+     * saison EN VIGUEUR (la porte {@see InForce}, lot 5 : une règle changée sans validation n'y
+     * entre pas) ; le plan de saison sans ligne, sur ses propres défauts.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -122,7 +124,15 @@ final class ImplicitRuleResolver
     {
         $stored = $this->repository->findByPlanIndexed($clubId, $seasonId, $schedulePlanId);
         if ([] === $stored) {
-            return $this->resolve($clubId, $seasonId);
+            if ($schedulePlanId === $this->soclePlan->idOf($seasonId)) {
+                return $this->resolve($clubId, $seasonId);
+            }
+            $inForce = [];
+            foreach ($this->inForce->rows($seasonId, ImplicitRuleSetting::class) as $setting) {
+                $inForce[$setting->getRuleKey()->value] = $setting;
+            }
+
+            return $this->resolveFromIndexed($inForce);
         }
 
         return $this->resolveFromIndexed($stored);

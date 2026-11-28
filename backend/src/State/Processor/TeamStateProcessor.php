@@ -17,7 +17,6 @@ use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use App\Service\TeamEngagementGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -43,7 +42,6 @@ class TeamStateProcessor extends AbstractStateProcessor
         ManagementAccessGuard $managementAccessGuard,
         private readonly TeamEngagementGuard $teamEngagementGuard,
         private readonly PlanEntitlements $planEntitlements,
-        private readonly SocleGuard $socleGuard,
         private readonly PlanComposition $planComposition,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
@@ -178,13 +176,10 @@ class TeamStateProcessor extends AbstractStateProcessor
             $socleLine->setSessionsPerWeek($input->sessionsPerWeek);
         }
 
-        // Séances par jour : absent = on garde. Sous planning de saison EN VIGUEUR, la valeur ne
-        // change plus (le même verrou que l'écran pose sur le nombre de séances) ; un écho à
-        // l'identique passe, le plafond d'une PÉRIODE reste libre (réglage de période).
+        // Séances par jour : absent = on garde. Sous planning de saison EN VIGUEUR, la valeur se modifie
+        // sur la ligne de travail et attend la validation (lot 5) ; le plafond d'une PÉRIODE reste son
+        // réglage de période.
         if (null !== $input->maxSessionsPerDay && $input->maxSessionsPerDay !== $socleLine->getMaxSessionsPerDay()) {
-            if ($this->socleGuard->isSeasonPlanChosen($entity->getSeasonId())) {
-                $this->refuse('Rouvrez le planning de saison pour modifier le nombre de séances.');
-            }
             $socleLine->setMaxSessionsPerDay($input->maxSessionsPerDay);
         }
 

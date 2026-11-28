@@ -30,9 +30,10 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
- * ADR-0002 inv. 2 — reopening the version a plan POINTS at un-points it: the plan
- * becomes an "espace de travail" again and the version is editable. Only the chosen
- * version can be reopened, and only within the caller's own club.
+ * « Rouvrir » une période ne vaut que pour la version que son plan pointe, et dans le club de
+ * l'appelant. Le plan de saison ne se rouvre plus (lot 5) : son refus est gardé par
+ * `Security/SeasonPlanInForceTest::testReopeningTheSeasonPlanIsRefused`, et le dépointage d'une
+ * période par `Integration/Api/OverlayVersionsTest::testReopeningAnOverlayReleasesItsPeriodPlan`.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -47,132 +48,34 @@ final class ReopenScheduleTest extends WebTestCase
 
     private UserPasswordHasherInterface $hasher;
 
-    public function testReopenUnpointsTheChosenVersion(): void
-    {
-        [$user, , $season] = $this->seed('REO1');
-        $schedule = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($schedule);
-
-        $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$schedule->getId()}/reopen");
-
-        self::assertResponseIsSuccessful();
-        $this->em->clear();
-        self::assertNull($this->chosenPlanVersion($season), 'the plan is an espace de travail again');
-        // The version survives, untouched: reopening drops the pointer, not the work.
-        self::assertSame(ScheduleStatus::COMPLETED, $this->em->getRepository(Schedule::class)->find($schedule->getId())?->getStatus());
-    }
-
-    public function testReopenKeepsTheCockpitUnlocked(): void
-    {
-        // inv. 8/16: the cockpit unlocks on "≥1 finished version", NOT on the
-        // pointer — reopening drops the pointer but the version remains, so the
-        // manager must not be thrown back into the guided mode.
-        [$user, , $season] = $this->seed('REO5');
-        $schedule = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($schedule);
-
-        $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$schedule->getId()}/reopen");
-        self::assertResponseIsSuccessful();
-
-        $this->em->clear();
-        $plan = self::getContainer()->get(SchedulePlanProvisioner::class)->seasonPlanPayload($season->getId());
-        self::assertTrue($plan['hasFinishedVersion'], 'reopen must NOT re-lock the cockpit');
-        self::assertNull($plan['chosenScheduleId']);
-    }
-
-    public function testReopenBaselineWithOverlaysRequiresConfirm(): void
-    {
-        [$user, , $season] = $this->seed('REO6');
-        $baseline = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($baseline);
-        $this->overlayEntry($season, 'Vacances Toussaint');
-        $this->em->flush();
-
-        $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$baseline->getId()}/reopen");
-
-        self::assertResponseStatusCodeSame(409);
-        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
-        self::assertSame('overlays_exist', $data['code']);
-        self::assertSame(1, $data['count']);
-        self::assertSame('Vacances Toussaint', $data['overlays'][0]['title']);
-    }
-
-    public function testReopenBaselineWithConfirmDeletesOverlays(): void
-    {
-        [$user, $club, $season] = $this->seed('REO7');
-        $baseline = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($baseline);
-        [$entry, $overlayId, $slotId, $datedId] = $this->overlayEntry($season, 'Toussaint');
-        $this->em->flush();
-
-        $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$baseline->getId()}/reopen", [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode(['confirmDeleteOverlays' => true], \JSON_THROW_ON_ERROR));
-        self::assertResponseIsSuccessful();
-
-        $this->em->clear();
-        $this->scopeGucToClub($club->getId());
-        // Overlay schedule + its slots purged; entry + dated constraint kept, link reset.
-        self::assertNull($this->em->getRepository(Schedule::class)->find($overlayId));
-        self::assertNull($this->em->getRepository(ScheduleSlotTemplate::class)->find($slotId));
-        $reloadedEntry = $this->em->getRepository(CalendarEntry::class)->find($entry->getId());
-        self::assertNotNull($reloadedEntry);
-        // lot D-b : l'overlay supprimé → le plan de la période ne pointe plus rien (dérivé).
-        self::assertNull(self::getContainer()->get(SchedulePlanProvisioner::class)->chosenOfPeriodPlan($entry->getId()));
-        self::assertNotNull($this->em->getRepository(Constraint::class)->find($datedId), 'dated constraint is kept (period stays signalée)');
-    }
-
-    public function testReopenLeavesASiblingVersionAndItsOverlaysAlone(): void
-    {
-        // A plan points at ONE version; a sibling is just an unchosen version.
-        // Reopening the chosen one must not disturb the sibling — only the
-        // overlays, which hang off the base plan being un-pointed.
-        [$user, , $season] = $this->seed('REO8');
-        $baseline = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($baseline);
-        $sibling = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->em->flush();
-
-        $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$baseline->getId()}/reopen");
-        self::assertResponseIsSuccessful();
-
-        $this->em->clear();
-        self::assertNotNull($this->em->getRepository(Schedule::class)->find($sibling->getId()), 'an unchosen sibling is untouched by a reopen');
-    }
-
     public function testReopeningAVersionThePlanStoppedPointingAtDoesNotClaimSuccess(): void
     {
-        // Course : un autre onglet valide une AUTRE version pendant qu'on rouvre. Le
-        // dépointage ne touche alors plus rien. Répondre 200 « rouvert » ferait croire
-        // au gestionnaire qu'il peut éditer, et chaque geste serait refusé en 409.
+        // Course : un autre onglet valide une AUTRE version de la même période pendant qu'on
+        // rouvre. Le dépointage ne toucherait alors plus rien. Répondre 200 « rouvert » ferait
+        // croire au gestionnaire qu'il peut éditer, et chaque geste serait refusé en 409.
         [$user, , $season] = $this->seed('REO9');
-        $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($v1);
-        // L'issue de la course : le plan pointe désormais ailleurs.
-        $v2 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
-        $this->choosePlanVersion($v2);
+        [$entry, $v1] = $this->overlayEntry($season, 'Toussaint');
+        // L'issue de la course : le plan de la période pointe désormais une autre version.
+        $v2 = $this->siblingOverlay($season, $entry);
 
         $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$v1->getId()}/reopen");
+        $this->client->request('POST', "/api/schedules/{$v1}/reopen");
 
         self::assertResponseStatusCodeSame(409, 'on n\'annonce pas une réouverture qui n\'a pas eu lieu');
-        self::assertSame($v2->getId(), $this->chosenPlanVersion($season), 'et le pointeur d\'autrui n\'est pas touché');
+        $this->em->clear();
+        self::assertSame($v2, self::getContainer()->get(SchedulePlanProvisioner::class)->chosenOfPeriodPlan($entry->getId()), 'et le pointeur d\'autrui n\'est pas touché');
     }
 
     public function testAVersionThePlanDoesNotPointAtCannotBeReopened(): void
     {
-        // "Validated" is the pointer and nothing else — a COMPLETED version the
-        // plan does not point at has nothing to reopen.
+        // « Validé » = le pointeur et rien d'autre : une version terminée d'une période que son
+        // plan ne pointe pas n'a rien à rouvrir.
         [$user, , $season] = $this->seed('REO2');
-        $schedule = $this->createSchedule($season, ScheduleStatus::COMPLETED);
+        [$entry] = $this->overlayEntry($season, 'Toussaint');
+        $unpointed = $this->siblingOverlay($season, $entry, choose: false);
 
         $this->client->loginUser($user);
-        $this->client->request('POST', "/api/schedules/{$schedule->getId()}/reopen");
+        $this->client->request('POST', "/api/schedules/{$unpointed}/reopen");
 
         self::assertResponseStatusCodeSame(409);
     }
@@ -332,5 +235,26 @@ final class ReopenScheduleTest extends WebTestCase
         $this->em->flush();
 
         return [$entry, $overlay->getId(), $slot->getId(), $dated->getId()];
+    }
+
+    /** Une autre version terminée du plan de la même période ; pointée par défaut (la validation concurrente). */
+    private function siblingOverlay(Season $season, CalendarEntry $entry, bool $choose = true): string
+    {
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $sibling = new Schedule;
+        $sibling->setClubId($season->getClubId());
+        $sibling->setSeasonId($season->getId());
+        $sibling->setName('Overlay sœur');
+        $sibling->setStatus(ScheduleStatus::COMPLETED);
+        $sibling->setSchedulePlanId($provisioner->provisionPeriodPlan($entry->getId()));
+        $this->em->persist($sibling);
+        $this->em->flush();
+        $provisioner->linkSchedule($sibling);
+        if ($choose) {
+            $provisioner->choose($sibling);
+        }
+        $this->em->flush();
+
+        return $sibling->getId();
     }
 }

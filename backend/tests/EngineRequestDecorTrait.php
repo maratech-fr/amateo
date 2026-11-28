@@ -51,6 +51,7 @@ use App\Enum\TeamLinkType;
 use App\Matches\CompetitionRegistry;
 use App\Matches\FederalFollowUp;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use DateTimeImmutable;
@@ -289,6 +290,10 @@ trait EngineRequestDecorTrait
         Assert::assertInstanceOf(Schedule::class, $schedule);
         Assert::assertTrue(static::getContainer()->get(SchedulePlanProvisioner::class)->choose($schedule), 'le socle doit pouvoir être pointé');
         $this->loadSocle($scheduleId);
+        // Lot 5 : une version en vigueur porte la copie de son état (la porte lève sinon) — celle du décor à cet instant.
+        $em->flush();
+        $states = static::getContainer()->get(PlanStates::class);
+        $states->store($schedule, $states->capture($this->erSeasonPlanId()));
     }
 
     /** « Charger » une version de socle : l'étoile, sur le plan de saison (lot 4). */
