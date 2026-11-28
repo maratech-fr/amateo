@@ -106,26 +106,32 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   `MatchPlacementLock` (ADR-0003, amendement 2026-10-04) ; naissance/re-datage
   d'une fenêtre de plan de période = `SchedulePlanProvisioner::lockClubWindows` (grain club+saison,
   pris **avant** `lockPlanScope`, ordre club → entrée uniforme sur les trois écritures).
-- **Version chargée** (ADR-0002, amendement 2026-11-03) : seule la version chargée (l'étoile) d'un
-  plan se modifie, se valide et part au moteur ; les autres se consultent (409 `not_loaded_version`,
-  `VersionEditability`). **Seule exception** : « Valider ces modifications »
+- **Version chargée** (ADR-0002, amendement 2026-11-03 ; exception : ADR-0007) : seule la version
+  chargée (l'étoile) d'un plan se modifie, se valide et part au moteur ; les autres se consultent
+  (409 `not_loaded_version`, `VersionEditability`). **Seule exception** : « Valider ces modifications »
   (`POST /api/schedule_plans/{id}/apply-pending-changes`, `PendingChanges::apply`) écrit la version
   EN VIGUEUR du socle, et seulement sa copie du froid, le coach de ses séances, son entrée figée et
   son empreinte — aucune séance ne bouge, aucune version ne naît.
+- **Socle froid** (ADR-0007, remplace l'ADR-0002 pour le plan de saison) : le planning de saison se
+  **retravaille** (copie), il ne se rouvre pas ; chaque version porte la **copie de son froid**
+  (`schedule_state`) ; matchs, radar, plans de période et saison suivante lisent l'en vigueur **par
+  une seule porte, `App\Plans\InForce`** — les lecteurs nommés ne lisent ni le pointeur ni une famille froide en direct
+  (`InForceDoorTest`). Un champ ajouté à une entité de saison ou de plan se déclare froid ou libre
+  (`#[Family]`, `FamilyDeclarationSweepTest`).
 - **Génération async** : controller → Messenger (Redis) → handler (snapshot figé → POST engine →
   import → Mercure). Worker = conteneur `messenger-worker`.
-- **Grille de gymnase possédée par la période** (ADR-0002) : slots d'une période = **copie**
+- **Grille de gymnase possédée par la période** (ADR-0002, intact) : slots d'une période = **copie**
   prise à la naissance du plan, jamais d'union avec la saison ; overrides sparse ; pin orphelin
   → 422 (`OrphanPinGuard`). Les verrous HARD d'une période survivent à « Régénérer » (version
   SOURCE du plan, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` ; « Charger » les pose).
-- **Le socle commande les plans de période** (ADR-0002) : (1) **aucune génération de période sans
+- **Le socle commande les plans de période** (ADR-0002, révisé par l'ADR-0007) : (1) **aucune génération de période sans
   socle EN VIGUEUR** (`SocleGuard`) — « et si le socle n'a pas de version ? » est un cas
   IMPOSSIBLE, jamais un repli à écrire ; (2) **valider un socle dont le FROID change DÉTRUIT les plans de
   période FUTURS** (l'entrée de calendrier survit ; une séance déplacée ou un verrou n'y change rien ;
   le socle ne se rouvre plus, il se retravaille) — ⚠ critère = la **DATE** (`startDate >
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
   copiée ne peut périmer en silence que pour une période **déjà commencée**. La collecte de
-  doléances des vacances à venir, elle, reste (lot 5).
+  doléances des vacances à venir, elle, reste.
 - **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.12**, un seul
   contrat pour `/generate` · `/place-matches` · `/validate-assignments`, **allégé** : un champ que le
   solveur ne lit pas n'est ni envoyé ni accepté), **sync manuelle, pas de codegen** — gardé par les 3 `*ContractSchemaTest`.
@@ -261,7 +267,7 @@ angle de test est voulu (`docs/testing/tests-par-parcours.md` §1).
 tenant isolation · generation pipeline (controller→messenger→engine→import→Mercure) ·
 **constraint semantics** (une contrainte saisie doit être honorée par le solveur — smoke
 sémantique, pas juste COMPLETED) · planning lifecycle (plan SEASON pointé = calendrier ;
-valider/rouvrir + verrous — ADR-0002) · **périmètre engagé** (équipe en compétition : ni
+valider/retravailler + verrous — ADR-0002, ADR-0007) · **périmètre engagé** (équipe en compétition : ni
 suppression ni changement de niveau) · backend↔engine contract (CONTRACT_VERSION) ·
 auth & memberships.
 

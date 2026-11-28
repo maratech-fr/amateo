@@ -1,6 +1,12 @@
 # ADR-0002 — Pattern « Plan » : un plan nommé, des versions, un pointeur
 
-- **Status**: accepted — Date: 2026-07-12
+- **Status**: accepted — Date: 2026-07-12 — **remplacé partiellement par [ADR-0007](adr-0007-cold-socle-in-force.md)**
+  pour le cycle de vie du plan de SAISON : valider/rouvrir le socle (inv. 1 pour la garde « tant que le plan pointe »,
+  inv. 2 pour la réouverture du socle, inv. 14 pour ce qui détruit les plans de période), la photo de structure et
+  « Charger » (inv. 6, 7, 17, 21 pour la restauration), ce que lisent matchs, radar et plans de période (inv. 15).
+  Restent en vigueur ici : le modèle Plan → Versions → Pointeur, « valider = pointer », le « Rouvrir » d'un plan de
+  PÉRIODE, la règle de la version chargée (amendement 2026-11-03, avec l'exception nommée de l'ADR-0007), la grille
+  et les règles de bien-être possédées par la période, les verrous d'une période, les amendements de fermeture.
 - **Décidé avec le fondateur** point par point (session 2026-07-12) ; référence produit :
   [`specs/courantes/types-de-planning.md`](../../specs/courantes/types-de-planning.md).
 
@@ -57,24 +63,15 @@ Schedule (= Version)                    ← existant, recentré
    automatique d'un planning de période (inv. 2, amendement) ne supprime PAS les sœurs : elles
    sont gardées, `Rouvrir` les rend au gestionnaire ; seule la validation MANUELLE les supprime.
 
-   **Tant que le plan SEASON pointe une version, aucune AUTRE version de saison n'est créée ni
-   résolue.** À la création : `ScheduleStateProcessor::processPost` refuse en 409 tout POST
-   « de saison » (sans `schedulePlanId`, ou visant explicitement le plan SEASON) tant que
-   `SchedulePlanProvisioner::chosenOfSeasonPlan` répond non-null, sous le verrou de plan-scope
-   de la saison et dans la transaction de création (NR `Security/SeasonVersionUniquenessTest`).
-   Sur les trois portes agissant sur une version de saison déjà existante — `generate`,
-   `regenerate`, `load` — `SocleGuard::assertSeasonPlanNotChosen` (miroir de
-   `assertSeasonPlanChosen`, inv. 13) pose la même garde en défense en profondeur, sous le même
-   verrou et la même transaction ; `Security/SeasonPlanInForceTest` épingle la propriété qui la
-   rend redondante en pratique (`ValidateScheduleController` supprime déjà toutes les sœurs à la
-   validation, donc un plan SEASON pointé n'a jamais de sœur à viser) — si cette propriété
-   cessait d'être vraie, ce test tomberait avant que les trois portes ne se rouvrent. **Ce que
-   l'invariant NE dit PAS** : la structure du club (équipes, gymnases, coachs, contraintes
+   **Ce que l'invariant NE dit PAS** : la structure du club (équipes, gymnases, coachs, contraintes
    permanentes) reste modifiable toute l'année — c'est l'objet de la comparaison
    `snapshotHash` ⇄ empreinte de structure (`SchedulePlanProvisioner::structureHashOfPlan`,
-   P4-266), pas de son gel.
-2. **Pointeur NULL = espace de travail.** On (re)travaille ⇒ pointeur remis à null, on
-   génère des versions (V4, V5…), on choisira. **Aucun pointage automatique** (l'auto-baseline
+   P4-266), pas de son gel. Un plan de saison en vigueur autorise générer, régénérer, charger et
+   préparer une version de plus ([ADR-0007](adr-0007-cold-socle-in-force.md) décision 5) ; générer la
+   version même que le plan pointe reste refusé.
+2. **Pointeur NULL = espace de travail.** Pour un plan de PÉRIODE : on (re)travaille ⇒ pointeur remis à null, on
+   génère des versions (V4, V5…), on choisira ; le plan de SAISON ne se rouvre plus, il se retravaille
+   ([ADR-0007](adr-0007-cold-socle-in-force.md)). **Aucun pointage automatique** (l'auto-baseline
    au 1er COMPLETED disparaît) — seul le gestionnaire pointe.
 
    **Amendement (pointage automatique d'une période, fondateur 2026-11-03) :** un planning de
@@ -96,12 +93,8 @@ Schedule (= Version)                    ← existant, recentré
    atterrit sur la chargée, sauf génération en cours ou échec dans la session. Gardé par
    `Integration/LoadedVersionLocksOnlyTest` et `Security/LoadedVersionIsTheOnlyEditableTest`.
 
-   **Amendement (« Valider ces modifications », lot 5, 2026-11-28) :** exception NOMMÉE à cette règle,
-   bornée au rail `POST /api/schedule_plans/{id}/apply-pending-changes` (`App\Plans\PendingChanges::apply`) :
-   il écrit la version EN VIGUEUR du socle, et seulement sa copie du froid, le coach de ses séances,
-   son entrée figée et son empreinte. Aucune séance ne change de place, aucune version ne naît ; les
-   guichets de retouche restent refusés sur la version en vigueur. Gardé par
-   `Api/ApplyPendingChangesGuardsTest`.
+   **Exception nommée** : « Valider ces modifications » écrit la version EN VIGUEUR du socle, et seulement
+   trois choses — [ADR-0007](adr-0007-cold-socle-in-force.md) décision 8.
 
    **Amendement (prolonger une fermeture à travers des vacances, fondateur 2026-10-27) :**
    exception NOMMÉE, bornée au rail NEUF `POST /api/schedule_plans/{id}/window-preview` +
@@ -221,12 +214,12 @@ Schedule (= Version)                    ← existant, recentré
    détail : `frontend/docs/frontend-wizard.md`.
 6. **La structure (équipes/gymnases/coachs/contraintes permanentes) reste PARTAGÉE**
    (état vivant du club par saison) — **pas de duplication par version**. L'indépendance
-   des versions passe par la **photo** (JSON, D2, existante) : chaque version COMPLETED
-   garde la photo de ses conditions ; « charger » une photo restaure ces conditions (D3).
-7. **L'étoile ★ = la version dont la photo est chargée dans le wizard** (l'espace de
+   des versions passe par la **copie du froid** de chaque version terminée (table `schedule_state`,
+   [ADR-0007](adr-0007-cold-socle-in-force.md), qui a remplacé la photo JSON d'origine) ; « charger » une
+   version restaure ces conditions.
+7. **L'étoile ★ = la version dont la copie est chargée dans le wizard** (l'espace de
    travail). Ce n'est PAS un pointeur de plan. Avant un chargement qui écraserait des
-   données jamais photographiées (générées nulle part) → **avertissement explicite**
-   (perte assumée si confirmée).
+   réglages jamais générés → **avertissement explicite** (perte assumée si confirmée).
 8. **Déblocage du cockpit** : le plan SEASON possède **≥ 1 version terminée**
    (COMPLETED ou FAILED). *Changement assumé vs aujourd'hui (c'était la validation).*
 9. **Périodes sans plan** : `cutoff`/`mutualisation` restent des rappels calendrier —
@@ -308,12 +301,8 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     sur l'ancien socle. S'applique à la validation d'une version du socle (`ValidateScheduleController`) et à
     « Valider ces modifications » (`ApplyPendingChangesController`), via un 409
     `changes_to_confirm` et le jeton de la liste vue (`confirmChanges`) — « le premier plan
-    secondaire fige le socle » reste vrai. **Amendement (lot 5, 2026-11-28)** : seul le **froid**
-    supprime — une version dont la copie diffère de celle en vigueur sur un champ froid ; une séance
-    déplacée ou un verrou ne supprime jamais rien. Un plan de saison ne se rouvre plus (409, il se
-    retravaille), et la collecte de doléances des vacances à venir n'est plus purgée : une doléance
-    reçue avant un changement de froid (`schedule_plan.cold_changed_at`) porte une mention, elle ne
-    disparaît pas.
+    secondaire fige le socle » reste vrai. Seul le **froid** supprime, et le socle ne se rouvre plus : voir
+    [ADR-0007](adr-0007-cold-socle-in-force.md) décisions 5 et 6.
 15. **Module matchs & radars de conflits** : ils **lisent le plan SEASON** (sa version
     choisie). Le comportement en espace de travail (pointeur null) sera **confirmé au
     cadrage du module matchs**. Consommateurs recensés : `MatchConflictDetector`,
@@ -348,9 +337,9 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     pointeur `schedule_plan.lock_source_schedule_id` s'il désigne une version COMPLETED existante
     du même plan, sinon sa dernière version COMPLETED. Ce pointeur est le seul de version chargée, socle comme période ; il se pose de deux
     façons : automatiquement (chaque version qui vient de COMPLETED devient la source) ou par
-    « Charger » (tout plan : `POST /api/schedules/{id}/load`, `LoadVersionController`, réservé à un plan **non
-    validé** ; il remet d'abord l'état de travail du plan d'après la copie de la version,
-    `PlanStates::restore`). Régénérer en REGARDANT une autre
+    « Charger » (tout plan : `POST /api/schedules/{id}/load`, `LoadVersionController`, refusé sur un plan de
+    PÉRIODE validé ; il remet d'abord l'état de travail du plan d'après la copie de la version,
+    `PlanStates::restore`, [ADR-0007](adr-0007-cold-socle-in-force.md)). Régénérer en REGARDANT une autre
     version que la source ne change pas la source retenue — le front confirme avant (« vous
     regardez la version N, les données en cours sont celles de la version M… »). `ScheduleResource`
     expose `isLockSource`/`hardLockCount` ; `OrphanPinGuard` et `ScheduleResultImporter` (origine
