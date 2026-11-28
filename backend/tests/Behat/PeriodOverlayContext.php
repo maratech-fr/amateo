@@ -42,6 +42,9 @@ final class PeriodOverlayContext extends BaseContext
 
     private const int TIMEOUT_SECONDS = 120;
 
+    /** Les crans du trajet entre gymnases, libellés de l'écran → valeur de l'API. */
+    private const array TRAVEL_CRANS = ['Obligatoire' => 'MANDATORY', 'Souhaitée' => 'PREFERRED', 'Ignorée' => 'OFF'];
+
     private string $token = '';
 
     private string $clubId = '';
@@ -108,6 +111,12 @@ final class PeriodOverlayContext extends BaseContext
     private int $movedDay = 0;
 
     private string $movedStart = '';
+
+    /** @var array<string, mixed>|null le réglage du trajet du club avant le scénario, rendu à la fin */
+    private ?array $travelRuleBefore = null;
+
+    /** Le temps de trajet posé par le scénario (aucun n'existait), retiré à la fin. */
+    private string $travelTimeId = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -214,6 +223,66 @@ final class PeriodOverlayContext extends BaseContext
         $this->entryId = $this->idOf($entry, 'période de vacances');
         $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
         $this->redatePlanId = $this->idOf($plan, 'plan de période');
+    }
+
+    /**
+     * Lot 9, PR 1 (le filet) : des vacances et leur plan, nés par les gestes du gestionnaire, et un temps de trajet saisi
+     * au club (l'écran ne montre l'encart du trajet qu'avec lui). Le réglage du trajet du club est relevé, pour être
+     * rendu tel quel à la fin du scénario.
+     */
+    #[Given('des vacances de Noël déjà créées et un temps de trajet saisi')]
+    public function desVacancesDeNoelDejaCreeesEtUnTempsDeTrajet(): void
+    {
+        $start = date('Y-m-d', (int) strtotime($this->holidayFreeMonday(77, 7)));
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'holiday',
+            'title' => 'Vacances de Noël',
+            'startDate' => $start,
+            'endDate' => date('Y-m-d', (int) strtotime($start . ' +4 days')),
+        ], $this->token);
+        $this->entryId = $this->idOf($entry, 'vacances de Noël');
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
+        $this->redatePlanId = $this->idOf($plan, 'plan des vacances de Noël');
+
+        $this->travelRuleBefore = $this->travelRuleOfTheSeason();
+
+        if ('0' !== $this->dbalScalar(\sprintf('SELECT count(*) AS behatval FROM place_travel_time WHERE club_id=\'%s\'', $this->clubId), admin: true)) {
+            return; // le club a déjà un temps de trajet saisi
+        }
+        $venues = explode(',', $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(id::text, \',\' ORDER BY id) AS behatval FROM (SELECT DISTINCT ON (place_id) id FROM venue'
+                . ' WHERE season_id = (SELECT season_id FROM calendar_entry WHERE id=\'%s\') AND parent_venue_id IS NULL ORDER BY place_id, id) v',
+                $this->entryId,
+            ),
+            admin: true,
+        ));
+        if (\count($venues) < 2) {
+            throw new RuntimeException('le club de démonstration n\'a pas deux gymnases sur deux lieux — la base est-elle seedée ?');
+        }
+        $created = $this->apiPost('venue_travel_times', ['venueAId' => $venues[0], 'venueBId' => $venues[1], 'drivingMinutes' => 12], $this->token);
+        $this->travelTimeId = $this->idOf($created, 'temps de trajet');
+    }
+
+    /** Le geste de l'encart « Trajet entre gymnases », ouvert dans le Wizard des vacances : aujourd'hui, la même requête que dans celui de la saison. */
+    #[When('/^je règle le trajet entre gymnases sur « (?P<cran>Obligatoire|Souhaitée|Ignorée) » depuis les vacances de Noël$/u')]
+    public function jeRegleLeTrajetDepuisLesVacances(string $cran): void
+    {
+        $set = $this->apiPut('venue_travel_rule_settings/travelTime', ['intensity' => self::TRAVEL_CRANS[$cran]], $this->token);
+        if (200 !== $set['status']) {
+            throw new RuntimeException(\sprintf('régler le trajet sur « %s » a répondu %d (200 attendu) : %s', $cran, $set['status'], json_encode($set['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /** Ce que l'encart du Wizard du planning de saison lit. */
+    #[Then('/^le trajet est « (?P<cran>Obligatoire|Souhaitée|Ignorée) » pour le planning de saison$/u')]
+    public function leTrajetEstPourLePlanningDeSaison(string $cran): void
+    {
+        $rule = $this->travelRuleOfTheSeason();
+        if (self::TRAVEL_CRANS[$cran] !== ($rule['intensity'] ?? null)) {
+            throw new RuntimeException(\sprintf('le planning de saison lit le trajet %s, « %s » attendu', json_encode($rule, \JSON_UNESCAPED_UNICODE), $cran));
+        }
     }
 
     /**
@@ -847,6 +916,8 @@ final class PeriodOverlayContext extends BaseContext
             $this->apiDelete(\sprintf('constraints/%s', $this->fridayRuleId), $this->token);
         }
 
+        $this->rendLeTrajet();
+
         if ('' !== $this->entryId) {
             $this->apiDelete(\sprintf('calendar_entries/%s', $this->entryId), $this->token);
         }
@@ -857,6 +928,44 @@ final class PeriodOverlayContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** @return array<string, mixed> le réglage du trajet du club, tel que l'encart le lit */
+    private function travelRuleOfTheSeason(): array
+    {
+        $read = $this->apiGet('venue_travel_rule_settings/travelTime', $this->token);
+        if (200 !== $read['status']) {
+            throw new RuntimeException(\sprintf('lire le réglage du trajet a répondu %d (200 attendu)', $read['status']));
+        }
+
+        return $read['json'];
+    }
+
+    /** Rend au club le réglage du trajet d'avant le scénario, et retire le temps de trajet qu'il a posé. */
+    private function rendLeTrajet(): void
+    {
+        if (null === $this->travelRuleBefore) {
+            return;
+        }
+        if ('' !== $this->travelTimeId) {
+            $this->dbalExec(\sprintf('DELETE FROM place_travel_time WHERE id=\'%s\'', $this->travelTimeId), admin: true);
+        }
+        if (true === ($this->travelRuleBefore['isDefault'] ?? null)) {
+            $this->dbalExec(
+                \sprintf('DELETE FROM venue_travel_rule_setting WHERE club_id=\'%s\' AND season_id = (SELECT season_id FROM schedule_plan WHERE id=\'%s\')', $this->clubId, $this->redatePlanId),
+                admin: true,
+            );
+        } else {
+            $this->apiPut('venue_travel_rule_settings/travelTime', [
+                'intensity' => $this->travelRuleBefore['intensity'] ?? null,
+                'toleranceMinutes' => $this->travelRuleBefore['toleranceMinutes'] ?? null,
+                'defaultMinutes' => $this->travelRuleBefore['defaultMinutes'] ?? null,
+            ], $this->token);
+        }
+        // Une écriture SQL n'invalide pas les demandes mises en cache : le scénario suivant lirait ce trajet.
+        $this->runConsole(['php', 'bin/console', 'cache:pool:clear', 'cache.schedule']);
+        $this->travelRuleBefore = null;
+        $this->travelTimeId = '';
     }
 
     /**

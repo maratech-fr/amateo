@@ -17,6 +17,7 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Et une règle qui impose le « Gymnase Nord » à l'équipe « U13M1 »
     Et le « Gymnase Nord » est relié à sa salle fédérale, avec son adresse et sa position
     Et le trajet entre le « Gymnase Nord » et le « Gymnase Sud » est saisi à 12 minutes en voiture
+    Et le trajet entre gymnases réglé sur « Obligatoire », battement 10 minutes, temps par défaut 15 minutes
     Quand je prépare la saison suivante
     # Règles : les cinq règles semées à l'inscription du club, plus celle qui impose un gymnase.
     Alors la saison suivante reprend la structure de la saison en cours :
@@ -32,6 +33,9 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Et chaque saison du club a sa compétition « Amicaux », une seule
     Et la règle de la saison suivante impose le « Gymnase Nord » de la saison suivante, pas celui de la saison en cours
     Et la saison en cours a gardé toute sa structure
+    # La règle de trajet suit la saison par son cran seul : battement et temps par défaut repartent à 20 minutes.
+    Alors la saison suivante garde le trajet « Obligatoire »
+    Et son battement est de 20 minutes, son temps par défaut de 20 minutes
     Quand je prépare la saison suivante une seconde fois
     Alors c'est refusé : « La saison suivante existe déjà. », et la saison suivante déjà préparée est désignée
     Et le club n'a que deux saisons

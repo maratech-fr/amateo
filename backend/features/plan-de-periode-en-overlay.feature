@@ -71,6 +71,13 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
       | des vacances déjà créées | pour une équipe de la période | je laisse les règles de la période à leur défaut | ignore   |
       | des vacances déjà créées | pour tout le club             | je laisse les règles de la période à leur défaut | ignore   |
 
+  Scénario: Le trajet entre gymnases réglé depuis des vacances règle toute la saison
+    Aujourd'hui la règle de trajet est un réglage de la saison : l'encart des vacances règle celui du planning de saison.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et des vacances de Noël déjà créées et un temps de trajet saisi
+    Quand je règle le trajet entre gymnases sur « Obligatoire » depuis les vacances de Noël
+    Alors le trajet est « Obligatoire » pour le planning de saison
+
   Plan du scénario: J'écarte une équipe des vacances, je lui donne une séance, puis je lui rends ses réglages de saison
     Chaque génération des vacances suit le réglage du moment : écartée, l'équipe n'y joue pas, sauf la séance qu'elle
     tient par un créneau réservé dans les vacances (la réservation gagne) ; une séance, elle en a une ; ses réglages de
