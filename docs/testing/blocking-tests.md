@@ -422,7 +422,7 @@ brouillon et régénéré, période sur place et comblée, placement club entier
 groupe sous leurs trois formes avec le jour de match enregistré d'une équipe sans habitude, règle de
 groupe datée d'un plan de période, temps de trajet, puis ce que le lot 4 range dans le plan [socle complet,
 plan de vacances et plan de fermeture réglés, verdict `/validate-assignments` d'un déplacement dans le socle
-et dans une période, puis le filet des matchs du lot 7 : deux équipes dans une division, amicaux, suivi fédéral, coupes, puis le filet du lot 5 : socle de la saison suivante née par le vrai geste depuis un socle complet en vigueur, placement avec une équipe créée après la validation]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
+et dans une période, puis le filet des matchs du lot 7 : deux équipes dans une division, amicaux, suivi fédéral, coupes, puis le filet du lot 5 : socle de la saison suivante née par le vrai geste depuis un socle complet en vigueur, placement avec une équipe créée après la validation, puis le filet du lot 9 : socle au trajet obligatoire réglé, à la passerelle obligatoire et à la règle éteinte, la même règle éteinte cochée dans un plan de vacances, placement aux règles de match à bornes ouvertes]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
 change ou si un réglage de période n'entre plus dans la demande ; le Lot Gate ne joue que cette suite) ·
 `Integration/EngineRequestKeySourcesTest` (axes *constraint semantics* + *generation pipeline*, lot
 conception 5 PR 2 — chaque clé des demandes de référence 11, 12, 13 et 5 a une source écrite dans le
