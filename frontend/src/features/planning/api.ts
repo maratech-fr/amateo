@@ -1365,6 +1365,15 @@ export interface ValidateChange {
   destroys: boolean;
 }
 
+/** Lot 5 — une équipe dont le coach principal change, et le coach qui tiendra ses séances (null : l'équipe n'a plus
+ *  de coach principal). */
+export interface ValidateCoachChange {
+  teamId: string;
+  teamName: string;
+  coachId: string | null;
+  coachName: string | null;
+}
+
 /** P2-52 — combien de matchs perdront leur salle si l'on VALIDE ce planning (gymnase disparu),
  * et combien parmi eux sont déjà déclarés à la fédération. Même prédicat que la gâchette.
  * Lot 5 — ce qui change par rapport au planning en vigueur, les plannings de période pas commencés
@@ -1377,6 +1386,7 @@ export interface ValidateImpact {
   destroyedPeriodPlans: { entryId: string; title: string }[];
   keptPeriodPlans: number;
   keptWishes: number;
+  coachChanges: ValidateCoachChange[];
 }
 
 export const getValidateImpact = (scheduleId: string): Promise<ValidateImpact> => api.get(`schedules/${scheduleId}/validate-impact`).json<ValidateImpact>();

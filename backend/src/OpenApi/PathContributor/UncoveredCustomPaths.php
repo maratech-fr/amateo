@@ -52,6 +52,15 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
             ]],
             'keptPeriodPlans' => ['type' => 'integer', 'description' => 'Period plans the validation keeps'],
             'keptWishes' => ['type' => 'integer', 'description' => 'Coach wishes already received for the holidays to come, all kept'],
+            'coachChanges' => ['type' => 'array', 'items' => [
+                'type' => 'object',
+                'properties' => [
+                    'teamId' => ['type' => 'string'],
+                    'teamName' => ['type' => 'string'],
+                    'coachId' => ['type' => ['string', 'null'], 'description' => 'The main coach who will hold the team sessions; null when the team has no main coach any more'],
+                    'coachName' => ['type' => ['string', 'null']],
+                ],
+            ]],
         ];
     }
 

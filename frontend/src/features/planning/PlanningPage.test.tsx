@@ -144,7 +144,7 @@ vi.mock("./api", () => {
   getPendingChanges: vi.fn(() => Promise.resolve({ pending: false, hasWorkVersion: false, changes: [] })),
   // P2-52 : par défaut aucun match ne perd sa salle → l'annonce de validation ne s'affiche pas,
   // « Valider » part comme aujourd'hui (les cas dédiés surchargent).
-  getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [], changesToken: "jeton", destroyedPeriodPlans: [], keptPeriodPlans: 0, keptWishes: 0 })),
+  getValidateImpact: vi.fn(() => Promise.resolve({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [], changesToken: "jeton", destroyedPeriodPlans: [], keptPeriodPlans: 0, keptWishes: 0, coachChanges: [] })),
   getDiagnostics: vi.fn(() =>
     Promise.resolve([
       { id: "diag-1", scheduleId: SID, type: "conflict", severity: "ERROR", teamId: null, venueId: "venue-1", coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Conflit de gymnase.", suggestions: [], causes: [], openCandidates: null },
@@ -1304,7 +1304,7 @@ describe("PlanningPage (integration)", () => {
     const user = userEvent.setup();
     vi.mocked(validateSchedule).mockReset(); // per-test call count + queued once-values
     vi.mocked(validateSchedule).mockResolvedValueOnce({});
-    vi.mocked(getValidateImpact).mockResolvedValueOnce({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [{ family: "Constraint", count: 1, destroys: true }], changesToken: "jeton-annonce", destroyedPeriodPlans: [{ entryId: "e1", title: "Toussaint" }, { entryId: "e2", title: "Noël" }], keptPeriodPlans: 0, keptWishes: 0 });
+    vi.mocked(getValidateImpact).mockResolvedValueOnce({ orphanedFixtures: 0, declaredOrphanedFixtures: 0, changes: [{ family: "Constraint", count: 1, destroys: true }], changesToken: "jeton-annonce", destroyedPeriodPlans: [{ entryId: "e1", title: "Toussaint" }, { entryId: "e2", title: "Noël" }], keptPeriodPlans: 0, keptWishes: 0, coachChanges: [] });
     renderWithProviders(<PlanningPage embedded />); // Valider vit dans le wizard (embedded)
     await screen.findByText("U11");
 

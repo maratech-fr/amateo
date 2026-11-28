@@ -44,7 +44,7 @@ export function useValidateReopen(
   // confirmation porte le jeton de la liste vue (le serveur l'exige quand des plannings de période partent).
   const announcement = useMemo(() => {
     const data = validateImpactQuery.data;
-    return undefined === data ? null : { changes: data.changes ?? [], destroyedTitles: (data.destroyedPeriodPlans ?? []).map((plan) => plan.title), keptWishes: data.keptWishes ?? 0 };
+    return undefined === data ? null : { changes: data.changes ?? [], destroyedTitles: (data.destroyedPeriodPlans ?? []).map((plan) => plan.title), keptWishes: data.keptWishes ?? 0, coachChanges: data.coachChanges ?? [] };
   }, [validateImpactQuery.data]);
   const validate = () => {
     if (!validScheduleId) {

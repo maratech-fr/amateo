@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Plans;
 
 use App\Entity\CalendarEntry;
+use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Schedule;
 use App\Enum\SchedulePlanType;
+use App\Enum\TeamCoachRole;
 use App\Repository\CalendarEntryRepository;
 use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
 use App\Service\SchedulePlanProvisioner;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
@@ -37,14 +40,15 @@ final readonly class ValidationImpact
         private ClockInterface $clock,
         private InForceCoherence $inForceCoherence,
         private OrphanedFixtureFinder $orphanedFixtureFinder,
+        private PersonDirectory $personDirectory,
     ) {}
 
     /**
      * La forme servie par l'annonce (et par le refus `changes_to_confirm`).
      *
-     * @param array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string} $impact
+     * @param array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string, coachChanges: list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>} $impact
      *
-     * @return array{changes: list<array{family: string, count: int, destroys: bool}>, changesToken: string, destroyedPeriodPlans: list<array{entryId: string, title: string}>, keptPeriodPlans: int, keptWishes: int}
+     * @return array{changes: list<array{family: string, count: int, destroys: bool}>, changesToken: string, destroyedPeriodPlans: list<array{entryId: string, title: string}>, keptPeriodPlans: int, keptWishes: int, coachChanges: list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>}
      */
     public static function served(array $impact): array
     {
@@ -54,13 +58,14 @@ final readonly class ValidationImpact
             'destroyedPeriodPlans' => array_map(static fn (CalendarEntry $entry): array => ['entryId' => $entry->getId(), 'title' => $entry->getTitle()], $impact['destroyed']),
             'keptPeriodPlans' => $impact['keptPeriodPlans'],
             'keptWishes' => $impact['keptWishes'],
+            'coachChanges' => $impact['coachChanges'],
         ];
     }
 
     /**
      * Valider cette version.
      *
-     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string}
+     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string, coachChanges: list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>}
      */
     public function ofVersion(Schedule $version): array
     {
@@ -77,24 +82,25 @@ final readonly class ValidationImpact
         }
 
         $planId = $version->getSchedulePlanId();
+        $after = $this->planStates->withoutDeadReferences($planId, $this->planStates->of($version->getId()));
         $changes = $this->planStates->withoutDeadReferences($planId, $this->planStates->of($inForceId))
-            ->changesTo($this->planStates->withoutDeadReferences($planId, $this->planStates->of($version->getId())))
+            ->changesTo($after)
             ->withMovedSessions($this->movedSessions($inForceId, $version->getId()));
 
-        return $this->impact($version->getClubId(), $version->getSeasonId(), $changes, $changes->destroys());
+        return $this->impact($version->getClubId(), $version->getSeasonId(), $changes, $changes->destroys(), $after);
     }
 
     /**
      * Valider les modifications en attente du plan de saison, sans régénérer (rien sans version en vigueur).
      *
-     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string}
+     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string, coachChanges: list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>}
      */
     public function ofPendingChanges(string $planId, string $clubId, string $seasonId): array
     {
         $inForceId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
         $changes = null === $inForceId ? new PlanChanges([]) : $this->pendingChanges->changesOf($planId, $inForceId);
 
-        return $this->impact($clubId, $seasonId, $changes, $changes->destroys());
+        return $this->impact($clubId, $seasonId, $changes, $changes->destroys(), null === $inForceId ? null : $this->planStates->capture($planId));
     }
 
     /**
@@ -119,9 +125,12 @@ final readonly class ValidationImpact
     }
 
     /**
-     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string}
+     * `$after` : l'état que la validation fait entrer en vigueur (la copie de la version, ou l'état de travail), d'où se
+     * lit le nouveau coach principal des équipes dont il change.
+     *
+     * @return array{changes: PlanChanges, destroyed: list<CalendarEntry>, keptPeriodPlans: int, keptWishes: int, token: string, coachChanges: list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>}
      */
-    private function impact(string $clubId, string $seasonId, PlanChanges $changes, bool $destroys): array
+    private function impact(string $clubId, string $seasonId, PlanChanges $changes, bool $destroys, ?PlanState $after = null): array
     {
         $destroyed = $destroys ? $this->overlayManager->periodPlansInvalidatedBySeasonChange($clubId, $seasonId) : [];
         $periodPlans = (int) $this->entityManager->getConnection()->fetchOne(
@@ -141,7 +150,74 @@ final readonly class ValidationImpact
             'keptWishes' => $keptWishes,
             // Le jeton de la liste vue : ce qui change ET ce qui serait supprimé.
             'token' => hash('sha256', $changes->token() . '|' . implode(',', $destroyedIds)),
+            'coachChanges' => $after instanceof PlanState ? $this->coachChanges($clubId, $seasonId, $changes, $after) : [],
         ];
+    }
+
+    /**
+     * Pour chaque équipe dont le coach principal change, l'équipe et le coach qui tiendra ses séances : le premier coach
+     * principal de l'état adopté, dans l'ordre des liens (le premier lien tient la séance) ; null si l'équipe n'a plus
+     * de coach principal. Triées par nom d'équipe.
+     *
+     * @return list<array{teamId: string, teamName: string, coachId: ?string, coachName: ?string}>
+     */
+    private function coachChanges(string $clubId, string $seasonId, PlanChanges $changes, PlanState $after): array
+    {
+        $teamIds = [];
+        foreach ($changes->rows()['TeamCoach'] ?? [] as [$old, $new]) {
+            foreach ([$old, $new] as $row) {
+                if (\is_array($row) && \is_string($row['teamId'] ?? null)) {
+                    $teamIds[$row['teamId']] = true;
+                }
+            }
+        }
+        if ([] === $teamIds) {
+            return [];
+        }
+        $connection = $this->entityManager->getConnection();
+        $linkIds = [];
+        foreach ($after->toArray()['TeamCoach'] ?? [] as $linkId => $row) {
+            if (TeamCoachRole::MAIN->value === ($row['role'] ?? null) && isset($teamIds[(string) ($row['teamId'] ?? '')])) {
+                $linkIds[(string) $linkId] = $row;
+            }
+        }
+        // L'ordre des liens vivants (création, puis id) ; un lien de la copie absent de la base vient après, par id.
+        $ordered = [] === $linkIds ? [] : array_map(strval(...), $connection->fetchFirstColumn(
+            'SELECT id FROM team_coach WHERE club_id = ? AND season_id = ? AND id IN (' . implode(', ', array_fill(0, \count($linkIds), '?')) . ') ORDER BY created_at, id',
+            [$clubId, $seasonId, ...array_keys($linkIds)],
+        ));
+        $rest = array_values(array_diff(array_map(strval(...), array_keys($linkIds)), $ordered));
+        sort($rest, \SORT_STRING);
+        $holderOf = [];
+        foreach ([...$ordered, ...$rest] as $linkId) {
+            $holderOf[(string) $linkIds[$linkId]['teamId']] ??= (string) $linkIds[$linkId]['coachId'];
+        }
+
+        $teamNames = [];
+        foreach ($connection->fetchAllAssociative(
+            'SELECT id, name FROM team WHERE club_id = ? AND season_id = ? AND id IN (' . implode(', ', array_fill(0, \count($teamIds), '?')) . ')',
+            [$clubId, $seasonId, ...array_keys($teamIds)],
+        ) as $team) {
+            $teamNames[(string) $team['id']] = (string) $team['name'];
+        }
+        $coaches = [] === $holderOf ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => array_values(array_unique($holderOf))]);
+        $names = [];
+        foreach ($this->personDirectory->forCoaches($coaches) as $coachId => $identity) {
+            $names[(string) $coachId] = $identity->fullName();
+        }
+
+        $coachChanges = [];
+        foreach (array_keys($teamIds) as $teamId) {
+            $teamId = (string) $teamId;
+            if (!isset($teamNames[$teamId])) {
+                continue; // une équipe supprimée depuis ne s'annonce pas
+            }
+            $coachId = $holderOf[$teamId] ?? null;
+            $coachChanges[] = ['teamId' => $teamId, 'teamName' => $teamNames[$teamId], 'coachId' => $coachId, 'coachName' => null === $coachId ? null : ($names[$coachId] ?? null)];
+        }
+        usort($coachChanges, static fn (array $a, array $b): int => strcmp($a['teamName'], $b['teamName']) ?: strcmp($a['teamId'], $b['teamId']));
+
+        return $coachChanges;
     }
 
     /**

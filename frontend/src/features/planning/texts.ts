@@ -165,6 +165,7 @@ export const PLANNING_TEXTS = {
     1 === titles.length
       ? `1 planning de période pas encore commencé sera supprimé et devra être refait : ${titles[0]}.`
       : `${titles.length} plannings de période pas encore commencés seront supprimés et devront être refaits : ${titles.join(", ")}.`,
+  coachTakesOver: (team: string, coach: string): string => `Les séances de ${team} sont désormais tenues par ${coach}.`,
   validateKeptWishes: (n: number): string => (1 === n ? "La doléance déjà reçue pour les vacances à venir est conservée." : `Les ${n} doléances déjà reçues pour les vacances à venir sont conservées.`),
   validateAndDelete: "Valider et supprimer",
   changesToConfirmAgain: "Ce qui change a bougé depuis l'annonce : relisez la liste avant de confirmer.",

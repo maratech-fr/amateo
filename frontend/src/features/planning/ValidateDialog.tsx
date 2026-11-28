@@ -8,7 +8,7 @@ import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { dayLabelLong } from "@/shared/lib/days";
 
-import type { PendingImpact, ValidateChange } from "./api";
+import type { PendingImpact, ValidateChange, ValidateCoachChange } from "./api";
 import { PLANNING_TEXTS } from "./texts";
 
 /** P2-52 — l'impact de dépointage de la validation, tel que l'écran le connaît au moment de
@@ -28,6 +28,7 @@ export interface ChangesAnnouncement {
   changes: readonly ValidateChange[];
   destroyedTitles: readonly string[];
   keptWishes: number;
+  coachChanges: readonly ValidateCoachChange[];
 }
 
 /**
@@ -55,6 +56,15 @@ function ChangesList({ announcement }: { announcement: ChangesAnnouncement }) {
             ))}
           </ul>
         </>
+      )}
+      {/* Le coach qui tiendra les séances d'une équipe dont le coach principal change (servi par le serveur). Une équipe
+          sans coach principal ne reçoit aucune phrase : son texte reste à décider. */}
+      {announcement.coachChanges.map((change) =>
+        null === change.coachName ? null : (
+          <p key={change.teamId} className="mt-2">
+            {PLANNING_TEXTS.coachTakesOver(change.teamName, change.coachName)}
+          </p>
+        ),
       )}
       {announcement.destroyedTitles.length > 0 ? (
         <NoticeBanner tone="destructive" className="mt-3" message={PLANNING_TEXTS.validateDeletesPeriodPlans([...announcement.destroyedTitles])} />
@@ -210,7 +220,7 @@ export function ApplyPendingChangesDialog({ impact, loading, failed, busy, onRet
       ) : null}
       {undefined === impact || loading ? null : (
         <>
-          <ChangesList announcement={{ changes: impact.changes, destroyedTitles: impact.destroyedPeriodPlans.map((plan) => plan.title), keptWishes: impact.keptWishes }} />
+          <ChangesList announcement={{ changes: impact.changes, destroyedTitles: impact.destroyedPeriodPlans.map((plan) => plan.title), keptWishes: impact.keptWishes, coachChanges: impact.coachChanges ?? [] }} />
           <div aria-live="polite" className="mt-3 text-sm text-foreground">
             {impact.checkInconclusive ? (
               <NoticeBanner tone="warning" message={PLANNING_TEXTS.checkInconclusive} />
