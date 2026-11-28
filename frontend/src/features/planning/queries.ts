@@ -674,9 +674,12 @@ export function useReworkSchedule() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => planningApi.reworkSchedule(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+    // La liste des versions est RELUE avant de rendre la main : l'appelant sélectionne la version de travail née du
+    // geste, et une liste périmée (sans elle) ferait retomber l'atterrissage sur la version en vigueur. TanStack attend
+    // la promesse de ce `onSuccess` avant les rappels du `mutate`.
+    onSuccess: async () => {
       void queryClient.invalidateQueries({ queryKey: ["pending-changes"] });
+      await queryClient.invalidateQueries({ queryKey: ["schedules"] });
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
