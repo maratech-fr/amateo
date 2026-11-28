@@ -244,9 +244,15 @@ trait SmallClubFixtureTrait
         return $scheduleId;
     }
 
+    /**
+     * Le geste « Valider » du dialogue : l'annonce (`validate-impact`), puis la validation confirmée sur le jeton de la
+     * liste vue (lot 5, PR 6 : une liste qui supprime un planning de période exige ce jeton).
+     */
     private function validateSmallClubSchedule(string $scheduleId): void
     {
-        $validated = $this->apiPost(\sprintf('schedules/%s/validate', $scheduleId), [], $this->smallClubToken);
+        $impact = $this->apiGet(\sprintf('schedules/%s/validate-impact', $scheduleId), $this->smallClubToken);
+        $token = $impact['json']['changesToken'] ?? null;
+        $validated = $this->apiPost(\sprintf('schedules/%s/validate', $scheduleId), \is_string($token) ? ['confirmChanges' => $token] : [], $this->smallClubToken);
         if (!\in_array($validated['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('validation du socle refusée (HTTP %d)', $validated['status']));
         }
