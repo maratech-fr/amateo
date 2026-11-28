@@ -283,7 +283,7 @@ final class PendingChangesApplyContext extends BaseContext
                 \is_array($body['coachChanges'] ?? null) ? $body['coachChanges'] : ['absent'],
             );
             if ($expected !== $read) {
-                throw new RuntimeException(\sprintf('%s devrait %s ; lu : %s', $where, $coach, json_encode($body['coachChanges'] ?? null, \JSON_UNESCAPED_UNICODE)));
+                throw new RuntimeException(\sprintf('%s : attendu « l\'annonce %s » ; lu : %s', $where, $coach, json_encode($body['coachChanges'] ?? null, \JSON_UNESCAPED_UNICODE)));
             }
         }
     }
