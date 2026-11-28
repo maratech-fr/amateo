@@ -949,7 +949,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       {!showGenerationWaiting && true === pendingChanges.data?.pending ? (
         <NoticeBanner tone="warning" role="status" className="mb-4" message={PLANNING_TEXTS.pendingChangesBanner}>
           {canManage && null !== seasonInForce ? (
-            <Button size="sm" variant="outline" disabled={actionBusy} onClick={() => setBackToInForceOpen(true)}>
+            <Button size="sm" variant="outline" className="border-foreground/40 bg-card" disabled={actionBusy} onClick={() => setBackToInForceOpen(true)}>
               {PLANNING_TEXTS.backToInForce}
             </Button>
           ) : null}
